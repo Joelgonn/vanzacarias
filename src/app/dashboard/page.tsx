@@ -32,9 +32,15 @@ export default function Dashboard() {
       // Busca dados do perfil
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, full_name, status')
+        .select('*') // Buscando tudo para validar o Guard
         .eq('id', session.user.id)
         .single();
+
+      // Guard: Redireciona se perfil incompleto (Telefone ou Data Nascimento)
+      if (profileData && (!profileData.phone || !profileData.data_nascimento)) {
+        router.push('/dashboard/completar-perfil');
+        return;
+      }
 
       const { data: evalData } = await supabase
         .from('evaluations')
@@ -98,9 +104,7 @@ export default function Dashboard() {
             <FileText size={20} /> Meu Plano
           </Link>
           
-          <div className="text-stone-500 hover:text-nutri-800 flex items-center gap-3 p-3 transition-colors cursor-pointer">
-            <Calendar size={20} /> Agendamentos
-          </div>
+          <div className="text-stone-500 hover:text-nutri-800 flex items-center gap-3 p-3 transition-colors cursor-pointer"><Calendar size={20} /> Agendamentos</div>
         </nav>
         
         <button 
@@ -150,7 +154,10 @@ export default function Dashboard() {
               <p className="text-stone-600 italic">
                 {profile?.status === 'plano_liberado' 
                   ? "A Vanusa liberou seu protocolo! Acesse a aba 'Meu Plano' no menu lateral para visualizar." 
-                  : "Você completou seu questionário inicial com sucesso. A Vanusa está revisando seus dados para personalizar seu protocolo."}
+                  : <>
+                      Você completou seu questionário inicial com sucesso. A Vanusa está revisando seus dados para personalizar seu protocolo. Que tal você fazer o seu <strong>Check-in Semanal</strong> enquanto isso? Assim, quando o plano for liberado, ele já estará ainda mais alinhado com suas necessidades atuais!
+                    </>
+                }
               </p>
             </div>
           </div>

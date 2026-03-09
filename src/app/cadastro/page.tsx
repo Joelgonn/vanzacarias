@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowLeft, Mail, Lock, User, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Mail, Lock, User, Loader2, CheckCircle2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function Cadastro() {
@@ -14,6 +15,7 @@ export default function Cadastro() {
   const [success, setSuccess] = useState(false);
   
   const supabase = createClient();
+  const router = useRouter();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,14 +36,14 @@ export default function Cadastro() {
     }
 
     if (data.user) {
-      // 2. Primeiro: Criar o perfil do usuário
+      // 2. Criar o perfil do usuário
       const { error: profileError } = await supabase.from('profiles').insert([
         { id: data.user.id, full_name: name, role: 'patient' }
       ]);
       
       if (profileError) console.error("Erro ao criar perfil:", profileError);
 
-      // 3. Segundo: Salvar a avaliação (agora o user_id já existe na tabela profiles!)
+      // 3. Salvar a avaliação
       const savedAnswers = localStorage.getItem('quiz_answers');
       if (savedAnswers) {
         await supabase.from('evaluations').insert([
@@ -62,24 +64,38 @@ export default function Cadastro() {
           <CheckCircle2 size={40} className="text-nutri-800 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-stone-900 mb-4">Bem-vindo(a), {name.split(' ')[0]}!</h2>
           <p className="text-stone-500 mb-8">Cadastro realizado. A Vanusa já tem acesso aos seus dados.</p>
-          <Link href="/login" className="w-full bg-nutri-900 text-white py-3.5 rounded-xl font-medium block">
+          <button 
+            onClick={() => router.push('/dashboard')} 
+            className="w-full bg-nutri-900 text-white py-3.5 rounded-xl font-medium block"
+          >
             Acessar meu Dashboard
-          </Link>
+          </button>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex bg-white">
+    <main className="min-h-screen flex bg-white font-sans text-stone-800">
       <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 lg:px-24 py-12">
         <h2 className="text-3xl font-bold mb-8">Crie sua conta</h2>
         {error && <p className="mb-4 text-red-500 bg-red-50 p-3 rounded-lg text-sm">{error}</p>}
         <form onSubmit={handleRegister} className="space-y-4">
-          <input type="text" placeholder="Nome Completo" required value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-xl" />
-          <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border rounded-xl" />
-          <input type="password" placeholder="Senha" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border rounded-xl" />
-          <button disabled={loading} className="w-full bg-nutri-900 text-white p-3 rounded-xl">{loading ? <Loader2 className="animate-spin mx-auto" /> : 'Finalizar Cadastro'}</button>
+          <div className="relative">
+            <User className="absolute left-4 top-3.5 text-stone-400" size={18} />
+            <input type="text" placeholder="Nome Completo" required value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+          </div>
+          <div className="relative">
+            <Mail className="absolute left-4 top-3.5 text-stone-400" size={18} />
+            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-4 top-3.5 text-stone-400" size={18} />
+            <input type="password" placeholder="Senha" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+          </div>
+          <button disabled={loading} className="w-full bg-nutri-900 text-white p-3 rounded-xl">
+            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Finalizar Cadastro'}
+          </button>
         </form>
       </div>
       <div className="hidden lg:flex w-1/2 bg-nutri-900 items-center justify-center p-12 text-white">
