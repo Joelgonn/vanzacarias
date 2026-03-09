@@ -1,27 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Loader2, LogOut, Users, MessageCircle } from 'lucide-react';
+import { Loader2, LogOut, Users, MessageCircle, Search, Filter } from 'lucide-react';
 import AdminUpload from '@/components/AdminUpload';
 
 export default function AdminDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Novos estados para busca e filtro
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('todos');
+
   const router = useRouter();
   const supabase = createClient();
 
   async function fetchAdminData() {
     setLoading(true);
-    // Busca perfis incluindo o status, e avaliações associadas
-    const { data: profiles } = await supabase
+    // Vamos buscar todos os campos com '*' para evitar erros de colunas inexistentes
+    const { data: profiles, error: profileError } = await supabase
       .from('profiles')
-      .select('id, full_name, status');
+      .select('*');
     
-    const { data: evals } = await supabase
+    const { data: evals, error: evalError } = await supabase
       .from('evaluations')
       .select('user_id, answers');
+
+    if (profileError) console.error("Erro ao buscar perfis:", profileError);
 
     const combined = profiles?.map(profile => ({
       ...profile,
@@ -31,6 +38,15 @@ export default function AdminDashboard() {
     setPatients(combined || []);
     setLoading(false);
   }
+
+  // Lógica de filtragem computada
+  const filteredPatients = useMemo(() => {
+    return patients.filter(p => {
+      const matchesSearch = p.full_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === 'todos' || p.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [patients, searchTerm, statusFilter]);
 
   useEffect(() => {
     async function checkAuth() {
@@ -57,21 +73,47 @@ export default function AdminDashboard() {
 
   return (
     <main className="min-h-screen bg-stone-50 p-8 md:p-12 pt-24 lg:pt-28 font-sans text-stone-800">
-      <header className="flex justify-between items-center mb-10 bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
-        <div>
-          <h1 className="text-3xl font-bold text-nutri-900">Painel Administrativo</h1>
-          <p className="text-stone-500">Gestão de Pacientes da Vanusa Zacarias</p>
+      <header className="flex flex-col gap-6 mb-10 bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-nutri-900">Painel Administrativo</h1>
+            <p className="text-stone-500">Gestão de Pacientes da Vanusa Zacarias</p>
+          </div>
+          <button 
+            onClick={handleLogout} 
+            className="flex items-center gap-2 text-red-600 bg-red-50 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors"
+          >
+            <LogOut size={18} /> Sair
+          </button>
         </div>
-        <button 
-          onClick={handleLogout} 
-          className="flex items-center gap-2 text-red-600 bg-red-50 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors"
-        >
-          <LogOut size={18} /> Sair
-        </button>
+
+        {/* Barra de Filtros */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 text-stone-400" size={20} />
+            <input 
+              type="text" 
+              placeholder="Buscar paciente pelo nome..." 
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none"
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-3 top-3 text-stone-400" size={20} />
+            <select 
+              className="pl-10 pr-8 py-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-nutri-800"
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="todos">Todos os status</option>
+              <option value="pendente">Pendente</option>
+              <option value="plano_liberado">Plano Liberado</option>
+            </select>
+          </div>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {patients.map((p) => (
+        {filteredPatients.map((p) => (
           <div key={p.id} className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start mb-4">
