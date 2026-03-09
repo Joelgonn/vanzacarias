@@ -155,7 +155,7 @@ export default function Dashboard() {
                 {profile?.status === 'plano_liberado' 
                   ? "A Vanusa liberou seu protocolo! Acesse a aba 'Meu Plano' no menu lateral para visualizar." 
                   : <>
-                      Você completou seu questionário inicial com sucesso. A Vanusa está revisando seus dados para personalizar seu protocolo. Que tal você fazer o seu <strong>Check-in Semanal</strong> enquanto isso? Assim, quando o plano for liberado, ele já estará ainda mais alinhado com suas necessidades atuais!
+                      Você completou seu questionário inicial com sucesso. A Vanusa está revisando seus dados para personalizar seu protocolo. Enquanto espera, você pode fazer o seu <strong>Check-in Semanal</strong>.  Assim, quando o plano for liberado, ele já estará ainda mais alinhado com suas necessidades atuais!
                     </>
                 }
               </p>
