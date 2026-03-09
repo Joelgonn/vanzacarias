@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, MessageCircle, LogIn } from 'lucide-react';
+import { Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, MessageCircle, LogIn, Instagram, Linkedin, Facebook } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -54,7 +54,7 @@ export default function Home() {
       </section>
 
       {/* 2. PROBLEMAS / IDENTIFICAÇÃO */}
-      <section id="problemas" className="w-full bg-white py-24 px-6 lg:px-8 border-t border-stone-100">
+      <section id="servicos" className="w-full bg-white py-24 px-6 lg:px-8 border-t border-stone-100">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-20">
             <h2 className="text-3xl md:text-5xl font-bold text-stone-900 tracking-tight mb-6">
@@ -164,8 +164,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 5. CTA FINAL */}
-      <section className="w-full bg-nutri-900 py-24 px-6 lg:px-8 relative overflow-hidden">
+      {/* 5. CTA FINAL & CONTATO */}
+      <section id="contato" className="w-full bg-nutri-900 py-24 px-6 lg:px-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-nutri-800 rounded-full blur-[100px] opacity-60 -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-nutri-800 rounded-full blur-[100px] opacity-60 translate-y-1/2 -translate-x-1/3"></div>
         
@@ -173,17 +173,18 @@ export default function Home() {
           <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-8">
             Pronto para dar o primeiro passo?
           </h2>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-16">
             <Link href="/avaliacao" className="bg-white text-nutri-900 font-medium py-4 px-10 rounded-full shadow-xl">Começar minha Avaliação</Link>
-            <a 
-              href="https://wa.me/5544999997275?text=Olá%20Vanusa,%20estou%20no%20seu%20site%20e%20gostaria%20de%20tirar%20uma%20dúvida!" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="bg-transparent border border-stone-500 text-stone-300 hover:text-white hover:border-white font-medium py-4 px-10 rounded-full transition-all flex items-center gap-2"
-            >
-              <MessageCircle size={20} />
-              Tirar dúvida no WhatsApp
-            </a>
+          </div>
+
+          <div className="border-t border-nutri-800 pt-12">
+            <p className="text-stone-400 mb-8 font-medium uppercase tracking-widest text-sm">Siga minhas redes e entre em contato</p>
+            <div className="flex justify-center gap-8 text-white">
+              <a href="#" className="hover:text-nutri-400 transition-colors"><Instagram size={30} /></a>
+              <a href="#" className="hover:text-nutri-400 transition-colors"><Linkedin size={30} /></a>
+              <a href="#" className="hover:text-nutri-400 transition-colors"><Facebook size={30} /></a>
+              <a href="https://wa.me/5544999997275" target="_blank" className="hover:text-nutri-400 transition-colors"><MessageCircle size={30} /></a>
+            </div>
           </div>
         </div>
       </section>

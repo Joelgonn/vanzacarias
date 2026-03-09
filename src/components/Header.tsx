@@ -3,24 +3,35 @@
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const supabase = createClient();
 
   useEffect(() => {
+    // Verifica se existe sessão ativa
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsLoggedIn(!!data.session);
+    };
+    checkSession();
+
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [supabase]);
 
   const navItems = [
     { name: 'Home', href: '/' },
-    { name: 'Sobre Mim', href: '/sobre' },
-    { name: 'Serviços', href: '/servicos' },
+    { name: 'Sobre Mim', href: '/#sobre' },
+    { name: 'Serviços', href: '/#servicos' },
     { name: 'Blog', href: '/blog' },
-    { name: 'Contato', href: '/contato' },
-    { name: 'Agendar Consulta', href: '/agendar', cta: true },
+    { name: 'Contato', href: '/#contato' },
+    // A lógica está aqui: se logado vai pro dashboard/agendamento, se não, vai pro login
+    { name: 'Agendar Consulta', href: isLoggedIn ? '/dashboard' : '/login', cta: true },
   ];
 
   return (
