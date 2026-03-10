@@ -16,9 +16,11 @@ import {
   TrendingUp,
   AlertCircle,
   Bell,
-  BellRing
+  BellRing,
+  Activity // Adicionado ícone de Dados Clínicos
 } from 'lucide-react';
 import AdminUpload from '@/components/AdminUpload';
+import ClinicalDataModal from '@/components/ClinicalDataModal'; // Importando o modal que criamos
 import Link from 'next/link';
 
 export default function AdminDashboard() {
@@ -27,6 +29,9 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Novo estado para controlar a abertura do modal de Dados Clínicos
+  const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   
   const [editForm, setEditForm] = useState({ 
     data_nascimento: '', 
@@ -253,13 +258,22 @@ export default function AdminDashboard() {
                   ) : <p className="text-xs text-stone-400 italic mb-4">Ainda não respondeu o questionário.</p>}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-stone-100 flex items-center gap-2">
+                <div className="mt-4 pt-4 border-t border-stone-100 flex items-center gap-2 flex-wrap">
                   <AdminUpload patientId={p.id} onUpdate={fetchAdminData} />
                   
+                  {/* BOTÃO PARA ABRIR O MODAL DE DADOS CLÍNICOS */}
+                  <button 
+                    onClick={() => setSelectedPatient({ id: p.id, name: p.full_name })}
+                    className="p-2.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                    title="Inserir Dados Clínicos da Consulta"
+                  >
+                    <Activity size={20} />
+                  </button>
+
                   {/* MENSAGEM DO PLANO (BOTÃO WHATSAPP VERDE) */}
                   <a href={`https://wa.me/55${p.phone || ''}?text=Olá%20${p.full_name?.split(' ')[0]},%20seu%20plano%20alimentar%20já%20está%20disponível!`} target="_blank" rel="noopener noreferrer" className="p-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors" title="Avisar do Plano"><MessageCircle size={20} /></a>
                   
-                  {/* --- O TEXTO QUE VOCÊ QUER MUDAR ESTÁ LOGO ABAIXO NA VARIÁVEL 'text' --- */}
+                  {/* MENSAGEM COBRAR CHECK-IN */}
                   {p.isLate && (
                     <a 
                       href={`https://wa.me/55${p.phone || ''}?text=Olá%20${p.full_name?.split(' ')[0]},%20é%20a%20Vanusa%20passando%20para%20te%20lembrar%20do%20seu%20check-in%20semanal!`} 
@@ -277,6 +291,15 @@ export default function AdminDashboard() {
           </div>
         ))}
       </div>
+
+      {/* RENDERIZAÇÃO DO MODAL DE DADOS CLÍNICOS */}
+      <ClinicalDataModal 
+        isOpen={!!selectedPatient} 
+        onClose={() => setSelectedPatient(null)} 
+        patientId={selectedPatient?.id || ''} 
+        patientName={selectedPatient?.name || ''} 
+      />
+
     </main>
   );
 }
