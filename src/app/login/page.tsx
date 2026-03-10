@@ -104,6 +104,16 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            {/* ADICIONE ESTA LINHA ABAIXO DO CAMPO DE SENHA */}
+            <div className="flex justify-end">
+              <Link 
+                href="/recuperar-senha" 
+                className="text-xs font-semibold text-nutri-800 hover:text-nutri-900 transition-colors"
+              >
+                Esqueceu sua senha?
+              </Link>
+            </div>
+
             <button 
               disabled={loading}
               className="w-full bg-nutri-900 text-white py-3.5 rounded-xl font-medium hover:bg-nutri-800 flex items-center justify-center gap-2 transition-all"
