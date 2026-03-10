@@ -110,18 +110,22 @@ export default function Dashboard() {
         {/* Título alterado para evitar redundância visual com o Header superior */}
         <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-8">
           Menu do Paciente
-        </h2>
+        </h2>        
         
         <nav className="flex-1 space-y-4">
-          <div className="text-nutri-800 font-bold flex items-center gap-3 bg-nutri-50 p-3 rounded-xl border border-nutri-100">
+          <Link href="/dashboard" className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3">
             <User size={20} /> Painel Geral
-          </div>
-          <Link href="/dashboard/meu-plano" className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3 transition-colors cursor-pointer">
+          </Link>
+          <Link href="/dashboard/meu-plano" className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3">
             <FileText size={20} /> Meu Plano
           </Link>
-          <div className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3 transition-colors cursor-pointer">
+          {/* AQUI ESTÁ A MÁGICA: */}
+          <Link href="/dashboard/agendamentos" className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3">
             <Calendar size={20} /> Agendamentos
-          </div>
+          </Link>
+          <Link href="/dashboard/perfil" className="text-stone-500 hover:text-nutri-800 font-medium flex items-center gap-3 p-3">
+            <User size={20} /> Meu Perfil
+          </Link>
         </nav>
         
         <button 

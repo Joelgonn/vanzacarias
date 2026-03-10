@@ -12,26 +12,39 @@ export default function Header() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Verifica se existe sessão ativa
+    // Verifica sessão inicial
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       setIsLoggedIn(!!data.session);
     };
     checkSession();
 
+    // Listener para mudanças na autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setIsLoggedIn(!!session);
+    });
+
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
+  // A lógica dos links agora fica aqui dentro para ser re-renderizada quando o estado mudar
   const navItems = [
     { name: 'Home', href: '/' },
     { name: 'Sobre Mim', href: '/#sobre' },
-    { name: 'Serviços', href: '/#servicos' },
+    { name: 'Serviços', href: '/#como-funciona' },
     { name: 'Blog', href: '/blog' },
     { name: 'Contato', href: '/#contato' },
-    // A lógica está aqui: se logado vai pro dashboard/agendamento, se não, vai pro login
-    { name: 'Agendar Consulta', href: isLoggedIn ? '/dashboard' : '/login', cta: true },
+    { 
+      name: isLoggedIn ? 'Agendar Consulta' : 'Agendar Consulta', 
+      href: isLoggedIn ? '/dashboard/agendamentos' : '/login', 
+      cta: true 
+    },
   ];
 
   return (
@@ -47,6 +60,7 @@ export default function Header() {
           </span>
         </Link>
 
+        {/* Menu Desktop */}
         <div className="hidden md:flex items-center space-x-8">
           {navItems.map((item) => (
             <Link
@@ -65,6 +79,7 @@ export default function Header() {
           ))}
         </div>
 
+        {/* Botão Mobile */}
         <div className="md:hidden">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -75,8 +90,9 @@ export default function Header() {
         </div>
       </nav>
 
+      {/* Menu Mobile */}
       {isMobileMenuOpen && (
-        <div className="md:hidden absolute w-full bg-white shadow-xl border-t border-stone-100">
+        <div className="md:hidden absolute w-full bg-white shadow-xl border-t border-stone-100 animate-fade-in">
           <ul className="flex flex-col px-6 py-4 space-y-2">
             {navItems.map((item) => (
               <li key={item.name}>
