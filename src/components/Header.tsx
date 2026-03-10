@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image'; // Import necessário
 import { Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -12,28 +13,24 @@ export default function Header() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Verifica sessão inicial
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       setIsLoggedIn(!!data.session);
     };
     checkSession();
 
-    // Listener para mudanças na autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setIsLoggedIn(!!session);
     });
 
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
-    
     return () => {
       window.removeEventListener('scroll', handleScroll);
       subscription.unsubscribe();
     };
   }, [supabase]);
 
-  // A lógica dos links agora fica aqui dentro para ser re-renderizada quando o estado mudar
   const navItems = [
     { name: 'Home', href: '/' },
     { name: 'Sobre Mim', href: '/#sobre' },
@@ -41,7 +38,7 @@ export default function Header() {
     { name: 'Blog', href: '/blog' },
     { name: 'Contato', href: '/#contato' },
     { 
-      name: isLoggedIn ? 'Agendar Consulta' : 'Agendar Consulta', 
+      name: 'Agendar Consulta', 
       href: isLoggedIn ? '/dashboard/agendamentos' : '/login', 
       cta: true 
     },
@@ -54,7 +51,17 @@ export default function Header() {
       }`}
     >
       <nav className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between">
-        <Link href="/" className="flex items-center space-x-2 group">
+        
+        {/* LOGO + NOME */}
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative w-10 h-10 overflow-hidden">
+             <Image 
+               src="/images/logo-vanusa.png" // Mantenha o caminho do seu arquivo
+               alt="Logo Vanusa Zacarias"
+               fill
+               className="object-contain" // object-contain garante que a logo original não seja cortada
+             />
+          </div>
           <span className="text-xl md:text-2xl font-semibold tracking-tight text-nutri-900 group-hover:text-nutri-800 transition-colors">
             Vanusa Zacarias <span className="font-light text-stone-500">Nutrição</span>
           </span>
