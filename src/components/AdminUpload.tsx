@@ -109,28 +109,30 @@ export default function AdminUpload({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 w-full sm:w-auto">
       <label className={`
-        flex items-center justify-center gap-2 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300
+        flex items-center justify-center gap-2 cursor-pointer px-5 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-[0.96] shadow-sm
         ${uploading 
-          ? 'bg-stone-200 text-stone-500 cursor-not-allowed' 
-          : 'bg-nutri-800 text-white hover:bg-nutri-900 shadow-sm hover:shadow-md'
+          ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200' 
+          : success
+          ? 'bg-green-600 text-white shadow-green-200'
+          : 'bg-nutri-800 text-white hover:bg-nutri-900 shadow-nutri-900/10 border border-transparent'
         }
       `}>
         {uploading ? (
           <>
-            <Loader2 className="animate-spin" size={16} />
-            <span>Enviando...</span>
+            <Loader2 className="animate-spin" size={18} />
+            <span className="tracking-tight">Processando...</span>
           </>
         ) : success ? (
           <>
-            <CheckCircle2 size={16} />
-            <span>Sucesso!</span>
+            <CheckCircle2 size={18} className="animate-in zoom-in duration-300" />
+            <span className="tracking-tight">Plano Enviado!</span>
           </>
         ) : (
           <>
-            <Upload size={16} />
-            <span>Enviar Plano</span>
+            <Upload size={18} />
+            <span className="tracking-tight">Enviar Plano</span>
           </>
         )}
         
@@ -143,11 +145,11 @@ export default function AdminUpload({
         />
       </label>
 
-      {/* Exibição de Erros */}
+      {/* Exibição de Erros Refatorada para Mobile */}
       {error && (
-        <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 p-2 rounded border border-red-100">
-          <AlertCircle size={12} />
-          <span>{error}</span>
+        <div className="flex items-center gap-2 text-[10px] md:text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 animate-in fade-in slide-in-from-top-1">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="font-medium leading-tight">{error}</span>
         </div>
       )}
     </div>
