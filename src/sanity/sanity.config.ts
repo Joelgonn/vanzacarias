@@ -1,9 +1,11 @@
 // sanity.config.ts
 import {defineConfig} from 'sanity'
 import {structureTool} from 'sanity/structure'
-import {apiVersion, dataset, projectId} from './env' 
-import {schemaTypes} from './schemaTypes'
-import {structure} from './structure'
+
+// Usando o @/ corretamente (aponta para a pasta /src)
+import {apiVersion, dataset, projectId} from '@/sanity/env'
+import {schemaTypes} from '@/sanity/schemaTypes'
+import {structure} from '@/sanity/structure'
 
 export default defineConfig({
   name: 'default',
