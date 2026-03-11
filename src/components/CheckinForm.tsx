@@ -54,16 +54,18 @@ export default function CheckinForm({ onSuccess, onFormChange }: { onSuccess: ()
   const humorLabels = ["Muito mal", "Mal", "Neutro", "Bem", "Muito bem"];
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-stone-100 animate-fade-in-up">
-      <div className="mb-10 text-center">
-        <div className="w-12 h-1.5 bg-stone-100 rounded-full mx-auto mb-6 md:hidden"></div>
-        <h3 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">Check-in Semanal</h3>
-        <p className="text-stone-500 mt-2 text-sm md:text-base font-light">Atualize a Vanusa sobre a sua evolução nesta semana.</p>
+    <form onSubmit={handleSubmit} className="bg-white p-5 md:p-10 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-stone-100 animate-fade-in-up">
+      
+      {/* HEADER COMPACTO NO MOBILE */}
+      <div className="mb-6 md:mb-10 text-center">
+        <div className="w-12 h-1 bg-stone-100 rounded-full mx-auto mb-4 md:hidden"></div>
+        <h3 className="text-xl md:text-3xl font-bold text-stone-900 tracking-tight">Check-in Semanal</h3>
+        <p className="text-stone-500 mt-1 text-xs md:text-base font-light italic">Envie sua evolução para a Vanusa</p>
       </div>
       
-      {/* CAMPO: PESO */}
-      <div className="mb-10">
-        <label className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-4 ml-1">
+      {/* CAMPO: PESO (MOVIDO PARA O TOPO E COMPACTADO) */}
+      <div className="mb-6">
+        <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 ml-1">
           <Scale size={14} className="text-nutri-800" /> Peso Atual (kg)
         </label>
         <div className="relative group">
@@ -71,78 +73,76 @@ export default function CheckinForm({ onSuccess, onFormChange }: { onSuccess: ()
             type="number" 
             step="0.1" 
             placeholder="00.0"
-            className="w-full p-5 md:p-6 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-2xl font-black text-center text-nutri-900 placeholder:text-stone-200" 
+            className="w-full p-3 md:p-6 border border-stone-200 rounded-2xl bg-stone-50/50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-xl font-black text-center text-nutri-900 placeholder:text-stone-200" 
             onChange={(e) => { onFormChange(); setFormData({...formData, peso: e.target.value}); }} 
             required 
           />
-          <span className="absolute right-6 top-1/2 -translate-y-1/2 text-stone-300 font-bold">kg</span>
+          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-stone-300 text-sm font-bold">kg</span>
         </div>
       </div>
       
-      {/* CAMPO: ADESÃO AO PLANO */}
-      <div className="mb-10">
-        <label className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-5 ml-1">
+      {/* CAMPO: ADESÃO AO PLANO (BOTÕES MENORES NO MOBILE) */}
+      <div className="mb-6">
+        <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-3 ml-1">
           <Target size={14} className="text-nutri-800" /> Adesão ao plano
         </label>
-        <div className="flex justify-between gap-2 md:gap-4">
+        <div className="flex justify-between gap-2">
           {[1, 2, 3, 4, 5].map(n => (
             <button 
               key={n} 
               type="button" 
-              title={adesaoLabels[n-1]} 
               onClick={() => { onFormChange(); setFormData({...formData, adesao: n}); }} 
-              className={`flex-1 py-4 md:py-5 rounded-2xl font-black text-xl transition-all active:scale-[0.92] ${
+              className={`flex-1 py-3 md:py-5 rounded-xl md:rounded-2xl font-black text-base md:text-xl transition-all active:scale-[0.92] ${
                 formData.adesao === n 
-                ? 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 scale-[1.05] z-10' 
-                : 'bg-stone-50 text-stone-400 border border-stone-100 hover:bg-stone-100'
+                ? 'bg-nutri-900 text-white shadow-lg scale-[1.05] z-10' 
+                : 'bg-stone-50 text-stone-400 border border-stone-50'
               }`}
             >
               {n}
             </button>
           ))}
         </div>
-        <div className="flex justify-between mt-4 px-2">
-          <span className="text-[10px] text-stone-300 font-bold uppercase tracking-widest">Difícil</span>
-          <span className="text-[10px] text-stone-300 font-bold uppercase tracking-widest">Fácil</span>
+        <div className="flex justify-between mt-2 px-1">
+          <span className="text-[9px] text-stone-300 font-bold uppercase tracking-widest">Difícil</span>
+          <span className="text-[9px] text-stone-300 font-bold uppercase tracking-widest">Fácil</span>
         </div>
       </div>
 
-      {/* CAMPO: HUMOR */}
-      <div className="mb-10">
-        <label className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-5 ml-1">
+      {/* CAMPO: HUMOR (BOTÕES MENORES NO MOBILE) */}
+      <div className="mb-6">
+        <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-3 ml-1">
           <Smile size={14} className="text-nutri-800" /> Humor e Disposição
         </label>
-        <div className="flex justify-between gap-2 md:gap-4">
+        <div className="flex justify-between gap-2">
           {[1, 2, 3, 4, 5].map(n => (
             <button 
               key={n} 
               type="button" 
-              title={humorLabels[n-1]} 
               onClick={() => { onFormChange(); setFormData({...formData, humor: n}); }} 
-              className={`flex-1 py-4 md:py-5 rounded-2xl font-black text-xl transition-all active:scale-[0.92] ${
+              className={`flex-1 py-3 md:py-5 rounded-xl md:rounded-2xl font-black text-base md:text-xl transition-all active:scale-[0.92] ${
                 formData.humor === n 
-                ? 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 scale-[1.05] z-10' 
-                : 'bg-stone-50 text-stone-400 border border-stone-100 hover:bg-stone-100'
+                ? 'bg-nutri-900 text-white shadow-lg scale-[1.05] z-10' 
+                : 'bg-stone-50 text-stone-400 border border-stone-50'
               }`}
             >
               {n}
             </button>
           ))}
         </div>
-        <div className="flex justify-between mt-4 px-2">
-          <span className="text-[10px] text-stone-300 font-bold uppercase tracking-widest">Baixo</span>
-          <span className="text-[10px] text-stone-300 font-bold uppercase tracking-widest">Excelente</span>
+        <div className="flex justify-between mt-2 px-1">
+          <span className="text-[9px] text-stone-300 font-bold uppercase tracking-widest">Baixo</span>
+          <span className="text-[9px] text-stone-300 font-bold uppercase tracking-widest">Excelente</span>
         </div>
       </div>
 
-      {/* CAMPO: COMENTÁRIOS */}
-      <div className="mb-10">
-        <label className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-4 ml-1">
+      {/* CAMPO: COMENTÁRIOS (ALTURA REDUZIDA NO MOBILE) */}
+      <div className="mb-8">
+        <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-3 ml-1">
           <MessageSquare size={14} className="text-nutri-800" /> Relato da Semana
         </label>
         <textarea 
-          className="w-full p-5 border border-stone-200 rounded-[2rem] bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all resize-none h-40 text-stone-700 placeholder:text-stone-300 font-light leading-relaxed" 
-          placeholder="Como foi sua semana? Teve alguma dificuldade? Conte para a Vanusa..." 
+          className="w-full p-4 border border-stone-200 rounded-2xl bg-stone-50/50 focus:bg-white focus:border-nutri-800 outline-none transition-all resize-none h-24 md:h-40 text-sm font-light" 
+          placeholder="Conte para a Vanusa..." 
           onChange={(e) => { onFormChange(); setFormData({...formData, comentarios: e.target.value}); }} 
         />
       </div>
@@ -150,13 +150,13 @@ export default function CheckinForm({ onSuccess, onFormChange }: { onSuccess: ()
       <button 
         type="submit" 
         disabled={loading} 
-        className="w-full bg-nutri-900 text-white py-5 rounded-[2rem] font-bold text-lg flex items-center justify-center gap-3 hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-xl shadow-nutri-900/10 disabled:opacity-50 disabled:cursor-not-allowed group"
+        className="w-full bg-nutri-900 text-white py-4 md:py-5 rounded-2xl font-bold text-base flex items-center justify-center gap-3 hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-xl shadow-nutri-900/10 disabled:opacity-50"
       >
         {loading ? (
           <Loader2 className="animate-spin" />
         ) : (
           <>
-            <Send size={20} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" /> 
+            <Send size={18} /> 
             <span>Enviar Check-in</span>
           </>
         )}
