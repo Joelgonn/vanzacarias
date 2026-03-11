@@ -107,10 +107,7 @@ export default function Avaliacao() {
   ];
 
   const handleSelect = (option: string) => {
-    // Salva a resposta
     setAnswers({ ...answers, [currentStep]: option });
-    
-    // UX Mágica: Avança automaticamente após 400ms para dar tempo de ver a animação
     if (currentStep < questions.length) {
       setTimeout(() => {
         setCurrentStep(prev => prev + 1);
@@ -133,25 +130,25 @@ export default function Avaliacao() {
   const progress = ((currentStep) / questions.length) * 100;
 
   return (
-    <main className="min-h-screen bg-nutri-50 flex flex-col pt-10 px-6 font-sans text-stone-800">
+    <main className="min-h-screen bg-nutri-50 flex flex-col pt-10 px-4 md:px-6 font-sans text-stone-800 pb-20">
       
-      <nav className="w-full max-w-3xl mx-auto flex items-center justify-between mb-12">
+      <nav className="w-full max-w-2xl mx-auto flex items-center justify-between mb-8 md:mb-12">
         <Link 
           href="/" 
-          className="group flex items-center gap-3 bg-white px-6 py-3 rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 transition-all duration-300"
+          className="group flex items-center gap-3 bg-white px-5 py-2.5 rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 transition-all active:scale-[0.98]"
         >
           <div className="bg-nutri-50 p-1 rounded-full group-hover:bg-nutri-800 transition-colors">
             <ChevronLeft size={16} className="text-nutri-800 group-hover:text-white" />
           </div>
-          <span className="text-sm font-semibold text-stone-600 group-hover:text-nutri-900">Voltar</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-stone-600 group-hover:text-nutri-900">Voltar</span>
         </Link>
         
-        <div className="text-sm font-bold text-nutri-900 tracking-tight">
+        <div className="text-xs font-bold text-nutri-900 tracking-widest uppercase hidden sm:block">
           Vanusa Zacarias Nutrição
         </div>
       </nav>
 
-      <div className="w-full max-w-2xl mx-auto bg-white rounded-3xl shadow-xl border border-stone-100 p-8 md:p-12 mb-20 relative overflow-hidden">
+      <div className="w-full max-w-2xl mx-auto bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-stone-100 p-6 md:p-12 relative overflow-hidden">
         
         {/* Barra de Progresso */}
         <div className="absolute top-0 left-0 w-full h-1.5 bg-stone-100">
@@ -162,18 +159,17 @@ export default function Avaliacao() {
         </div>
 
         {currentStep < questions.length ? (
-          // RENDERIZAÇÃO DAS PERGUNTAS
           <div key={currentStep} className="animate-fade-in-right">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-nutri-800 font-semibold text-sm tracking-widest uppercase">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-nutri-800 font-bold text-[10px] tracking-widest uppercase">
                 Pergunta {currentStep + 1} de {questions.length}
               </span>
-              <span className="text-stone-400 text-sm font-light">
+              <span className="text-stone-400 text-[10px] font-bold tracking-widest uppercase">
                 {Math.round(progress)}% Concluído
               </span>
             </div>
             
-            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 mb-8 leading-tight">
+            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 mb-8 leading-tight tracking-tight">
               {questions[currentStep].title}
             </h1>
 
@@ -184,14 +180,14 @@ export default function Avaliacao() {
                   <button
                     key={index}
                     onClick={() => handleSelect(option)}
-                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all duration-200 flex items-center justify-between group
+                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all duration-200 flex items-center justify-between group active:scale-[0.98]
                       ${isSelected 
-                        ? 'border-nutri-800 bg-nutri-50 text-nutri-900 shadow-md scale-[1.02]' 
+                        ? 'border-nutri-800 bg-nutri-50 text-nutri-900 shadow-sm' 
                         : 'border-stone-100 hover:border-nutri-800/30 hover:bg-stone-50 text-stone-600'
                       }
                     `}
                   >
-                    <span className="font-medium pr-4">{option}</span>
+                    <span className="font-semibold pr-4 text-sm md:text-base">{option}</span>
                     <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors
                       ${isSelected ? 'border-nutri-800 bg-nutri-800' : 'border-stone-300 group-hover:border-nutri-800/50'}
                     `}>
@@ -206,52 +202,50 @@ export default function Avaliacao() {
               <button 
                 onClick={prevStep}
                 disabled={currentStep === 0}
-                className={`flex items-center gap-2 text-stone-500 font-medium px-4 py-2 rounded-lg transition-colors
+                className={`flex items-center gap-2 text-stone-500 font-bold uppercase tracking-widest text-[10px] px-4 py-2 rounded-lg transition-colors
                   ${currentStep === 0 ? 'opacity-0 cursor-default' : 'hover:bg-stone-100 hover:text-stone-800'}
                 `}
               >
-                <ArrowLeft size={18} />
+                <ArrowLeft size={16} />
                 Anterior
               </button>
               
               <button 
                 onClick={nextStep}
                 disabled={!answers[currentStep]}
-                className={`flex items-center gap-2 font-medium py-3 px-8 rounded-full transition-all duration-300
+                className={`flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] py-3 px-8 rounded-full transition-all duration-300
                   ${answers[currentStep] 
                     ? 'bg-nutri-900 text-white shadow-lg hover:bg-nutri-800 transform hover:-translate-y-0.5' 
                     : 'bg-stone-100 text-stone-400 cursor-not-allowed'}
                 `}
               >
                 Próximo
-                <ArrowRight size={18} />
+                <ArrowRight size={16} />
               </button>
             </div>
           </div>
         ) : (
-          // TELA FINAL
           <div className="text-center py-8 animate-fade-in-up">
-            <div className="w-20 h-20 bg-nutri-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-nutri-50 rounded-full flex items-center justify-center mx-auto mb-8 shadow-sm">
               <CheckCircle2 size={40} className="text-nutri-800" />
             </div>
-            <h2 className="text-3xl font-bold text-stone-900 mb-4">
-              Perfil Mapeado com Sucesso!
+            <h2 className="text-2xl md:text-3xl font-bold text-stone-900 mb-4 tracking-tight">
+              Perfil Mapeado!
             </h2>
-            <p className="text-stone-500 text-lg font-light mb-8 max-w-md mx-auto leading-relaxed">
-              Excelente! Já temos as informações necessárias para entender seu metabolismo e rotina. Crie sua conta para salvar seu perfil e dar o próximo passo.
+            <p className="text-stone-500 text-sm md:text-base font-light mb-10 max-w-sm mx-auto leading-relaxed">
+              Excelente! Já temos as informações necessárias para entender seu metabolismo e rotina. Crie sua conta para salvar seu perfil.
             </p>
             
             <Link 
               href="/cadastro" 
               onClick={() => localStorage.setItem('quiz_answers', JSON.stringify(answers))}
-              className="inline-flex bg-nutri-900..."
+              className="w-full md:w-auto inline-flex items-center justify-center gap-3 bg-nutri-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-lg mb-6"
             >
-              Criar minha conta gratuita
-              <ArrowRight size={20} />
+              Criar minha conta gratuita <ArrowRight size={20} />
             </Link>
             
-            <p className="mt-6 text-sm text-stone-400">
-              Já é paciente? <Link href="/login" className="text-nutri-800 hover:underline font-medium">Faça login no portal</Link>
+            <p className="text-sm text-stone-400">
+              Já é paciente? <Link href="/login" className="text-nutri-800 hover:underline font-bold">Faça login no portal</Link>
             </p>
           </div>
         )}

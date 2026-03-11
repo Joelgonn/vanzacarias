@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, User, Loader2, CheckCircle2 } from 'lucide-react';
@@ -22,7 +21,6 @@ export default function Cadastro() {
     setLoading(true);
     setError(null);
 
-    // 1. Criar usuário no Auth
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -36,14 +34,12 @@ export default function Cadastro() {
     }
 
     if (data.user) {
-      // 2. Criar o perfil do usuário
       const { error: profileError } = await supabase.from('profiles').insert([
         { id: data.user.id, full_name: name, role: 'patient' }
       ]);
       
       if (profileError) console.error("Erro ao criar perfil:", profileError);
 
-      // 3. Salvar a avaliação
       const savedAnswers = localStorage.getItem('quiz_answers');
       if (savedAnswers) {
         await supabase.from('evaluations').insert([
@@ -59,14 +55,16 @@ export default function Cadastro() {
 
   if (success) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
-        <div className="max-w-md w-full bg-white p-10 rounded-3xl shadow-xl text-center">
-          <CheckCircle2 size={40} className="text-nutri-800 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-stone-900 mb-4">Bem-vindo(a), {name.split(' ')[0]}!</h2>
-          <p className="text-stone-500 mb-8">Cadastro realizado. A Vanusa já tem acesso aos seus dados.</p>
+      <main className="min-h-screen flex items-center justify-center bg-stone-50 p-6 animate-fade-in">
+        <div className="max-w-md w-full bg-white p-8 md:p-12 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-stone-100 text-center">
+          <div className="w-20 h-20 bg-nutri-50 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
+             <CheckCircle2 size={40} className="text-nutri-800" />
+          </div>
+          <h2 className="text-2xl md:text-3xl font-bold text-stone-900 mb-4 tracking-tight">Bem-vindo(a), {name.split(' ')[0]}!</h2>
+          <p className="text-stone-500 mb-10 leading-relaxed text-sm md:text-base">Cadastro realizado com sucesso. A Vanusa já tem acesso aos seus dados de avaliação.</p>
           <button 
             onClick={() => router.push('/dashboard')} 
-            className="w-full bg-nutri-900 text-white py-3.5 rounded-xl font-medium block"
+            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all"
           >
             Acessar meu Dashboard
           </button>
@@ -76,30 +74,47 @@ export default function Cadastro() {
   }
 
   return (
-    <main className="min-h-screen flex bg-white font-sans text-stone-800">
-      <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 lg:px-24 py-12">
-        <h2 className="text-3xl font-bold mb-8">Crie sua conta</h2>
-        {error && <p className="mb-4 text-red-500 bg-red-50 p-3 rounded-lg text-sm">{error}</p>}
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div className="relative">
-            <User className="absolute left-4 top-3.5 text-stone-400" size={18} />
-            <input type="text" placeholder="Nome Completo" required value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+    <main className="min-h-screen flex items-center justify-center bg-stone-50 p-5 md:p-12">
+      <div className="max-w-lg w-full bg-white p-8 md:p-12 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 animate-fade-in-up">
+        
+        <div className="mb-10 text-center sm:text-left">
+          <h2 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight mb-2">Crie sua conta</h2>
+          <p className="text-stone-500 text-sm md:text-base font-light">Junte-se à nossa comunidade de vida saudável.</p>
+        </div>
+
+        {error && (
+          <div className="mb-6 text-red-600 bg-red-50 p-4 rounded-2xl text-sm border border-red-100 font-medium animate-fade-in">
+            {error}
           </div>
-          <div className="relative">
-            <Mail className="absolute left-4 top-3.5 text-stone-400" size={18} />
-            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+        )}
+
+        <form onSubmit={handleRegister} className="space-y-5">
+          <div className="relative group">
+            <User className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
+            <input type="text" placeholder="Nome Completo" required value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
           </div>
-          <div className="relative">
-            <Lock className="absolute left-4 top-3.5 text-stone-400" size={18} />
-            <input type="password" placeholder="Senha" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-11 p-3 border rounded-xl" />
+          
+          <div className="relative group">
+            <Mail className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
+            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
           </div>
-          <button disabled={loading} className="w-full bg-nutri-900 text-white p-3 rounded-xl">
+          
+          <div className="relative group">
+            <Lock className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
+            <input type="password" placeholder="Senha" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
+          </div>
+          
+          <button 
+            disabled={loading} 
+            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-md hover:shadow-lg disabled:opacity-70 mt-4"
+          >
             {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Finalizar Cadastro'}
           </button>
         </form>
-      </div>
-      <div className="hidden lg:flex w-1/2 bg-nutri-900 items-center justify-center p-12 text-white">
-        <h3 className="text-3xl font-bold">Nutrição feita para você.</h3>
+        
+        <p className="mt-8 text-center text-sm text-stone-500">
+          Já possui uma conta? <a href="/login" className="text-nutri-800 font-bold hover:underline">Entrar agora</a>
+        </p>
       </div>
     </main>
   );
