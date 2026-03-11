@@ -1,9 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import NavigationWrapper from '../components/NavigationWrapper';
 
 const inter = Inter({ subsets: ['latin'] });
+
+// Define a cor da barra do navegador no celular (status bar) para parecer um App nativo
+export const viewport: Viewport = {
+  themeColor: '#1A3B2B', // Cor nutri-900
+  width: 'device-width',
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: 'Vanusa Zacarias Nutri - Sua Jornada para uma Vida Saudável',
@@ -17,7 +24,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="scroll-smooth">
-      <body className={inter.className}>
+      {/* Adicionado 'antialiased' para fontes mais nítidas e 'selection' para cor da marca ao grifar texto */}
+      <body className={`${inter.className} antialiased text-stone-800 selection:bg-nutri-800 selection:text-white flex min-h-screen flex-col bg-stone-50`}>
         <NavigationWrapper>
           {children}
         </NavigationWrapper>
