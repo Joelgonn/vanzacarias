@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
-  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, 
+  ComposedChart, LineChart, Area, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceArea, ReferenceLine, Scatter 
 } from 'recharts';
 
