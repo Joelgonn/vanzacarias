@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, ChevronLeft, TrendingUp, User, Ruler, Layers, 
   Syringe, CalendarCheck, BookOpen, Send, Trash2, 
-  AlertCircle, CheckCircle2, AlertTriangle, Activity
+  AlertCircle, CheckCircle2, AlertTriangle, Activity, Target
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceArea 
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, 
+  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceArea, ReferenceLine, Scatter 
 } from 'recharts';
 
 export default function PacienteHistoricoAdmin() {
@@ -92,49 +92,101 @@ export default function PacienteHistoricoAdmin() {
 
   const range = getReferenceRange(profile?.tipo_perfil || 'adulto');
 
-  // --- MOTOR DE INTELIGÊNCIA BIOQUÍMICA ---
+  // --- NOVA LÓGICA: MOTOR DE DADOS DO GRÁFICO (EIXO DUPLO E EXAMES) ---
+  const chartData = useMemo(() => {
+    if (!history.length) return [];
+    
+    return history.map(h => {
+      const date = new Date(h.created_at);
+      
+      // Busca a cintura mais próxima deste checkin
+      const nearestAntro = antroData.find(a => Math.abs(new Date(a.measurement_date).getTime() - date.getTime()) < 7 * 24*60*60*1000);
+      
+      // Verifica se houve exame de sangue nesta semana
+      const hasExam = bioData.some(b => Math.abs(new Date(b.exam_date).getTime() - date.getTime()) < 5 * 24*60*60*1000);
+
+      return {
+        date: h.created_at,
+        peso: h.peso,
+        imc: h.imc,
+        cintura: nearestAntro ? nearestAntro.waist : null,
+        adesao: h.adesao_ao_plano,
+        humor: h.humor_semanal,
+        hasExam: hasExam ? h.peso : null, // Passa o peso na data do exame para posicionar a Seringa no gráfico
+      };
+    });
+  }, [history, antroData, bioData]);
+
+  // --- NOVA LÓGICA: GPS METABÓLICO (PREVISÃO DE META) ---
+  const projectionDate = useMemo(() => {
+    if (history.length < 3 || !profile?.meta_peso) return null;
+    
+    const recentData = history.slice(-5); 
+    const n = recentData.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+    recentData.forEach(p => {
+      const x = new Date(p.created_at).getTime() / (1000 * 3600 * 24);
+      const y = p.peso;
+      sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x;
+    });
+
+    const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const b = (sumY - m * sumX) / n;
+    
+    if (m >= 0) return "Estagnado/Subindo"; 
+    
+    const targetX = (profile.meta_peso - b) / m;
+    const targetDate = new Date(targetX * (1000 * 3600 * 24));
+    
+    if (targetDate.getTime() - new Date().getTime() > 365 * 24*60*60*1000) return "+ de 1 ano";
+    
+    return targetDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+  }, [history, profile?.meta_peso]);
+
+  // --- MOTOR DE INTELIGÊNCIA BIOQUÍMICA (Atualizado com cores para o Sparkline) ---
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
-      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', icon: null };
+      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
     }
 
     let status = 'normal';
     let text = 'Ideal';
 
     switch (type) {
-      case 'glucose': // Glicose (<99 Ideal, 100-125 Pré, >126 Diabetes)
+      case 'glucose': 
         if (value >= 126) { status = 'danger'; text = 'Risco de Diabetes (>125)'; }
         else if (value >= 100) { status = 'warning'; text = 'Resistência à Insulina / Pré-diabetes'; }
         break;
-      case 'insulin': // Insulina (Ideal < 15, > 15 Risco)
+      case 'insulin': 
         if (value >= 15) { status = 'warning'; text = 'Resistência à Insulina alta'; }
         else if (value > 25) { status = 'danger'; text = 'Hiperinsulinemia severa'; }
         break;
-      case 'homair': // HOMA-IR Calculado (Ideal < 2.15)
+      case 'homair': 
         if (value >= 2.5) { status = 'danger'; text = 'Resistência Severa (>2.5)'; }
         else if (value >= 2.0) { status = 'warning'; text = 'Resistência Moderada'; }
         break;
-      case 'ldl': // LDL (Ideal < 130)
+      case 'ldl': 
         if (value >= 160) { status = 'danger'; text = 'Risco Cardiovascular Alto'; }
         else if (value >= 130) { status = 'warning'; text = 'Acima do recomendado'; }
         break;
-      case 'triglycerides': // Triglicerídeos (Ideal < 150)
+      case 'triglycerides': 
         if (value >= 200) { status = 'danger'; text = 'Risco Cardiovascular/Metabólico'; }
         else if (value >= 150) { status = 'warning'; text = 'Atenção dietética necessária'; }
         break;
-      case 'vitamin_d': // Vitamina D (Ideal > 30, <20 Deficiência)
+      case 'vitamin_d': 
         if (value < 20) { status = 'danger'; text = 'Deficiência Severa (<20)'; }
         else if (value < 30) { status = 'warning'; text = 'Insuficiência (20-29)'; }
         break;
-      case 'vitamin_b12': // B12 (Ideal > 300)
+      case 'vitamin_b12': 
         if (value < 200) { status = 'danger'; text = 'Deficiência (Risco Neurológico)'; }
         else if (value < 300) { status = 'warning'; text = 'Abaixo do ideal para cognição'; }
         break;
-      case 'ferritin': // Ferritina
+      case 'ferritin': 
         if (value > 300) { status = 'danger'; text = 'Excesso de Ferro / Inflamação (>300)'; }
         else if (value < 30) { status = 'warning'; text = 'Risco de Anemia (<30)'; }
         break;
-      case 'pcr': // PCR (Inflamação < 1 ideal)
+      case 'pcr': 
         if (value > 3) { status = 'danger'; text = 'Inflamação Sistêmica Alta'; }
         else if (value > 1) { status = 'warning'; text = 'Inflamação Moderada'; }
         break;
@@ -143,35 +195,50 @@ export default function PacienteHistoricoAdmin() {
     }
 
     const configs = {
-      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <CheckCircle2 size={14} className="text-emerald-500" /> },
-      warning: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: <AlertTriangle size={14} className="text-amber-500" /> },
-      danger: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: <AlertCircle size={14} className="text-red-500" /> },
-      neutral: { color: 'text-stone-500', bg: 'bg-stone-50', border: 'border-stone-100', icon: null }
+      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <CheckCircle2 size={14} className="text-emerald-500" />, stroke: '#10b981' },
+      warning: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: <AlertTriangle size={14} className="text-amber-500" />, stroke: '#f59e0b' },
+      danger: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: <AlertCircle size={14} className="text-red-500" />, stroke: '#ef4444' },
+      neutral: { color: 'text-stone-500', bg: 'bg-stone-50', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' }
     };
 
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
-  // Componente visual para os exames
+  // --- COMPONENTE EXAM BADGE ATUALIZADO (Agora com Sparklines no fundo) ---
   const ExamBadge = ({ label, value, unit, type }: { label: string, value: any, unit: string, type: string }) => {
     const analysis = interpretBiochemical(type, value ? parseFloat(value) : null);
+    
+    // Puxa o histórico desse exame em específico para desenhar a linha do Sparkline
+    const historyData = bioData.map(b => ({ val: parseFloat(b[type]) })).filter(b => !isNaN(b.val)).reverse();
     
     if (!value) return null;
 
     return (
-      <div className={`relative group flex items-center justify-between p-3 rounded-xl border ${analysis.border} ${analysis.bg} transition-all`}>
-        <div className="flex flex-col">
+      <div className={`relative overflow-hidden group flex items-center justify-between p-3 rounded-xl border ${analysis.border} ${analysis.bg} transition-all`}>
+        
+        {/* Sparkline no fundo */}
+        {historyData.length > 1 && (
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={historyData}>
+                <Line type="monotone" dataKey="val" stroke={analysis.stroke} strokeWidth={3} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <div className="relative z-10 flex flex-col">
           <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider mb-0.5">{label}</span>
           <span className={`font-black text-lg ${analysis.color}`}>
             {value} <span className="text-xs font-semibold opacity-60">{unit}</span>
           </span>
         </div>
-        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-sm">
+        <div className="relative z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-sm">
           {analysis.icon}
         </div>
         
         {/* Tooltip Inteligente */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-medium px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 shadow-xl text-center">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-medium px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 shadow-xl text-center">
           {analysis.text}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
         </div>
@@ -189,7 +256,7 @@ export default function PacienteHistoricoAdmin() {
     <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-28 md:pt-36 lg:pt-40 font-sans text-stone-800">
       <div className="max-w-6xl mx-auto w-full">
         
-        {/* ... [CÓDIGO DE NAVEGAÇÃO E GRÁFICOS MANTIDO IGUAL AO ORIGINAL] ... */}
+        {/* NAVEGAÇÃO */}
         <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-6 sm:gap-0 animate-fade-in-up">
           <Link href="/admin/dashboard" className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 active:scale-[0.98] transition-all duration-300">
             <div className="bg-nutri-50 p-1.5 sm:p-1 rounded-xl sm:rounded-full group-hover:bg-nutri-800 transition-colors"><ChevronLeft size={18} className="text-nutri-800 group-hover:text-white" /></div>
@@ -204,6 +271,8 @@ export default function PacienteHistoricoAdmin() {
         </nav>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 mb-8 md:mb-10 animate-fade-in-up">
+          
+          {/* CARD DE DADOS DO PACIENTE (ATUALIZADO COM GPS) */}
           <section className="lg:col-span-1 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col justify-between">
             <div>
               <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
@@ -211,22 +280,96 @@ export default function PacienteHistoricoAdmin() {
                 <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil}</p></div>
                 <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
                 <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso (Check-in)</p><p className="font-bold text-stone-700 text-lg">{history.length > 0 ? `${history[history.length - 1].peso} kg` : '---'}</p></div>
+                
+                {/* PROJEÇÃO DE META */}
+                {projectionDate && projectionDate !== "Estagnado/Subindo" && (
+                  <div className="bg-nutri-50 p-4 rounded-xl border border-nutri-100 mt-6 flex items-start gap-3">
+                    <Target className="text-nutri-600 mt-0.5" size={18} />
+                    <div>
+                      <p className="text-[10px] font-bold text-nutri-600 uppercase tracking-widest">Previsão da Meta (GPS)</p>
+                      <p className="text-base font-black text-nutri-900">{projectionDate}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </section>
 
+          {/* GRÁFICO PREMIUM: EIXO DUPLO E EXAMES */}
           <section className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100">
-            <h2 className="text-lg md:text-xl font-bold mb-8 flex items-center gap-2 text-stone-900"><TrendingUp className="text-nutri-800" size={24} /> Evolução de IMC</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg md:text-xl font-bold flex items-center gap-2 text-stone-900">
+                <TrendingUp className="text-nutri-800" size={24} /> Diagnóstico Evolutivo
+              </h2>
+              <div className="hidden sm:flex gap-4 text-[10px] font-bold uppercase text-stone-500">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-md bg-emerald-500/20 border border-emerald-500"></span> Peso</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-1 rounded-full bg-indigo-500"></span> Cintura</span>
+                <span className="flex items-center gap-1"><Syringe size={12} className="text-amber-500" /> Exames</span>
+              </div>
+            </div>
+
             <div className="h-64 md:h-80 w-full -ml-3 sm:ml-0">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={history} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f4" vertical={false} />
-                  <ReferenceArea y1={range.min} y2={range.max} fill="#22c55e" fillOpacity={0.05} />
-                  <XAxis dataKey="created_at" tickFormatter={(val) => new Date(val).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false}/>
-                  <YAxis domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false}/>
-                  <RechartsTooltip labelFormatter={(val) => new Date(val).toLocaleDateString('pt-BR')} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)' }}/>
-                  <Line type="monotone" dataKey="imc" name="IMC" stroke="#166534" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 7 }} />
-                </LineChart>
+                <ComposedChart data={chartData} margin={{ top: 20, right: -10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorPeso" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
+                  
+                  {/* EIXO Y ESQUERDO (Peso) */}
+                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} tickFormatter={val => `${val}kg`} />
+                  
+                  {/* EIXO Y DIREITO (Cintura) */}
+                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} tickFormatter={val => `${val}cm`} />
+                  
+                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
+                  
+                  {/* TOOLTIP INTELIGENTE */}
+                  <RechartsTooltip 
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-xl border border-stone-800">
+                            <p className="text-xs font-bold text-stone-400 mb-2 border-b border-stone-700 pb-2">{new Date(label).toLocaleDateString('pt-BR')}</p>
+                            <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
+                            {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
+                            <div className="mt-2 pt-2 border-t border-stone-700 space-y-1">
+                              <p className="text-xs text-stone-300">Adesão: <span className="font-bold text-white">{data.adesao}/5</span></p>
+                              {data.hasExam && <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1"><Syringe size={12}/> Exame Realizado</p>}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  
+                  {/* LINHA DE META */}
+                  {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="5 5" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
+                  
+                  {/* ÁREA DO PESO */}
+                  <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorPeso)" activeDot={{ r: 6, strokeWidth: 0 }} />
+                  
+                  {/* LINHA DA CINTURA */}
+                  <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1" }} connectNulls />
+                  
+                  {/* MARCADOR DE EXAME (Seringa) */}
+                  <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
+                    const { cx, cy, payload } = props;
+                    if (!payload.hasExam) return <g></g>;
+                    return (
+                      <g transform={`translate(${cx - 8},${cy - 25})`}>
+                        <circle cx="8" cy="8" r="12" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" />
+                        <Syringe x="1" y="1" size={14} color="#d97706" />
+                      </g>
+                    );
+                  }} />
+
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </section>
@@ -244,7 +387,7 @@ export default function PacienteHistoricoAdmin() {
 
           <div className="p-6 md:p-8">
             
-            {/* ... [CÓDIGO DAS ABAS PRONTUARIO, CHECKIN, ANTRO, DOBRAS MANTIDO IGUAL] ... */}
+            {/* ABA PRONTUARIO */}
             {activeTab === 'prontuario' && (
               <div className="animate-fade-in max-w-4xl mx-auto">
                 <h2 className="text-lg md:text-xl font-bold mb-8 text-stone-900 flex items-center gap-2">
@@ -272,39 +415,120 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
+            {/* ABA CHECKINS */}
             {activeTab === 'checkins' && (
               <div className="animate-fade-in">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Relatos Dominicais</h2>
                 <div className="overflow-x-auto -mx-6 px-6">
                   <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead><tr className="border-b-2 border-stone-100"><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Data</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Peso</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Adesão</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Humor</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Relato</th></tr></thead>
-                    <tbody className="divide-y divide-stone-50">{history.slice().reverse().map((item) => (<tr key={item.id} className="hover:bg-stone-50/50"><td className="py-4 px-2 font-bold text-stone-700 text-sm">{new Date(item.created_at).toLocaleDateString('pt-BR')}</td><td className="py-4 px-2 font-medium text-sm">{item.peso} kg</td><td className="py-4 px-2 text-sm"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${item.adesao_ao_plano >= 4 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{item.adesao_ao_plano}/5</span></td><td className="py-4 px-2 font-bold text-sm text-stone-500">{item.humor_semanal}/5</td><td className="py-4 px-2 text-xs text-stone-600">{item.comentarios || '-'}</td></tr>))}</tbody>
+                    <thead>
+                      <tr className="border-b-2 border-stone-100">
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Data</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Peso</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Adesão</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Humor</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Relato</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-50">
+                      {history.slice().reverse().map((item) => (
+                        <tr key={item.id} className="hover:bg-stone-50/50 transition-colors">
+                          <td className="py-4 px-2 font-bold text-stone-700 text-sm whitespace-nowrap">
+                            {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                          </td>
+                          <td className="py-4 px-2 font-medium text-sm">
+                            {item.peso} kg
+                          </td>
+                          <td className="py-4 px-2 text-sm">
+                            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${item.adesao_ao_plano >= 4 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {item.adesao_ao_plano}/5
+                            </span>
+                          </td>
+                          <td className="py-4 px-2 font-bold text-sm text-stone-500">
+                            {item.humor_semanal}/5
+                          </td>
+                          <td className="py-4 px-2 text-xs text-stone-600 leading-relaxed">
+                            {item.comentarios || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
               </div>
             )}
 
+            {/* ABA ANTROPOMETRIA */}
             {activeTab === 'antropometria' && (
               <div className="animate-fade-in overflow-x-auto">
-                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Medidas</h2>
+                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Medidas de Circunferência</h2>
                 <table className="w-full text-left min-w-[600px]">
-                  <thead><tr className="border-b-2 border-stone-100"><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Peso</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Cintura</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Quadril</th></tr></thead>
-                  <tbody className="divide-y divide-stone-50">{antroData.map(i => <tr key={i.id} className="hover:bg-stone-50/50"><td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td><td className="py-4 px-2 text-sm">{i.weight}kg</td><td className="py-4 px-2 text-sm">{i.waist}cm</td><td className="py-4 px-2 text-sm">{i.hip}cm</td></tr>)}</tbody>
+                  <thead>
+                    <tr className="border-b-2 border-stone-100">
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Peso</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Cintura</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Quadril</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-50">
+                    {antroData.map(i => (
+                      <tr key={i.id} className="hover:bg-stone-50/50">
+                        <td className="py-4 px-2 font-bold text-sm">
+                          {new Date(i.measurement_date).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.weight}kg
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.waist}cm
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.hip}cm
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
             )}
 
+            {/* ABA DOBRAS CUTÂNEAS */}
             {activeTab === 'dobras' && (
               <div className="animate-fade-in overflow-x-auto">
-                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Protocolo de Dobras</h2>
+                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Protocolo de Dobras (mm)</h2>
                 <table className="w-full text-left min-w-[600px]">
-                  <thead><tr className="border-b-2 border-stone-100"><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abdominal</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th><th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Subescapular</th></tr></thead>
-                  <tbody className="divide-y divide-stone-50">{skinfoldsData.map(i => <tr key={i.id} className="hover:bg-stone-50/50"><td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td><td className="py-4 px-2 text-sm">{i.abdominal}</td><td className="py-4 px-2 text-sm">{i.thigh}</td><td className="py-4 px-2 text-sm">{i.subscapular}</td></tr>)}</tbody>
+                  <thead>
+                    <tr className="border-b-2 border-stone-100">
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abdominal</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th>
+                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Subescapular</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-50">
+                    {skinfoldsData.map(i => (
+                      <tr key={i.id} className="hover:bg-stone-50/50">
+                        <td className="py-4 px-2 font-bold text-sm">
+                          {new Date(i.measurement_date).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.abdominal}
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.thigh}
+                        </td>
+                        <td className="py-4 px-2 text-sm">
+                          {i.subscapular}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
             )}
 
-            {/* ABA 4: BIOQUÍMICOS REFATORADA - COM INTELIGÊNCIA */}
+            {/* ABA BIOQUÍMICOS (MANTIDA EXATAMENTE COMO VOCÊ COLOCOU, APENAS O EXAMBADGE TEM O SPARKLINE) */}
             {activeTab === 'bioquimicos' && (
               <div className="animate-fade-in space-y-12">
                 <div className="flex items-center justify-between">
@@ -324,7 +548,6 @@ export default function PacienteHistoricoAdmin() {
                   </div>
                 ) : (
                   bioData.map((item) => {
-                    // Cálculo automático de HOMA-IR se houver insulina e glicose
                     const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose) * parseFloat(item.insulin)) / 405).toFixed(2) : null;
 
                     return (
@@ -337,7 +560,6 @@ export default function PacienteHistoricoAdmin() {
                         
                         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                           
-                          {/* Perfil Glicêmico */}
                           {(item.glucose || item.insulin) && (
                             <div className="col-span-full border-b border-stone-100 pb-4 mb-2">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-3 tracking-widest">Perfil Glicêmico</h3>
@@ -349,7 +571,6 @@ export default function PacienteHistoricoAdmin() {
                             </div>
                           )}
 
-                          {/* Perfil Lipídico */}
                           {(item.total_cholesterol || item.ldl || item.triglycerides) && (
                             <div className="col-span-full border-b border-stone-100 pb-4 mb-2">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-3 tracking-widest">Perfil Lipídico</h3>
@@ -361,7 +582,6 @@ export default function PacienteHistoricoAdmin() {
                             </div>
                           )}
 
-                          {/* Marcadores Diversos */}
                           <div className="col-span-full">
                             <h3 className="text-xs font-black uppercase text-stone-400 mb-3 tracking-widest">Vitamínico e Inflamatório</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
