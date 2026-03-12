@@ -334,7 +334,7 @@ export default function PacienteHistoricoAdmin() {
                         const data = payload[0].payload;
                         return (
                           <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-xl border border-stone-800">
-                            <p className="text-xs font-bold text-stone-400 mb-2 border-b border-stone-700 pb-2">{new Date(label).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-xs font-bold text-stone-400 mb-2 border-b border-stone-700 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
                             <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
                             {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
                             <div className="mt-2 pt-2 border-t border-stone-700 space-y-1">
