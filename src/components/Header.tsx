@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image'; // Import necessário
+import Image from 'next/image';
 import { 
   Menu, 
   X, 
@@ -10,7 +10,7 @@ import {
   LayoutDashboard, 
   FileText, 
   Calendar,
-  ArrowRight
+  ChevronRight
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -55,7 +55,6 @@ export default function Header() {
     },
   ];
 
-  // Função de logout integrada para o Menu Mobile
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsMobileMenuOpen(false);
@@ -113,97 +112,98 @@ export default function Header() {
           ))}
         </div>
 
-        {/* Botão Mobile (Menu Hambúrguer) */}
+        {/* Botão Mobile */}
         <div className="md:hidden relative z-[60]">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className={`p-3 rounded-2xl transition-all duration-300 active:scale-90 ${
+            className={`p-3 rounded-xl transition-all duration-300 active:scale-95 ${
               isMobileMenuOpen 
                 ? 'bg-stone-100 text-stone-900' 
                 : isScrolled ? 'bg-stone-100 text-stone-900' : 'bg-white/20 backdrop-blur-md border border-white/30 text-stone-900'
             }`}
           >
-            {isMobileMenuOpen ? <X size={24} strokeWidth={2.5} /> : <Menu size={24} strokeWidth={2.5} />}
+            {isMobileMenuOpen ? <X size={22} strokeWidth={2} /> : <Menu size={22} strokeWidth={2} />}
           </button>
         </div>
       </nav>
 
-      {/* Menu Mobile - Full Screen Overlay Premium */}
+      {/* MENU MOBILE (Refatorado para Proporção e Elegância) */}
       <div className={`
         fixed inset-0 bg-white z-[50] md:hidden transition-all duration-500 ease-in-out
-        ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}
+        ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}
       `}>
-        <div className="flex flex-col h-full pt-28 pb-10 px-6 overflow-y-auto">
+        <div className="flex flex-col h-full pt-28 pb-8 px-6 overflow-y-auto">
           
-          {/* Seção do Paciente Logado no Menu Mobile */}
+          {/* BARRA DE FERRAMENTAS DO PACIENTE (Proporcional e Delicada) */}
           {isLoggedIn && (
-            <div className="mb-8 animate-fade-in-up">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400 mb-4 ml-2">Portal do Paciente</p>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="mb-10 bg-stone-50/80 p-4 rounded-3xl border border-stone-100">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 mb-4 text-center">Acesso Rápido</p>
+              <div className="flex justify-between items-center px-2">
                 <Link 
                   href="/dashboard" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex flex-col items-center gap-2 p-4 bg-nutri-50 rounded-2xl border border-nutri-100 text-nutri-900 active:scale-95 transition-all"
+                  className="flex flex-col items-center gap-1.5 text-stone-600 hover:text-nutri-800 transition-colors"
                 >
-                  <LayoutDashboard size={20} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Painel</span>
+                  <div className="p-3 bg-white rounded-xl shadow-sm border border-stone-100"><LayoutDashboard size={18} /></div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Painel</span>
                 </Link>
                 <Link 
                   href="/dashboard/meu-plano" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex flex-col items-center gap-2 p-4 bg-stone-50 rounded-2xl border border-stone-100 text-stone-700 active:scale-95 transition-all"
+                  className="flex flex-col items-center gap-1.5 text-stone-600 hover:text-nutri-800 transition-colors"
                 >
-                  <FileText size={20} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Plano</span>
+                  <div className="p-3 bg-white rounded-xl shadow-sm border border-stone-100"><FileText size={18} /></div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Plano</span>
                 </Link>
                 <Link 
                   href="/dashboard/perfil" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex flex-col items-center gap-2 p-4 bg-stone-50 rounded-2xl border border-stone-100 text-stone-700 active:scale-95 transition-all"
+                  className="flex flex-col items-center gap-1.5 text-stone-600 hover:text-nutri-800 transition-colors"
                 >
-                  <User size={20} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Perfil</span>
+                  <div className="p-3 bg-white rounded-xl shadow-sm border border-stone-100"><User size={18} /></div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Perfil</span>
                 </Link>
                 <button 
                   onClick={handleLogout}
-                  className="flex flex-col items-center gap-2 p-4 bg-red-50 rounded-2xl border border-red-100 text-red-600 active:scale-95 transition-all"
+                  className="flex flex-col items-center gap-1.5 text-red-500 hover:text-red-700 transition-colors"
                 >
-                  <LogOut size={20} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Sair</span>
+                  <div className="p-3 bg-red-50 rounded-xl border border-red-100"><LogOut size={18} /></div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Sair</span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* Itens de Navegação Institucional */}
-          <div className="space-y-2">
-            {!isLoggedIn && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400 mb-4 ml-2">Navegação</p>}
-            <ul className="flex flex-col space-y-1">
+          {/* LISTA DE NAVEGAÇÃO DO SITE */}
+          <div className="flex-1">
+            <ul className="flex flex-col space-y-2">
               {navItems.map((item) => (
                 <li key={item.name}>
                   <Link
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`
-                      flex items-center justify-between w-full p-4 rounded-2xl transition-all active:bg-stone-50
+                      flex items-center justify-between w-full p-4 rounded-2xl transition-all active:bg-stone-50 group
                       ${item.cta 
-                        ? 'bg-nutri-900 text-white shadow-xl shadow-nutri-900/10 mt-4 font-bold' 
-                        : 'text-stone-800 font-semibold text-lg tracking-tight'
+                        ? 'bg-nutri-900 text-white mt-6 font-bold shadow-lg shadow-nutri-900/20' 
+                        : 'text-stone-800 font-semibold text-lg'
                       }
                     `}
                   >
                     <span>{item.name}</span>
-                    <ArrowRight size={18} className={item.cta ? 'opacity-100' : 'opacity-20'} />
+                    {/* ChevronRight é mais sutil e elegante para listas do que o ArrowRight */}
+                    <ChevronRight size={18} className={`${item.cta ? 'opacity-100' : 'opacity-30 text-stone-400 group-active:translate-x-1 transition-transform'}`} />
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Rodapé do Menu Mobile */}
-          <div className="mt-auto pt-10 text-center">
+          {/* RODAPÉ DO MENU MOBILE */}
+          <div className="mt-8 pt-6 border-t border-stone-100 text-center">
             <p className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em]">Vanusa Zacarias Nutrição © {new Date().getFullYear()}</p>
           </div>
+          
         </div>
       </div>
     </header>
