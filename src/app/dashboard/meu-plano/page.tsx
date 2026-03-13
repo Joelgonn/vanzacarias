@@ -4,15 +4,18 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, FileText, Download, ChevronLeft, Lock, Star } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function MeuPlano() {
   const [plano, setPlano] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState<boolean | null>(null);
   const [processingCheckout, setProcessingCheckout] = useState(false);
   
   const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchData() {
@@ -24,16 +27,17 @@ export default function MeuPlano() {
           return;
         }
 
-        // 1. Verifica se o usuário é Premium na tabela profiles
-        const { data: profile, error: profileError } = await supabase
+        // 1. Verifica se o usuário é Premium na tabela profiles e guarda os dados
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('account_type')
+          .select('account_type, full_name')
           .eq('id', session.user.id)
           .single();
 
         if (profileError) throw new Error("Erro ao validar perfil.");
 
-        const isUserPremium = profile?.account_type === 'premium';
+        setProfile(profileData);
+        const isUserPremium = profileData?.account_type === 'premium';
         setIsPremium(isUserPremium);
 
         // 2. Só busca o plano no banco se ele for Premium
@@ -65,14 +69,40 @@ export default function MeuPlano() {
     fetchData();
   }, [supabase]);
 
-  // Função provisória para simular o checkout
+  // INTEGRAÇÃO COM MERCADO PAGO - GERA O LINK E REDIRECIONA
   const handleUpgradeClick = async () => {
     setProcessingCheckout(true);
-    // Aqui chamaremos a rota /api/checkout futuramente
-    setTimeout(() => {
-      alert("Integração com Mercado Pago será acionada aqui!");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: session.user.id,
+          email: session.user.email,
+          name: profile?.full_name || 'Paciente Vanusa Nutri',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.init_point) {
+        window.location.href = data.init_point; 
+      } else {
+        throw new Error(data.error || 'Erro ao gerar link de pagamento');
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível iniciar o pagamento. Tente novamente mais tarde.");
       setProcessingCheckout(false);
-    }, 1500);
+    }
   };
 
   if (loading) {
@@ -84,11 +114,12 @@ export default function MeuPlano() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-[88px] md:pt-20">
+    // Espaçamento superior corrigido (pt-[120px] md:pt-[140px]) para não colar no header
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-[120px] md:pt-[140px]">
       <div className="max-w-3xl mx-auto w-full flex-1 flex flex-col">
         
-        {/* Navegação de Topo */}
-        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between pb-8 md:pb-16 mt-4 md:mt-12 gap-6 sm:gap-0 animate-fade-in-up">
+        {/* Navegação de Topo com margem superior extra (mt-4 md:mt-8) */}
+        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between pb-8 md:pb-16 mt-4 md:mt-8 gap-6 sm:gap-0 animate-fade-in-up">
           <Link 
             href="/dashboard" 
             className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 active:scale-[0.98] transition-all duration-300"
@@ -108,7 +139,6 @@ export default function MeuPlano() {
         <div className="flex-1 flex flex-col justify-center pb-10 md:pb-0">
           <div className="bg-white p-8 md:p-12 lg:p-16 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 text-center animate-fade-in-up relative overflow-hidden group" style={{ animationDelay: '0.1s' }}>
             
-            {/* Efeito visual de fundo sutil */}
             <div className="absolute top-0 left-0 w-64 h-64 bg-nutri-50/50 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/3 -z-10 group-hover:bg-green-50/50 transition-colors duration-700"></div>
 
             {!isPremium ? (

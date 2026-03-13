@@ -39,7 +39,6 @@ export default function Dashboard() {
       return;
     }
 
-    // Adicionado account_type, trial_ends_at e created_at na busca
     const { data: profileData } = await supabase
       .from('profiles')
       .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at')
@@ -79,14 +78,43 @@ export default function Dashboard() {
     loadData();
   };
 
-  // Função provisória para simular o checkout (Será substituída pela API do Mercado Pago no futuro)
+  // INTEGRAÇÃO COM MERCADO PAGO - GERA O LINK E REDIRECIONA
   const handleUpgradeClick = async () => {
     setProcessingCheckout(true);
-    // Aqui chamaremos a rota /api/checkout futuramente
-    setTimeout(() => {
-      alert("Integração com Mercado Pago será acionada aqui!");
+    try {
+      // 1. Pega os dados da sessão atual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      // 2. Chama a nossa API de Checkout
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: session.user.id,
+          email: session.user.email,
+          name: profile?.full_name || 'Paciente Vanusa Nutri',
+        }),
+      });
+
+      const data = await response.json();
+
+      // 3. Redireciona para o link de pagamento criptografado
+      if (data.init_point) {
+        window.location.href = data.init_point; 
+      } else {
+        throw new Error(data.error || 'Erro ao gerar link de pagamento');
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível iniciar o pagamento. Tente novamente mais tarde.");
       setProcessingCheckout(false);
-    }, 1500);
+    }
   };
 
   // ==========================================
@@ -132,7 +160,6 @@ export default function Dashboard() {
 
   const isPremium = profile?.account_type === 'premium';
   
-  // Calcula o Trial baseado no trial_ends_at (ou 30 dias após a criação caso não exista)
   const trialData = useMemo(() => {
     if (!profile) return { isActive: false, daysLeft: 0 };
     if (isPremium) return { isActive: true, daysLeft: 999 };
@@ -286,7 +313,6 @@ export default function Dashboard() {
               <h3 className="font-bold uppercase text-[10px] tracking-[0.2em]">Medida de Cintura</h3>
             </div>
             
-            {/* Se for Premium, exibe os dados. Se for Free, aplica Blur */}
             <div className={!isPremium ? 'filter blur-sm select-none opacity-40' : ''}>
               {antroData.length > 0 && antroData[0].waist ? (
                 <div>
@@ -308,7 +334,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Overlay do Cadeado Premium */}
             {!isPremium && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px]">
                 <div className="bg-white p-3 rounded-full shadow-lg border border-stone-100 text-amber-500 mb-2">
@@ -360,7 +385,6 @@ export default function Dashboard() {
         {/* CARDS DE AÇÃO RÁPIDA */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
           
-          {/* Card Meu Plano (Trava se não for Premium) */}
           <Link 
             href={isPremium ? "/dashboard/meu-plano" : "#"} 
             onClick={(e) => { if(!isPremium) { e.preventDefault(); handleUpgradeClick(); } }}

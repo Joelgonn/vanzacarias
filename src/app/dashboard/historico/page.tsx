@@ -63,14 +63,40 @@ export default function Historico() {
     fetchData();
   }, [supabase, router]);
 
-  // Função provisória para simular o checkout
+  // INTEGRAÇÃO COM MERCADO PAGO - GERA O LINK E REDIRECIONA
   const handleUpgradeClick = async () => {
     setProcessingCheckout(true);
-    // Aqui chamaremos a rota /api/checkout futuramente
-    setTimeout(() => {
-      alert("Integração com Mercado Pago será acionada aqui!");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: session.user.id,
+          email: session.user.email,
+          name: profile?.full_name || 'Paciente Vanusa Nutri',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.init_point) {
+        window.location.href = data.init_point; 
+      } else {
+        throw new Error(data.error || 'Erro ao gerar link de pagamento');
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível iniciar o pagamento. Tente novamente mais tarde.");
       setProcessingCheckout(false);
-    }, 1500);
+    }
   };
 
   // Define as faixas de normalidade baseadas no tipo_perfil
@@ -89,7 +115,7 @@ export default function Historico() {
   );
 
   return (
-    // AQUI ESTÁ A CORREÇÃO DO ESPAÇAMENTO: pt-[120px] md:pt-[140px] garante que o header não cubra o conteúdo
+    // Espaçamento superior corrigido (pt-[120px] md:pt-[140px]) para não colar no header
     <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 pt-[120px] md:pt-[140px]">
       <div className="max-w-4xl mx-auto w-full">
         
