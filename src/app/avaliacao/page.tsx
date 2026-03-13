@@ -2,17 +2,25 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ArrowLeft, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { ArrowRight, ArrowLeft, CheckCircle2, ChevronLeft, User, Phone, Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 type Answer = string | null;
 
 export default function Avaliacao() {
-  const [currentStep, setCurrentStep] = useState(0);
-  
-  // Usando Record para aceitar qualquer quantidade de perguntas dinamicamente
-  const [answers, setAnswers] = useState<Record<number, Answer>>({});
+  // Estados do Lead
+  const [showLeadForm, setShowLeadForm] = useState(true);
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [loadingLead, setLoadingLead] = useState(false);
 
-  // Questionário de 10 Perguntas - Pilares da Nutrição Clínica
+  // Estados do Questionário
+  const [currentStep, setCurrentStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, Answer>>({});
+  
+  const supabase = createClient();
+
+  // Questionário de 10 Perguntas
   const questions = [
     {
       title: 'Qual é o seu objetivo principal ao buscar acompanhamento?',
@@ -106,11 +114,77 @@ export default function Avaliacao() {
     }
   ];
 
+  // ==========================================
+  // LÓGICA DE NEGÓCIOS (SUPABASE)
+  // ==========================================
+
+  // 1. Inicia o Quiz e salva o Lead no banco (UPSERT pelo WhatsApp)
+  const handleStartQuiz = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoadingLead(true);
+
+    try {
+      const { error } = await supabase
+        .from('leads_avaliacao')
+        .upsert(
+          { 
+            nome: leadName, 
+            whatsapp: leadPhone, 
+            status: 'incompleto',
+            // updated_at é atualizado automaticamente pelo trigger que criamos no SQL
+          },
+          { onConflict: 'whatsapp' }
+        );
+
+      if (error) throw error;
+
+      // Guarda o WhatsApp no localStorage para amarrar o cadastro depois
+      localStorage.setItem('lead_whatsapp', leadPhone);
+      setShowLeadForm(false);
+    } catch (error) {
+      console.error("Erro ao salvar lead:", error);
+      alert("Ocorreu um erro ao iniciar. Tente novamente.");
+    } finally {
+      setLoadingLead(false);
+    }
+  };
+
+  // 2. Atualiza o banco em background a cada resposta dada
+  const updateLeadAnswers = async (newAnswers: Record<number, Answer>) => {
+    // Não precisa dar await aqui para não travar a tela do usuário
+    supabase
+      .from('leads_avaliacao')
+      .update({ respostas: newAnswers })
+      .eq('whatsapp', leadPhone)
+      .then(({ error }) => {
+        if (error) console.error("Erro ao atualizar respostas:", error);
+      });
+  };
+
+  // 3. Marca o Lead como concluído ao chegar na última tela
+  const markLeadAsCompleted = async () => {
+    await supabase
+      .from('leads_avaliacao')
+      .update({ status: 'concluido' })
+      .eq('whatsapp', leadPhone);
+  };
+
+  // ==========================================
+  // CONTROLES DE INTERFACE
+  // ==========================================
+
   const handleSelect = (option: string) => {
-    setAnswers({ ...answers, [currentStep]: option });
+    const newAnswers = { ...answers, [currentStep]: option };
+    setAnswers(newAnswers);
+    updateLeadAnswers(newAnswers); // Salva no banco silenciosamente
+
     if (currentStep < questions.length) {
       setTimeout(() => {
         setCurrentStep(prev => prev + 1);
+        // Se foi a última pergunta, atualiza o status para concluído
+        if (currentStep === questions.length - 1) {
+          markLeadAsCompleted();
+        }
       }, 400);
     }
   };
@@ -118,13 +192,14 @@ export default function Avaliacao() {
   const nextStep = () => {
     if (currentStep < questions.length) {
       setCurrentStep(prev => prev + 1);
+      if (currentStep === questions.length - 1) {
+        markLeadAsCompleted();
+      }
     }
   };
 
   const prevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
-    }
+    if (currentStep > 0) setCurrentStep(prev => prev - 1);
   };
 
   const progress = ((currentStep) / questions.length) * 100;
@@ -150,15 +225,68 @@ export default function Avaliacao() {
 
       <div className="w-full max-w-2xl mx-auto bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-stone-100 p-6 md:p-12 relative overflow-hidden">
         
-        {/* Barra de Progresso */}
-        <div className="absolute top-0 left-0 w-full h-1.5 bg-stone-100">
-          <div 
-            className="h-full bg-nutri-800 transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
+        {/* Barra de Progresso (Só aparece se o form de lead já passou) */}
+        {!showLeadForm && (
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-stone-100">
+            <div 
+              className="h-full bg-nutri-800 transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        )}
 
-        {currentStep < questions.length ? (
+        {/* PASSO 0: CAPTURA DO LEAD */}
+        {showLeadForm ? (
+          <div className="animate-fade-in-up text-center max-w-md mx-auto py-4">
+            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 mb-4 tracking-tight">
+              Vamos descobrir o seu perfil?
+            </h1>
+            <p className="text-stone-500 text-sm md:text-base mb-8 leading-relaxed">
+              Para personalizarmos sua experiência e enviarmos seu resultado, precisamos te conhecer melhor.
+            </p>
+
+            <form onSubmit={handleStartQuiz} className="space-y-4 text-left">
+              <div className="relative group">
+                <User className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="Seu nome ou apelido" 
+                  value={leadName}
+                  onChange={(e) => setLeadName(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700 font-medium" 
+                />
+              </div>
+              
+              <div className="relative group">
+                <Phone className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
+                <input 
+                  type="tel" 
+                  required 
+                  placeholder="Seu WhatsApp (DDD + Número)" 
+                  value={leadPhone}
+                  onChange={(e) => setLeadPhone(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700 font-medium" 
+                />
+              </div>
+
+              <button 
+                type="submit"
+                disabled={loadingLead || leadPhone.length < 8}
+                className="w-full flex items-center justify-center gap-2 bg-nutri-900 text-white py-4 mt-6 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {loadingLead ? <Loader2 size={20} className="animate-spin" /> : 'Começar Avaliação'} 
+                {!loadingLead && <ArrowRight size={20} />}
+              </button>
+            </form>
+            <p className="text-[10px] text-stone-400 mt-6 font-medium uppercase tracking-widest">
+              Leva apenas 2 minutos.
+            </p>
+          </div>
+
+        ) : currentStep < questions.length ? (
+          
+          /* PASSO 1 a 10: PERGUNTAS DO QUIZ */
           <div key={currentStep} className="animate-fade-in-right">
             <div className="flex justify-between items-center mb-6">
               <span className="text-nutri-800 font-bold text-[10px] tracking-widest uppercase">
@@ -225,6 +353,8 @@ export default function Avaliacao() {
             </div>
           </div>
         ) : (
+          
+          /* TELA FINAL: SUCESSO E CONVITE PARA CADASTRO */
           <div className="text-center py-8 animate-fade-in-up">
             <div className="w-20 h-20 bg-nutri-50 rounded-full flex items-center justify-center mx-auto mb-8 shadow-sm">
               <CheckCircle2 size={40} className="text-nutri-800" />
@@ -233,7 +363,7 @@ export default function Avaliacao() {
               Perfil Mapeado!
             </h2>
             <p className="text-stone-500 text-sm md:text-base font-light mb-10 max-w-sm mx-auto leading-relaxed">
-              Excelente! Já temos as informações necessárias para entender seu metabolismo e rotina. Crie sua conta para salvar seu perfil.
+              Excelente, {leadName.split(' ')[0]}! Já temos as informações necessárias para entender seu metabolismo e rotina. Crie sua conta para acessar seu painel e falar com a Vanusa.
             </p>
             
             <Link 

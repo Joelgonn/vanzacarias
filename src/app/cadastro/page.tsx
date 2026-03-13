@@ -21,6 +21,7 @@ export default function Cadastro() {
     setLoading(true);
     setError(null);
 
+    // 1. Cria o usuário no sistema de Autenticação
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -34,18 +35,38 @@ export default function Cadastro() {
     }
 
     if (data.user) {
+      // 2. Resgata os dados temporários do funil (Navegador)
+      const savedAnswers = localStorage.getItem('quiz_answers');
+      const savedWhatsapp = localStorage.getItem('lead_whatsapp');
+
+      // 3. Cria o Perfil Oficial (Já injetando o WhatsApp do Lead)
       const { error: profileError } = await supabase.from('profiles').insert([
-        { id: data.user.id, full_name: name, role: 'patient' }
+        { 
+          id: data.user.id, 
+          full_name: name, 
+          role: 'patient',
+          phone: savedWhatsapp || null // Puxa o telefone que ele digitou no Passo 1 do Quiz
+        }
       ]);
       
       if (profileError) console.error("Erro ao criar perfil:", profileError);
 
-      const savedAnswers = localStorage.getItem('quiz_answers');
+      // 4. Salva a Avaliação Oficial
       if (savedAnswers) {
         await supabase.from('evaluations').insert([
           { user_id: data.user.id, answers: JSON.parse(savedAnswers) }
         ]);
         localStorage.removeItem('quiz_answers');
+      }
+
+      // 5. Atualiza o Lead para "Convertido" para limpar a fila de prospecção da Nutri
+      if (savedWhatsapp) {
+        await supabase
+          .from('leads_avaliacao')
+          .update({ status: 'convertido' })
+          .eq('whatsapp', savedWhatsapp);
+          
+        localStorage.removeItem('lead_whatsapp');
       }
     }
 
@@ -64,7 +85,7 @@ export default function Cadastro() {
           <p className="text-stone-500 mb-10 leading-relaxed text-sm md:text-base">Cadastro realizado com sucesso. A Vanusa já tem acesso aos seus dados de avaliação.</p>
           <button 
             onClick={() => router.push('/dashboard')} 
-            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all"
+            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-lg hover:shadow-xl"
           >
             Acessar meu Dashboard
           </button>
@@ -106,9 +127,9 @@ export default function Cadastro() {
           
           <button 
             disabled={loading} 
-            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-md hover:shadow-lg disabled:opacity-70 mt-4"
+            className="w-full bg-nutri-900 text-white py-4 rounded-2xl font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-md hover:shadow-lg disabled:opacity-70 mt-4 flex items-center justify-center"
           >
-            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Finalizar Cadastro'}
+            {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : 'Finalizar Cadastro'}
           </button>
         </form>
         
