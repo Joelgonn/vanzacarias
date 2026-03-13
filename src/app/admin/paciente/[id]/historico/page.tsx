@@ -6,12 +6,13 @@ import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, ChevronLeft, TrendingUp, User, Ruler, Layers, 
   Syringe, CalendarCheck, BookOpen, Send, Trash2, 
-  AlertCircle, CheckCircle2, AlertTriangle, Activity, Target
+  AlertCircle, CheckCircle2, AlertTriangle, Activity, Target,
+  Clock, Zap
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
   ComposedChart, LineChart, Area, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceArea, ReferenceLine, Scatter 
+  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Scatter 
 } from 'recharts';
 
 export default function PacienteHistoricoAdmin() {
@@ -92,17 +93,12 @@ export default function PacienteHistoricoAdmin() {
 
   const range = getReferenceRange(profile?.tipo_perfil || 'adulto');
 
-  // --- NOVA LÓGICA: MOTOR DE DADOS DO GRÁFICO (EIXO DUPLO E EXAMES) ---
   const chartData = useMemo(() => {
     if (!history.length) return [];
     
     return history.map(h => {
       const date = new Date(h.created_at);
-      
-      // Busca a cintura mais próxima deste checkin
       const nearestAntro = antroData.find(a => Math.abs(new Date(a.measurement_date).getTime() - date.getTime()) < 7 * 24*60*60*1000);
-      
-      // Verifica se houve exame de sangue nesta semana
       const hasExam = bioData.some(b => Math.abs(new Date(b.exam_date).getTime() - date.getTime()) < 5 * 24*60*60*1000);
 
       return {
@@ -112,12 +108,11 @@ export default function PacienteHistoricoAdmin() {
         cintura: nearestAntro ? nearestAntro.waist : null,
         adesao: h.adesao_ao_plano,
         humor: h.humor_semanal,
-        hasExam: hasExam ? h.peso : null, // Passa o peso na data do exame para posicionar a Seringa no gráfico
+        hasExam: hasExam ? h.peso : null, 
       };
     });
   }, [history, antroData, bioData]);
 
-  // --- NOVA LÓGICA: GPS METABÓLICO (PREVISÃO DE META) ---
   const projectionDate = useMemo(() => {
     if (history.length < 3 || !profile?.meta_peso) return null;
     
@@ -144,7 +139,6 @@ export default function PacienteHistoricoAdmin() {
     return targetDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
   }, [history, profile?.meta_peso]);
 
-  // --- MOTOR DE INTELIGÊNCIA BIOQUÍMICA (Atualizado com cores para o Sparkline) ---
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
       return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
@@ -204,19 +198,74 @@ export default function PacienteHistoricoAdmin() {
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
-  // --- COMPONENTE EXAM BADGE ATUALIZADO (Agora com Sparklines no fundo) ---
+  // ==========================================
+  // PILAR 3: RADAR CLÍNICO INTELIGENTE (IA Ativa)
+  // ==========================================
+  const activeAlerts = useMemo(() => {
+    const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any }[] = [];
+    
+    // 1. Alertas de Engajamento e Adesão
+    if (history.length > 0) {
+      const lastCheckin = history[history.length - 1];
+      const daysSince = Math.floor((new Date().getTime() - new Date(lastCheckin.created_at).getTime()) / (1000 * 3600 * 24));
+      
+      if (daysSince > 10) {
+        alerts.push({ id: 'a1', type: 'warning', text: `Ausente: Sem check-in há ${daysSince} dias.`, icon: <Clock size={16}/> });
+      }
+      
+      if (lastCheckin.adesao_ao_plano <= 2) {
+        alerts.push({ id: 'a2', type: 'danger', text: `Baixa adesão no último relato (${lastCheckin.adesao_ao_plano}/5).`, icon: <AlertTriangle size={16}/> });
+      } else if (lastCheckin.adesao_ao_plano === 5) {
+        alerts.push({ id: 'a3', type: 'success', text: `Adesão excelente no último check-in!`, icon: <Star size={16} className="text-emerald-500"/> });
+      }
+    }
+
+    // 2. Alertas de Medidas (Evolução de Cintura)
+    if (antroData.length >= 2) {
+      if (antroData[0].waist && antroData[1].waist) {
+        const diff = antroData[0].waist - antroData[1].waist;
+        if (diff < 0) {
+          alerts.push({ id: 'm1', type: 'success', text: `Cintura reduziu ${Math.abs(diff).toFixed(1)}cm desde a última medida.`, icon: <TrendingUp size={16} className="rotate-180"/> });
+        } else if (diff > 0) {
+          alerts.push({ id: 'm2', type: 'warning', text: `Cintura aumentou ${Math.abs(diff).toFixed(1)}cm.`, icon: <TrendingUp size={16}/> });
+        }
+      }
+    }
+
+    // 3. Alertas Bioquímicos (Detectar Risco em Exames)
+    if (bioData.length > 0) {
+      const latestBio = bioData[0];
+      const examsToCheck = ['glucose', 'insulin', 'ldl', 'triglycerides', 'vitamin_d', 'vitamin_b12', 'ferritin', 'pcr'];
+      let dangerCount = 0;
+      let warningCount = 0;
+
+      examsToCheck.forEach(exam => {
+        if(latestBio[exam] !== null && latestBio[exam] !== undefined) {
+          const analysis = interpretBiochemical(exam, parseFloat(latestBio[exam]));
+          if(analysis.status === 'danger') dangerCount++;
+          if(analysis.status === 'warning') warningCount++;
+        }
+      });
+
+      if (dangerCount > 0) {
+        alerts.push({ id: 'b1', type: 'danger', text: `${dangerCount} exame(s) em nível de RISCO no laboratório atual.`, icon: <Activity size={16}/> });
+      } else if (warningCount > 0) {
+        alerts.push({ id: 'b2', type: 'warning', text: `${warningCount} exame(s) merecem atenção dietética.`, icon: <Syringe size={16}/> });
+      }
+    }
+
+    return alerts;
+  }, [history, antroData, bioData]);
+
+
   const ExamBadge = ({ label, value, unit, type }: { label: string, value: any, unit: string, type: string }) => {
     const analysis = interpretBiochemical(type, value ? parseFloat(value) : null);
-    
-    // Puxa o histórico desse exame em específico para desenhar a linha do Sparkline
     const historyData = bioData.map(b => ({ val: parseFloat(b[type]) })).filter(b => !isNaN(b.val)).reverse();
     
     if (!value) return null;
 
     return (
       <div className={`relative overflow-hidden group flex items-center justify-between p-3 rounded-xl border ${analysis.border} ${analysis.bg} transition-all`}>
-        
-        {/* Sparkline no fundo */}
         {historyData.length > 1 && (
           <div className="absolute inset-0 opacity-20 pointer-events-none">
             <ResponsiveContainer width="100%" height="100%">
@@ -226,7 +275,6 @@ export default function PacienteHistoricoAdmin() {
             </ResponsiveContainer>
           </div>
         )}
-
         <div className="relative z-10 flex flex-col">
           <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider mb-0.5">{label}</span>
           <span className={`font-black text-lg ${analysis.color}`}>
@@ -236,8 +284,6 @@ export default function PacienteHistoricoAdmin() {
         <div className="relative z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-sm">
           {analysis.icon}
         </div>
-        
-        {/* Tooltip Inteligente */}
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-medium px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 shadow-xl text-center">
           {analysis.text}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
@@ -272,31 +318,58 @@ export default function PacienteHistoricoAdmin() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 mb-8 md:mb-10 animate-fade-in-up">
           
-          {/* CARD DE DADOS DO PACIENTE (ATUALIZADO COM GPS) */}
-          <section className="lg:col-span-1 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col justify-between">
-            <div>
-              <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
-              <div className="space-y-6 md:space-y-5">
-                <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil}</p></div>
-                <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
-                <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso (Check-in)</p><p className="font-bold text-stone-700 text-lg">{history.length > 0 ? `${history[history.length - 1].peso} kg` : '---'}</p></div>
-                
-                {/* PROJEÇÃO DE META */}
-                {projectionDate && projectionDate !== "Estagnado/Subindo" && (
-                  <div className="bg-nutri-50 p-4 rounded-xl border border-nutri-100 mt-6 flex items-start gap-3">
-                    <Target className="text-nutri-600 mt-0.5" size={18} />
-                    <div>
-                      <p className="text-[10px] font-bold text-nutri-600 uppercase tracking-widest">Previsão da Meta (GPS)</p>
-                      <p className="text-base font-black text-nutri-900">{projectionDate}</p>
+          {/* COLUNA 1: DADOS + RADAR CLÍNICO */}
+          <div className="lg:col-span-1 flex flex-col gap-6 md:gap-8">
+            <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col justify-between h-full">
+              <div>
+                <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
+                <div className="space-y-6 md:space-y-5">
+                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil}</p></div>
+                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
+                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso (Check-in)</p><p className="font-bold text-stone-700 text-lg">{history.length > 0 ? `${history[history.length - 1].peso} kg` : '---'}</p></div>
+                  
+                  {projectionDate && projectionDate !== "Estagnado/Subindo" && (
+                    <div className="bg-nutri-50 p-4 rounded-xl border border-nutri-100 mt-6 flex items-start gap-3">
+                      <Target className="text-nutri-600 mt-0.5 shrink-0" size={18} />
+                      <div>
+                        <p className="text-[10px] font-bold text-nutri-600 uppercase tracking-widest">Previsão da Meta (GPS)</p>
+                        <p className="text-base font-black text-nutri-900">{projectionDate}</p>
+                      </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* O NOVO RADAR CLÍNICO */}
+            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group">
+              <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl transition-opacity"></div>
+              <h2 className="text-sm font-black text-stone-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 relative z-10">
+                <Zap size={16} className="text-amber-400" /> Radar Clínico (IA)
+              </h2>
+              
+              <div className="space-y-3 relative z-10">
+                {activeAlerts.length > 0 ? (
+                  activeAlerts.map(alert => (
+                    <div key={alert.id} className={`flex items-start gap-3 p-3.5 rounded-xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
+                      <div className={`mt-0.5 ${alert.type === 'danger' ? 'text-red-400' : alert.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {alert.icon}
+                      </div>
+                      <p className="text-sm leading-snug font-medium">{alert.text}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-stone-800/50 border border-stone-800 text-stone-300">
+                    <CheckCircle2 size={16} className="text-stone-500 mt-0.5" />
+                    <p className="text-sm leading-snug font-medium">Sem alertas urgentes ou dados insuficientes.</p>
                   </div>
                 )}
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
           {/* GRÁFICO PREMIUM: EIXO DUPLO E EXAMES */}
-          <section className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100">
+          <section className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg md:text-xl font-bold flex items-center gap-2 text-stone-900">
                 <TrendingUp className="text-nutri-800" size={24} /> Diagnóstico Evolutivo
@@ -308,7 +381,7 @@ export default function PacienteHistoricoAdmin() {
               </div>
             </div>
 
-            <div className="h-64 md:h-80 w-full -ml-3 sm:ml-0">
+            <div className="flex-1 min-h-[300px] w-full -ml-3 sm:ml-0">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 20, right: -10, left: -20, bottom: 0 }}>
                   <defs>
@@ -318,16 +391,10 @@ export default function PacienteHistoricoAdmin() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                  
-                  {/* EIXO Y ESQUERDO (Peso) */}
                   <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} tickFormatter={val => `${val}kg`} />
-                  
-                  {/* EIXO Y DIREITO (Cintura) */}
                   <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} tickFormatter={val => `${val}cm`} />
-                  
                   <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
                   
-                  {/* TOOLTIP INTELIGENTE */}
                   <RechartsTooltip 
                     content={({ active, payload, label }) => {
                       if (active && payload && payload.length) {
@@ -348,16 +415,10 @@ export default function PacienteHistoricoAdmin() {
                     }}
                   />
                   
-                  {/* LINHA DE META */}
                   {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="5 5" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
-                  
-                  {/* ÁREA DO PESO */}
                   <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorPeso)" activeDot={{ r: 6, strokeWidth: 0 }} />
-                  
-                  {/* LINHA DA CINTURA */}
                   <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1" }} connectNulls />
                   
-                  {/* MARCADOR DE EXAME (Seringa) */}
                   <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
                     const { cx, cy, payload } = props;
                     if (!payload.hasExam) return <g></g>;
@@ -375,7 +436,7 @@ export default function PacienteHistoricoAdmin() {
           </section>
         </div>
 
-        {/* --- ABAS --- */}
+        {/* --- ABAS (PRONTUÁRIO, EXAMES, ETC) MANTIDAS INTACTAS ABAIXO --- */}
         <section className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-4 pt-4 gap-1 scrollbar-hide">
             <button onClick={() => setActiveTab('prontuario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'prontuario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><BookOpen size={18} /> Prontuário / Evolução</button>
@@ -387,7 +448,6 @@ export default function PacienteHistoricoAdmin() {
 
           <div className="p-6 md:p-8">
             
-            {/* ABA PRONTUARIO */}
             {activeTab === 'prontuario' && (
               <div className="animate-fade-in max-w-4xl mx-auto">
                 <h2 className="text-lg md:text-xl font-bold mb-8 text-stone-900 flex items-center gap-2">
@@ -415,7 +475,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* ABA CHECKINS */}
             {activeTab === 'checkins' && (
               <div className="animate-fade-in">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Relatos Dominicais</h2>
@@ -433,23 +492,11 @@ export default function PacienteHistoricoAdmin() {
                     <tbody className="divide-y divide-stone-50">
                       {history.slice().reverse().map((item) => (
                         <tr key={item.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-4 px-2 font-bold text-stone-700 text-sm whitespace-nowrap">
-                            {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="py-4 px-2 font-medium text-sm">
-                            {item.peso} kg
-                          </td>
-                          <td className="py-4 px-2 text-sm">
-                            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${item.adesao_ao_plano >= 4 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {item.adesao_ao_plano}/5
-                            </span>
-                          </td>
-                          <td className="py-4 px-2 font-bold text-sm text-stone-500">
-                            {item.humor_semanal}/5
-                          </td>
-                          <td className="py-4 px-2 text-xs text-stone-600 leading-relaxed">
-                            {item.comentarios || '-'}
-                          </td>
+                          <td className="py-4 px-2 font-bold text-stone-700 text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4 px-2 font-medium text-sm">{item.peso} kg</td>
+                          <td className="py-4 px-2 text-sm"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${item.adesao_ao_plano >= 4 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{item.adesao_ao_plano}/5</span></td>
+                          <td className="py-4 px-2 font-bold text-sm text-stone-500">{item.humor_semanal}/5</td>
+                          <td className="py-4 px-2 text-xs text-stone-600 leading-relaxed">{item.comentarios || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -458,7 +505,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* ABA ANTROPOMETRIA */}
             {activeTab === 'antropometria' && (
               <div className="animate-fade-in overflow-x-auto">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Medidas de Circunferência</h2>
@@ -474,18 +520,10 @@ export default function PacienteHistoricoAdmin() {
                   <tbody className="divide-y divide-stone-50">
                     {antroData.map(i => (
                       <tr key={i.id} className="hover:bg-stone-50/50">
-                        <td className="py-4 px-2 font-bold text-sm">
-                          {new Date(i.measurement_date).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.weight}kg
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.waist}cm
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.hip}cm
-                        </td>
+                        <td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                        <td className="py-4 px-2 text-sm">{i.weight}kg</td>
+                        <td className="py-4 px-2 text-sm">{i.waist}cm</td>
+                        <td className="py-4 px-2 text-sm">{i.hip}cm</td>
                       </tr>
                     ))}
                   </tbody>
@@ -493,7 +531,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* ABA DOBRAS CUTÂNEAS */}
             {activeTab === 'dobras' && (
               <div className="animate-fade-in overflow-x-auto">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Protocolo de Dobras (mm)</h2>
@@ -509,18 +546,10 @@ export default function PacienteHistoricoAdmin() {
                   <tbody className="divide-y divide-stone-50">
                     {skinfoldsData.map(i => (
                       <tr key={i.id} className="hover:bg-stone-50/50">
-                        <td className="py-4 px-2 font-bold text-sm">
-                          {new Date(i.measurement_date).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.abdominal}
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.thigh}
-                        </td>
-                        <td className="py-4 px-2 text-sm">
-                          {i.subscapular}
-                        </td>
+                        <td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                        <td className="py-4 px-2 text-sm">{i.abdominal}</td>
+                        <td className="py-4 px-2 text-sm">{i.thigh}</td>
+                        <td className="py-4 px-2 text-sm">{i.subscapular}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -528,7 +557,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* ABA BIOQUÍMICOS (MANTIDA EXATAMENTE COMO VOCÊ COLOCOU, APENAS O EXAMBADGE TEM O SPARKLINE) */}
             {activeTab === 'bioquimicos' && (
               <div className="animate-fade-in space-y-12">
                 <div className="flex items-center justify-between">
@@ -553,20 +581,17 @@ export default function PacienteHistoricoAdmin() {
                     return (
                       <div key={item.id} className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
                         <div className="bg-stone-50/80 px-6 py-4 border-b border-stone-200 flex items-center justify-between">
-                          <span className="font-bold text-nutri-900 text-sm">
-                            Realizado em: {new Date(item.exam_date).toLocaleDateString('pt-BR')}
-                          </span>
+                          <span className="font-bold text-nutri-900 text-sm">Realizado em: {new Date(item.exam_date).toLocaleDateString('pt-BR')}</span>
                         </div>
                         
                         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                          
                           {(item.glucose || item.insulin) && (
                             <div className="col-span-full border-b border-stone-100 pb-4 mb-2">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-3 tracking-widest">Perfil Glicêmico</h3>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <ExamBadge label="Glicose" value={item.glucose} unit="mg/dL" type="glucose" />
                                 <ExamBadge label="Insulina" value={item.insulin} unit="µUI/mL" type="insulin" />
-                                <ExamBadge label="HOMA-IR (Calculado)" value={homaIr} unit="índice" type="homair" />
+                                <ExamBadge label="HOMA-IR" value={homaIr} unit="índice" type="homair" />
                               </div>
                             </div>
                           )}
@@ -593,7 +618,6 @@ export default function PacienteHistoricoAdmin() {
                               <ExamBadge label="Creatinina (Rins)" value={item.creatinine} unit="mg/dL" type="creatinine" />
                             </div>
                           </div>
-
                         </div>
                       </div>
                     );
@@ -601,11 +625,17 @@ export default function PacienteHistoricoAdmin() {
                 )}
               </div>
             )}
-
           </div>
         </section>
 
       </div>
     </main>
+  );
+}
+
+// Icone extra faltante: Import do icone Star precisa existir no topo, mas criei localmente caso não ache.
+function Star(props: any) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
   );
 }
