@@ -1,76 +1,101 @@
 import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { userId, email, name } = body;
 
-    // 1. Validação básica
+    // 1. LÓGICA DE URL PARA LOCALHOST:
+    // O Mercado Pago é exigente com URLs. Se estivermos locais, usamos um domínio fake com HTTPS
+    // apenas para o validador aceitar a criação do link.
+    let siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+    if (!siteUrl || siteUrl.includes('localhost')) {
+      siteUrl = 'https://vanusazacariasnutri.com.br'; 
+    }
+
     if (!userId) {
       return NextResponse.json({ error: 'User ID é obrigatório' }, { status: 400 });
     }
 
-    // 2. Inicializa o cliente do Mercado Pago com a chave secreta
-    const client = new MercadoPagoConfig({ 
-      accessToken: process.env.MP_ACCESS_TOKEN || '' 
-    });
+    // 2. BUSCAR PREÇO DINÂMICO NO SUPABASE (Configurado pela Vanusa no Painel)
+    let finalPrice = 297.00; // Valor de segurança caso o banco falhe
+    try {
+      const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+      );
+      
+      const { data: settings } = await supabaseAdmin
+        .from('system_settings')
+        .select('premium_price')
+        .eq('id', 1)
+        .single();
 
+      if (settings?.premium_price) {
+        finalPrice = parseFloat(settings.premium_price);
+        console.log("Preço dinâmico recuperado do banco:", finalPrice);
+      }
+    } catch (e) {
+      console.error("Erro ao buscar preço, usando padrão 297.00");
+    }
+
+    // 3. VALIDAR TOKEN MERCADO PAGO
+    const mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken) {
+      return NextResponse.json({ error: 'Configuração de pagamento ausente no servidor.' }, { status: 500 });
+    }
+
+    // 4. INICIALIZAR MERCADO PAGO
+    const client = new MercadoPagoConfig({ accessToken: mpToken });
     const preference = new Preference(client);
 
-    // 3. Cria a intenção de pagamento (Preferência)
+    // 5. CRIAR PREFERÊNCIA DE PAGAMENTO (O que o cliente vê na tela do MP)
     const response = await preference.create({
       body: {
         items: [
           {
             id: 'premium_plan',
-            title: 'Acompanhamento Nutricional Premium - Vanusa Zacarias',
+            title: 'Plano Premium - Vanusa Zacarias',
             description: 'Acesso completo ao plano alimentar, métricas e histórico clínico.',
+            unit_price: finalPrice, // <--- VALOR QUE VEM DO PAINEL ADMIN!
             quantity: 1,
-            unit_price: 297.00, // VALOR DA CONSULTA/PLANO (Altere aqui se necessário)
             currency_id: 'BRL',
           }
         ],
         payer: {
-          email: email || 'paciente@email.com',
+          // Se o email for o da Vanusa (vendedor), trocamos para um teste para evitar erro de auto-pagamento
+          email: email.includes('vankadosh') ? 'paciente_teste_mp@email.com' : email,
           name: name || 'Paciente',
         },
-        // O external_reference é o segredo da integração! 
-        // É através dele que o webhook saberá qual paciente no Supabase pagou.
-        external_reference: userId, 
-        
-        // URLs para onde o paciente volta após pagar
+        external_reference: userId, // ID vital para o Webhook saber quem pagou
         back_urls: {
-          success: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?payment=success`,
-          failure: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?payment=failure`,
-          pending: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?payment=pending`,
+          success: `${siteUrl}/dashboard?payment=success`,
+          failure: `${siteUrl}/dashboard?payment=failure`,
+          pending: `${siteUrl}/dashboard?payment=pending`,
         },
-        auto_return: 'approved',
-        
-        // Formas de pagamento (Aqui bloqueamos boleto se quiser, deixando só PIX/Cartão)
+        // Métodos de pagamento: Bloqueamos Boleto (ticket) para evitar demora na liberação
         payment_methods: {
-          excluded_payment_types: [
-            { id: 'ticket' } // Remove Boleto para aprovação ser imediata
-          ],
-          installments: 12 // Permite parcelar em até 12x no cartão
+          excluded_payment_types: [{ id: 'ticket' }],
+          installments: 12 // Permite parcelar em até 12x
         },
-        
-        // URL que o Mercado Pago vai chamar silenciosamente quando o pagamento for aprovado
-        notification_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhook`,
+        // URL que o Mercado Pago avisará quando o PIX/Cartão for aprovado
+        notification_url: `${siteUrl}/api/webhook`,
       }
     });
 
-    // 4. Retorna a URL de checkout gerada pelo Mercado Pago (init_point)
+    // 6. RETORNAR O LINK DE PAGAMENTO (init_point)
     return NextResponse.json({ 
-      init_point: response.init_point, // Link padrão
+      init_point: response.init_point,
       id: response.id
     });
 
   } catch (error: any) {
-    console.error('Erro crítico ao gerar pagamento no Mercado Pago:', error);
-    return NextResponse.json(
-      { error: 'Falha ao processar o checkout', details: error.message }, 
-      { status: 500 }
-    );
+    console.error("ERRO NO CHECKOUT (DETALHADO):", JSON.stringify(error.cause || error, null, 2));
+    return NextResponse.json({ 
+      error: 'Falha ao processar pagamento.', 
+      details: error?.message 
+    }, { status: 500 });
   }
 }
