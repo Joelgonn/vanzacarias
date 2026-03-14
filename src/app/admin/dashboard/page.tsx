@@ -36,7 +36,7 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
-  const [hasAcknowledgedNew, setHasAcknowledgedNew] = useState(false);
+  const [lastSeenNewPatientTime, setLastSeenNewPatientTime] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'pacientes' | 'leads' | 'agenda' | 'financeiro'>('pacientes');
   
   // Estados de Edição de Paciente
@@ -100,7 +100,16 @@ export default function AdminDashboard() {
           if (daysSinceLast >= 7) isLate = true;
         }
 
-        const isNew = profile.created_at ? (new Date().getTime() - new Date(profile.created_at).getTime()) < (24 * 60 * 60 * 1000) : false;
+        // --- Lógica à prova de falhas para Novo Paciente ---
+        let isNew = false;
+        if (profile.created_at) {
+          const now = new Date();
+          const createdDate = new Date(profile.created_at);          
+         
+          const diffInHours = (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60);          
+          
+          isNew = diffInHours >= 0 && diffInHours <= 24;
+        }
 
         return {
           ...profile,
@@ -129,8 +138,13 @@ export default function AdminDashboard() {
     }
   }
 
-  const newPatientsCount = useMemo(() => patients.filter(p => p.isNew).length, [patients]);
+  const newPatientsCount = useMemo(() => patients.filter(p => p.isNew).length, [patients]);  
+  
   const activeLeadsCount = useMemo(() => leads.length, [leads]);
+  
+  const unseenPatientsCount = useMemo(() => {
+    return patients.filter(p => p.isNew && new Date(p.created_at).getTime() > lastSeenNewPatientTime).length;
+  }, [patients, lastSeenNewPatientTime]);
 
   const updateProfile = async (id: string) => {
     const updateData = {
@@ -204,6 +218,11 @@ export default function AdminDashboard() {
       fetchAdminData();
     }
     checkAuth();
+
+    const savedTime = localStorage.getItem('last_seen_patient_time');
+    if (savedTime) {
+      setLastSeenNewPatientTime(parseInt(savedTime, 10));
+    }
   }, [router, supabase]);
 
   const handleLogout = async () => {
@@ -212,9 +231,16 @@ export default function AdminDashboard() {
   };
 
   const handleBellClick = () => {
-    setHasAcknowledgedNew(true);
     setShowOnlyNew(!showOnlyNew);
     setActiveTab('pacientes'); 
+    
+    // SALVAR NA MEMÓRIA: Pega a data do paciente novo mais recente e salva
+    const newPats = patients.filter(p => p.isNew);
+    if (newPats.length > 0) {
+      const maxTime = Math.max(...newPats.map(p => new Date(p.created_at).getTime()));
+      localStorage.setItem('last_seen_patient_time', maxTime.toString());
+      setLastSeenNewPatientTime(maxTime);
+    }
   };
 
   if (loading) return (
@@ -244,11 +270,11 @@ export default function AdminDashboard() {
             >
               <Bell 
                 size={24} 
-                className={`${(newPatientsCount > 0 && !hasAcknowledgedNew) ? 'text-nutri-800 animate-bounce' : showOnlyNew ? 'text-nutri-800' : 'text-stone-400'}`} 
+                className={`${unseenPatientsCount > 0 ? 'text-nutri-800 animate-bounce' : showOnlyNew ? 'text-nutri-800' : 'text-stone-400'}`} 
               />
-              {(newPatientsCount > 0 && !hasAcknowledgedNew) && (
+              {unseenPatientsCount > 0 && (
                 <span className="absolute -top-0 -right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white">
-                  {newPatientsCount}
+                  {unseenPatientsCount}
                 </span>
               )}
             </button>
@@ -462,28 +488,57 @@ export default function AdminDashboard() {
           CONTEÚDO: LEADS
           ========================================= */}
       {activeTab === 'leads' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
-          {filteredLeads.map((lead) => {
-            const numRespostas = Object.keys(lead.respostas || {}).length;
-            const progresso = (numRespostas / 10) * 100;
-            return (
-              <div key={lead.id} className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-lg text-stone-900 flex items-center gap-2"><UserPlus size={18} className="text-amber-500" /> {lead.nome}</h3>
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${lead.status === 'concluido' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{lead.status === 'concluido' ? 'Conclído' : 'Abandonou'}</span>
-                  </div>
-                  <p className="text-sm font-medium text-stone-600 mb-6">{lead.whatsapp}</p>
-                  <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-6">
-                    <div className="flex justify-between text-[10px] font-bold uppercase text-stone-400 mb-2"><span>Progresso Quiz</span><span className="text-nutri-800">{progresso}%</span></div>
-                    <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden"><div className="h-full bg-nutri-800 transition-all" style={{ width: `${progresso}%` }}></div></div>
-                    <p className="text-xs text-stone-500 mt-3 flex items-center gap-1"><Clock size={12} /> {new Date(lead.updated_at).toLocaleDateString('pt-BR')}</p>
-                  </div>
-                </div>
-                <a href={`https://wa.me/55${lead.whatsapp.replace(/\D/g, '')}?text=Olá%20${lead.nome.split(' ')[0]},%20posso%20te%20ajudar%20com%20nossa%20avaliação?`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-white py-3.5 rounded-xl font-bold hover:bg-[#1ebd5b] transition-all"><MessageCircle size={18} /> Resgatar Contato</a>
+        <div className="animate-fade-in-up">
+          {filteredLeads.length === 0 ? (
+            // AVISO DE LISTA VAZIA (Aparece quando não tem leads)
+            <div className="bg-white p-12 rounded-[2.5rem] shadow-sm border border-stone-100 flex flex-col items-center justify-center text-center">
+              <div className="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mb-6">
+                <Target size={32} className="text-stone-300" />
               </div>
-            );
-          })}
+              <h3 className="text-xl font-bold text-stone-900 mb-2">Nenhum lead no momento</h3>
+              <p className="text-stone-500 text-sm max-w-md">
+                Você não possui oportunidades em andamento no momento. Quando alguém iniciar a avaliação do funil, aparecerá aqui.
+              </p>
+            </div>
+          ) : (
+            // LISTA DE LEADS (Aparece quando tem leads)
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLeads.map((lead) => {
+                const numRespostas = Object.keys(lead.respostas || {}).length;
+                const progresso = (numRespostas / 10) * 100;
+                return (
+                  <div key={lead.id} className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="font-bold text-lg text-stone-900 flex items-center gap-2">
+                          <UserPlus size={18} className="text-amber-500" /> {lead.nome}
+                        </h3>
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${lead.status === 'concluido' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {lead.status === 'concluido' ? 'Concluído' : 'Abandonou'}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-stone-600 mb-6">{lead.whatsapp}</p>
+                      <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-6">
+                        <div className="flex justify-between text-[10px] font-bold uppercase text-stone-400 mb-2">
+                          <span>Progresso Quiz</span>
+                          <span className="text-nutri-800">{progresso}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-nutri-800 transition-all" style={{ width: `${progresso}%` }}></div>
+                        </div>
+                        <p className="text-xs text-stone-500 mt-3 flex items-center gap-1">
+                          <Clock size={12} /> {new Date(lead.updated_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                    </div>
+                    <a href={`https://wa.me/55${lead.whatsapp?.replace(/\D/g, '')}?text=Olá%20${lead.nome?.split(' ')[0]},%20posso%20te%20ajudar%20com%20nossa%20avaliação?`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-white py-3.5 rounded-xl font-bold hover:bg-[#1ebd5b] transition-all">
+                      <MessageCircle size={18} /> Resgatar Contato
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -512,7 +567,7 @@ export default function AdminDashboard() {
                 rel="noopener noreferrer"
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-md active:scale-95"
               >
-                Gerenciar Painel Calendly <ExternalLink size={16} />
+                Consultas Agendadas <ExternalLink size={16} />
               </a>
             </div>
           </div>
