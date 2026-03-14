@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, LogOut, Users, MessageCircle, Search, Filter, 
   Edit2, Save, X, TrendingUp, AlertCircle, Bell, BellRing, 
-  Activity, Target, Eye, UserPlus, Clock
+  Activity, Target, Eye, UserPlus, Clock, ChevronRight, Star
 } from 'lucide-react';
 import AdminUpload from '@/components/AdminUpload';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
@@ -28,11 +28,13 @@ const questionTitles = [
 
 export default function AdminDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
-  const [leads, setLeads] = useState<any[]>([]); // Novo estado para os Leads
+  const [leads, setLeads] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
+  const [showOnlyNew, setShowOnlyNew] = useState(false);
+  const [hasAcknowledgedNew, setHasAcknowledgedNew] = useState(false); // Novo estado para saber se ela já clicou no sino hoje
   const [activeTab, setActiveTab] = useState<'pacientes' | 'leads'>('pacientes');
   
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,7 +45,8 @@ export default function AdminDashboard() {
     data_nascimento: '', 
     sexo: '', 
     tipo_perfil: 'adulto',
-    meta_peso: '' 
+    meta_peso: '',
+    account_type: 'free'
   });
 
   const router = useRouter();
@@ -52,7 +55,6 @@ export default function AdminDashboard() {
   async function fetchAdminData() {
     setLoading(true);
     try {
-      // 1. Busca os Pacientes Oficiais
       const { data: profiles, error: pError } = await supabase.from('profiles').select('*');
       if (pError) throw pError;
 
@@ -88,11 +90,10 @@ export default function AdminDashboard() {
       
       setPatients(combined || []);
 
-      // 2. Busca os Leads do Funil (Que ainda não criaram conta)
       const { data: leadsData } = await supabase
         .from('leads_avaliacao')
         .select('*')
-        .neq('status', 'convertido') // Não mostra quem já virou paciente
+        .neq('status', 'convertido')
         .order('updated_at', { ascending: false });
 
       setLeads(leadsData || []);
@@ -126,9 +127,10 @@ export default function AdminDashboard() {
     return patients.filter(p => {
       const nameMatch = p.full_name?.toLowerCase().includes(searchTerm.toLowerCase());
       const statusMatch = statusFilter === 'todos' || p.status === statusFilter;
-      return nameMatch && statusMatch;
+      const newMatch = showOnlyNew ? p.isNew : true;
+      return nameMatch && statusMatch && newMatch;
     });
-  }, [patients, searchTerm, statusFilter]);
+  }, [patients, searchTerm, statusFilter, showOnlyNew]);
 
   const filteredLeads = useMemo(() => {
     return leads.filter(l => l.nome?.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -151,6 +153,12 @@ export default function AdminDashboard() {
     router.push('/login');
   };
 
+  const handleBellClick = () => {
+    setHasAcknowledgedNew(true);
+    setShowOnlyNew(!showOnlyNew);
+    setActiveTab('pacientes'); 
+  };
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50">
       <Loader2 className="animate-spin text-nutri-800" size={48} />
@@ -169,14 +177,23 @@ export default function AdminDashboard() {
           </div>
           
           <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="relative group cursor-help" title={`${newPatientsCount} novos pacientes hoje`}>
-              <Bell size={24} className={`${newPatientsCount > 0 ? 'text-nutri-800 animate-pulse' : 'text-stone-300'}`} />
-              {newPatientsCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white">
+            
+            {/* SININHO DO TOPO */}
+            <button 
+              onClick={handleBellClick}
+              className={`relative group p-2 rounded-full transition-all ${showOnlyNew ? 'bg-nutri-100' : 'hover:bg-stone-100'}`}
+              title={showOnlyNew ? "Remover filtro de novos pacientes" : "Mostrar novos pacientes"}
+            >
+              <Bell 
+                size={24} 
+                className={`${(newPatientsCount > 0 && !hasAcknowledgedNew) ? 'text-nutri-800 animate-bounce' : showOnlyNew ? 'text-nutri-800' : 'text-stone-400'}`} 
+              />
+              {(newPatientsCount > 0 && !hasAcknowledgedNew) && (
+                <span className="absolute -top-0 -right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white">
                   {newPatientsCount}
                 </span>
               )}
-            </div>
+            </button>
 
             <button onClick={handleLogout} className="flex items-center gap-2 text-red-600 bg-red-50 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors">
               <LogOut size={18} /> Sair
@@ -207,7 +224,7 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* ABAS (TABS) */}
+      {/* ABAS */}
       <div className="flex gap-4 mb-8 overflow-x-auto scrollbar-hide">
         <button 
           onClick={() => setActiveTab('pacientes')}
@@ -224,36 +241,64 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* CONTEÚDO: PACIENTES */}
+      {/* LISTA DE PACIENTES */}
       {activeTab === 'pacientes' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
           {filteredPatients.map((p) => (
             <div key={p.id} className={`bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border flex flex-col justify-between transition-all ${p.isNew ? 'border-nutri-300 ring-2 ring-nutri-50' : p.isLate ? 'border-amber-200 ring-2 ring-amber-50' : 'border-stone-100'}`}>
+              
               {editingId === p.id ? (
+                // MODO EDIÇÃO
                 <div className="space-y-4">
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Nascimento</label>
-                  <input type="date" className="w-full p-3 border rounded-2xl" defaultValue={p.data_nascimento} onChange={e => setEditForm({...editForm, data_nascimento: e.target.value})} />
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Peso Meta (kg)</label>
-                  <input type="number" step="0.1" className="w-full p-3 border rounded-2xl" defaultValue={p.meta_peso} onChange={e => setEditForm({...editForm, meta_peso: e.target.value})} />
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Perfil</label>
-                  <select className="w-full p-3 border rounded-2xl" defaultValue={p.tipo_perfil} onChange={e => setEditForm({...editForm, tipo_perfil: e.target.value})}>
-                    <option value="adulto">Adulto</option>
-                    <option value="atleta">Atleta</option>
-                    <option value="crianca">Criança</option>
-                    <option value="idoso">Idoso</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Nascimento</label>
+                      <input type="date" className="w-full p-3 border rounded-xl font-medium text-sm mt-1" defaultValue={p.data_nascimento} onChange={e => setEditForm({...editForm, data_nascimento: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Meta (kg)</label>
+                      <input type="number" step="0.1" className="w-full p-3 border rounded-xl font-medium text-sm mt-1" defaultValue={p.meta_peso} onChange={e => setEditForm({...editForm, meta_peso: e.target.value})} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Perfil Clínico</label>
+                    <select className="w-full p-3 border rounded-xl font-medium text-sm mt-1" defaultValue={p.tipo_perfil} onChange={e => setEditForm({...editForm, tipo_perfil: e.target.value})}>
+                      <option value="adulto">Adulto</option>
+                      <option value="atleta">Atleta</option>
+                      <option value="crianca">Criança</option>
+                      <option value="idoso">Idoso</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1"><Star size={12}/> Plano de Acesso</label>
+                    <select className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl font-bold text-sm mt-1 text-amber-900 outline-none focus:ring-2 focus:ring-amber-500" defaultValue={p.account_type || 'free'} onChange={e => setEditForm({...editForm, account_type: e.target.value})}>
+                      <option value="free">Básico (Apenas Check-in)</option>
+                      <option value="premium">Premium (Acesso Total Liberado)</option>
+                    </select>
+                  </div>
+
                   <div className="flex gap-3 pt-2">
-                    <button onClick={() => updateProfile(p.id)} className="bg-nutri-900 text-white p-3 rounded-2xl flex-1 flex justify-center hover:bg-nutri-800"><Save size={20}/></button>
-                    <button onClick={() => setEditingId(null)} className="bg-stone-100 text-stone-600 p-3 rounded-2xl flex-1 flex justify-center hover:bg-stone-200"><X size={20}/></button>
+                    <button onClick={() => updateProfile(p.id)} className="bg-nutri-900 text-white p-3 rounded-xl flex-1 flex justify-center hover:bg-nutri-800"><Save size={20}/></button>
+                    <button onClick={() => setEditingId(null)} className="bg-stone-100 text-stone-600 p-3 rounded-xl flex-1 flex justify-center hover:bg-stone-200"><X size={20}/></button>
                   </div>
                 </div>
               ) : (
+                // MODO VISUALIZAÇÃO
                 <>
                   <div>
                     <div className="flex justify-between items-start mb-6">
                       <div className="flex flex-col">
                         <Link href={`/admin/paciente/${p.id}/historico`} className="group font-bold text-lg flex items-center gap-2 text-stone-900 hover:text-nutri-800 transition-colors">
-                          <Users size={18} className="text-nutri-800" /> {p.full_name || 'Sem nome'}
+                          <Users size={18} className="text-nutri-800" /> 
+                          {p.full_name || 'Sem nome'}
+                          {/* ESTRELINHA SE FOR PREMIUM - FIX TIPAGEM TS COM SPAN TITLE */}
+                          {p.account_type === 'premium' && (
+                            <span title="Paciente Premium">
+                              <Star size={14} className="text-amber-500 fill-amber-500" />
+                            </span>
+                          )}
                           <TrendingUp size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                         </Link>
                         {p.isNew ? (
@@ -268,10 +313,24 @@ export default function AdminDashboard() {
                       </div>
                       
                       <div className="flex flex-col items-end gap-2">
-                        <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${p.status === 'plano_liberado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${p.status === 'plano_liberado' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
                           {p.status === 'plano_liberado' ? 'Liberado' : 'Pendente'}
                         </span>
-                        <button onClick={() => { setEditingId(p.id); setEditForm({ data_nascimento: p.data_nascimento, sexo: p.sexo, tipo_perfil: p.tipo_perfil, meta_peso: p.meta_peso }); }} className="p-2 hover:bg-stone-100 rounded-lg transition-colors"><Edit2 size={16} className="text-stone-400" /></button>
+                        <button 
+                          onClick={() => { 
+                            setEditingId(p.id); 
+                            setEditForm({ 
+                              data_nascimento: p.data_nascimento, 
+                              sexo: p.sexo, 
+                              tipo_perfil: p.tipo_perfil, 
+                              meta_peso: p.meta_peso,
+                              account_type: p.account_type || 'free'
+                            }); 
+                          }} 
+                          className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
+                        >
+                          <Edit2 size={16} className="text-stone-400" />
+                        </button>
                       </div>
                     </div>
 
@@ -280,7 +339,6 @@ export default function AdminDashboard() {
                       <div><p className="text-[10px] text-stone-400 uppercase font-bold text-center">Peso Meta</p><p className="text-sm font-semibold text-stone-700">{p.meta_peso ? `${p.meta_peso} kg` : '---'}</p></div>
                     </div>
 
-                    {/* MOSTRAR AVALIAÇÃO - CORRIGIDO */}
                     {p.evaluation ? (
                       <button 
                         onClick={() => setEvalModalOpen({ isOpen: true, data: p.evaluation.answers, name: p.full_name })}
@@ -299,9 +357,24 @@ export default function AdminDashboard() {
 
                   {/* AÇÕES */}
                   <div className="pt-4 border-t border-stone-100 flex items-center justify-between flex-wrap gap-2">
-                    <AdminUpload patientId={p.id} onUpdate={fetchAdminData} />
                     
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <AdminUpload patientId={p.id} onUpdate={fetchAdminData} />
+                    </div>
+                    
+                    <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0 justify-end">
+                      
+                      {/* SININHO DE WHATSAPP CHECK-IN */}
+                      <a 
+                        href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá%20${p.full_name?.split(' ')[0]},%20aqui%20é%20a%20Nutri%20Vanusa!%20Notei%20que%20você%20ainda%20não%20enviou%20seu%20check-in%20dessa%20semana.%20Como%20estão%20as%20coisas?`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className={`p-3 rounded-xl transition-all shadow-sm flex items-center justify-center ${p.isLate ? 'bg-amber-100 text-amber-600 hover:bg-amber-200 animate-bounce' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}
+                        title="Cobrar Check-in no WhatsApp"
+                      >
+                        <BellRing size={18} />
+                      </a>
+
                       <button 
                         onClick={() => setSelectedPatient({ id: p.id, name: p.full_name })}
                         className="p-3 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
@@ -319,7 +392,7 @@ export default function AdminDashboard() {
           ))}
           {filteredPatients.length === 0 && (
             <div className="col-span-full py-20 text-center bg-white rounded-[2rem] border border-dashed border-stone-200">
-              <p className="text-stone-400 font-medium">Nenhum paciente encontrado.</p>
+              <p className="text-stone-400 font-medium">Nenhum paciente encontrado com esses filtros.</p>
             </div>
           )}
         </div>
@@ -422,14 +495,5 @@ export default function AdminDashboard() {
         patientName={selectedPatient?.name || ''} 
       />
     </main>
-  );
-}
-
-// Para usar o ícone do ChevronRight no botão de avaliação
-function ChevronRight(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m9 18 6-6-6-6"/>
-    </svg>
   );
 }
