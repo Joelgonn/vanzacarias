@@ -11,9 +11,9 @@ export default function Agendamentos() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [processingCheckout, setProcessingCheckout] = useState(false);
-
-  // COLOQUE O LINK REAL DO SEU CALENDLY AQUI:
-  const calendlyUrl = "https://calendly.com/vankadosh";
+  
+  // NOVO ESTADO: O link do Calendly agora vem do banco de dados
+  const [calendlyUrl, setCalendlyUrl] = useState<string>('');
 
   const supabase = createClient();
   const router = useRouter();
@@ -27,15 +27,20 @@ export default function Agendamentos() {
           return;
         }
 
-        // 1. Busca o preço da consulta no painel Admin (usa * para não quebrar)
+        // 1. Busca as configurações (Preço da consulta e Link do Calendly)
         const { data: settings } = await supabase
           .from('system_settings')
           .select('*')
           .eq('id', 1)
           .single();
 
-        if (settings && settings.consultation_price) {
-          setPrice(parseFloat(settings.consultation_price));
+        if (settings) {
+          if (settings.consultation_price) {
+            setPrice(parseFloat(settings.consultation_price));
+          }
+          if (settings.calendly_url) {
+            setCalendlyUrl(settings.calendly_url);
+          }
         }
 
         // 2. Busca o perfil do usuário
@@ -179,14 +184,25 @@ export default function Agendamentos() {
                 <p className="text-xs text-nutri-200 mb-8 flex-1 leading-relaxed relative z-10">
                   Se o pagamento já foi feito (ou se você tem direito a retorno), clique abaixo para ver os horários disponíveis e reservar na hora.
                 </p>
-                <a 
-                  href={calendlyUrl} 
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full relative z-10 inline-flex items-center justify-center gap-2 bg-amber-500 text-amber-950 px-6 py-4 rounded-xl font-bold hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-95 text-sm"
-                >
-                  Abrir Calendário <ExternalLink size={16} />
-                </a>
+                
+                {calendlyUrl ? (
+                  <a 
+                    href={calendlyUrl} 
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full relative z-10 inline-flex items-center justify-center gap-2 bg-amber-500 text-amber-950 px-6 py-4 rounded-xl font-bold hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-95 text-sm"
+                  >
+                    Abrir Calendário <ExternalLink size={16} />
+                  </a>
+                ) : (
+                  <button 
+                    disabled
+                    className="w-full relative z-10 inline-flex items-center justify-center gap-2 bg-nutri-800 text-nutri-300 px-6 py-4 rounded-xl font-bold opacity-50 cursor-not-allowed text-sm"
+                  >
+                    Agenda indisponível
+                  </button>
+                )}
+                
                 <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl"></div>
               </div>
 

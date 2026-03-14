@@ -7,7 +7,7 @@ import {
   Loader2, LogOut, Users, MessageCircle, Search, Filter, 
   Edit2, Save, X, TrendingUp, AlertCircle, Bell, BellRing, 
   Activity, Target, Eye, UserPlus, Clock, ChevronRight, Star,
-  DollarSign, CreditCard, Settings, FileText, Calendar
+  DollarSign, CreditCard, Settings, FileText, Calendar, Link2, Copy, Check, ExternalLink
 } from 'lucide-react';
 import AdminUpload from '@/components/AdminUpload';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
@@ -32,25 +32,27 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   
-  // Estados de Filtros e Abas
+  // Estados de Filtros e Abas (Adicionado a aba 'agenda')
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [hasAcknowledgedNew, setHasAcknowledgedNew] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pacientes' | 'leads' | 'financeiro'>('pacientes');
+  const [activeTab, setActiveTab] = useState<'pacientes' | 'leads' | 'agenda' | 'financeiro'>('pacientes');
   
   // Estados de Edição de Paciente
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   const [evalModalOpen, setEvalModalOpen] = useState<{isOpen: boolean, data: any, name: string}>({ isOpen: false, data: null, name: '' });
   
-  // Estado do Financeiro (Adicionado os novos preços)
+  // Estado do Financeiro e Configurações
   const [premiumPrice, setPremiumPrice] = useState('297.00');
   const [mealPlanPrice, setMealPlanPrice] = useState('147.00');
   const [consultationPrice, setConsultationPrice] = useState('197.00');
+  const [calendlyUrl, setCalendlyUrl] = useState('https://calendly.com/seu-link-aqui'); // Novo estado para o link
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Estado do formulário de edição (Adicionado has_meal_plan_access)
+  // Estado do formulário de edição
   const [editForm, setEditForm] = useState({ 
     data_nascimento: '', 
     sexo: '', 
@@ -66,13 +68,13 @@ export default function AdminDashboard() {
   async function fetchAdminData() {
     setLoading(true);
     try {
-      // 1. Busca Configurações do Sistema (Preços)
+      // 1. Busca Configurações do Sistema
       const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
       if (settings) {
         if (settings.premium_price) setPremiumPrice(settings.premium_price.toString());
-        // Usamos fallback caso a coluna ainda não exista no banco
         if (settings.meal_plan_price) setMealPlanPrice(settings.meal_plan_price.toString());
         if (settings.consultation_price) setConsultationPrice(settings.consultation_price.toString());
+        if (settings.calendly_url) setCalendlyUrl(settings.calendly_url);
       }
 
       // 2. Busca os Pacientes Oficiais
@@ -145,18 +147,18 @@ export default function AdminDashboard() {
     }
   };
 
-  // Salvar Novos Preços
-  const handleSavePrice = async () => {
+  // Salvar Configurações (Preços + Calendly)
+  const handleSaveSettings = async () => {
     setIsSavingPrice(true);
     
     const updatePayload: any = { 
       premium_price: parseFloat(premiumPrice) 
     };
     
-    // Tenta atualizar as novas colunas, se falhar não quebra o sistema todo
     try {
       updatePayload.meal_plan_price = parseFloat(mealPlanPrice);
       updatePayload.consultation_price = parseFloat(consultationPrice);
+      updatePayload.calendly_url = calendlyUrl;
     } catch(e) {}
 
     const { error } = await supabase
@@ -165,12 +167,18 @@ export default function AdminDashboard() {
       .eq('id', 1);
 
     if (!error) {
-      alert("Configurações financeiras atualizadas com sucesso!");
+      alert("Configurações atualizadas com sucesso!");
     } else {
       console.error(error);
-      alert("Erro ao atualizar preços. Verifique se as novas colunas foram criadas no banco de dados.");
+      alert("Erro ao salvar configurações.");
     }
     setIsSavingPrice(false);
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(calendlyUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const filteredPatients = useMemo(() => {
@@ -256,7 +264,7 @@ export default function AdminDashboard() {
             <Search className="absolute left-3 top-3.5 text-stone-400" size={18} />
             <input 
               type="text" 
-              placeholder={activeTab === 'pacientes' ? "Buscar paciente..." : activeTab === 'leads' ? "Buscar lead..." : "Buscar configuração..."}
+              placeholder={activeTab === 'pacientes' ? "Buscar paciente..." : activeTab === 'leads' ? "Buscar lead..." : "Buscar..."}
               className="w-full pl-10 pr-4 py-3 rounded-2xl border border-stone-200 focus:ring-4 focus:ring-nutri-800/10 outline-none transition-all"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -275,7 +283,7 @@ export default function AdminDashboard() {
       </header>
 
       {/* ABAS DO SISTEMA */}
-      <div className="flex gap-4 mb-8 overflow-x-auto scrollbar-hide">
+      <div className="flex gap-4 mb-8 overflow-x-auto scrollbar-hide pb-2">
         <button 
           onClick={() => setActiveTab('pacientes')} 
           className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap ${activeTab === 'pacientes' ? 'bg-nutri-900 text-white shadow-lg' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'}`}
@@ -290,14 +298,22 @@ export default function AdminDashboard() {
           {activeLeadsCount > 0 && <span className={`ml-1 px-2 py-0.5 rounded-lg text-xs ${activeTab === 'leads' ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>{activeLeadsCount}</span>}
         </button>
         <button 
+          onClick={() => setActiveTab('agenda')} 
+          className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap ${activeTab === 'agenda' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'}`}
+        >
+          <Calendar size={18} /> Minha Agenda
+        </button>
+        <button 
           onClick={() => setActiveTab('financeiro')} 
           className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap ${activeTab === 'financeiro' ? 'bg-amber-600 text-white shadow-lg' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'}`}
         >
-          <DollarSign size={18} /> Financeiro / Preços
+          <Settings size={18} /> Configurações
         </button>
       </div>
 
-      {/* CONTEÚDO: PACIENTES */}
+      {/* =========================================
+          CONTEÚDO: PACIENTES
+          ========================================= */}
       {activeTab === 'pacientes' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
           {filteredPatients.map((p) => (
@@ -442,7 +458,9 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* CONTEÚDO: LEADS */}
+      {/* =========================================
+          CONTEÚDO: LEADS
+          ========================================= */}
       {activeTab === 'leads' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
           {filteredLeads.map((lead) => {
@@ -469,95 +487,169 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* CONTEÚDO: FINANCEIRO REFATORADO COM AS 3 OPÇÕES */}
+      {/* =========================================
+          NOVA ABA: AGENDA (CALENDLY)
+          ========================================= */}
+      {activeTab === 'agenda' && (
+        <div className="animate-fade-in-up">
+          <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h2 className="text-2xl font-bold text-stone-900 flex items-center gap-3"><Calendar className="text-blue-500" /> Controle de Consultas</h2>
+              <p className="text-stone-500 mt-1 text-sm">Acompanhe seus horários ou agende um paciente manualmente através do seu calendário.</p>
+            </div>
+            
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <button 
+                onClick={copyToClipboard}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-700 px-5 py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
+              >
+                {copiedLink ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
+                {copiedLink ? 'Copiado!' : 'Copiar Link'}
+              </button>
+              <a 
+                href="https://calendly.com/app/scheduled_events/user/me" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-md active:scale-95"
+              >
+                Gerenciar Painel Calendly <ExternalLink size={16} />
+              </a>
+            </div>
+          </div>
+
+          {/* Calendly Embutido */}
+          <div className="bg-white rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden h-[800px] flex flex-col items-center justify-center relative">
+            {calendlyUrl && calendlyUrl.includes('calendly.com') ? (
+              <iframe 
+                src={calendlyUrl} 
+                width="100%" 
+                height="100%" 
+                frameBorder="0"
+                className="absolute inset-0"
+              ></iframe>
+            ) : (
+              <div className="text-center p-8 max-w-md">
+                <div className="w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-6"><Link2 size={32} className="text-stone-300" /></div>
+                <h3 className="font-bold text-xl text-stone-800 mb-2">Link não configurado</h3>
+                <p className="text-stone-500 text-sm mb-6">Você precisa configurar o seu link do Calendly na aba "Configurações" para visualizá-lo aqui.</p>
+                <button onClick={() => setActiveTab('financeiro')} className="bg-nutri-900 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-nutri-800">Ir para Configurações</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================
+          CONTEÚDO: CONFIGURAÇÕES (PREÇOS + LINKS)
+          ========================================= */}
       {activeTab === 'financeiro' && (
         <div className="max-w-4xl mx-auto animate-fade-in-up">
           <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-sm border border-stone-100">
             <div className="flex items-center gap-4 mb-10 border-b border-stone-50 pb-8">
               <div className="bg-amber-100 p-4 rounded-3xl text-amber-600">
-                <CreditCard size={32} />
+                <Settings size={32} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">Configurações de Preços</h2>
-                <p className="text-stone-500">Defina os valores dos serviços oferecidos no aplicativo do paciente.</p>
+                <h2 className="text-2xl font-bold text-stone-900">Configurações do Sistema</h2>
+                <p className="text-stone-500">Defina os valores dos serviços e configure links externos (como sua Agenda).</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="space-y-10 mb-8">
               
-              {/* Opção 1: Pacote Premium Completo */}
-              <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
-                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
-                  <Star size={16} className="text-amber-500" /> Premium Completo
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-light text-stone-300">R$</span>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={premiumPrice} 
-                    onChange={(e) => setPremiumPrice(e.target.value)}
-                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
-                    placeholder="0.00"
-                  />
+              {/* BLOCO DE PREÇOS */}
+              <div>
+                <h3 className="text-sm font-black text-stone-400 uppercase tracking-widest mb-6 flex items-center gap-2"><DollarSign size={16} /> Preços de Venda (Checkout)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Opção 1: Pacote Premium Completo */}
+                  <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                    <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                      <Star size={16} className="text-amber-500" /> Premium Completo
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-light text-stone-300">R$</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={premiumPrice} 
+                        onChange={(e) => setPremiumPrice(e.target.value)}
+                        className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">Acesso total ao app: métricas, histórico e plano alimentar.</p>
+                  </div>
+
+                  {/* Opção 2: Apenas Plano Alimentar */}
+                  <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                    <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                      <FileText size={16} className="text-nutri-800" /> Meu Plano (PDF)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-light text-stone-300">R$</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={mealPlanPrice} 
+                        onChange={(e) => setMealPlanPrice(e.target.value)}
+                        className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">Compra avulsa apenas do cardápio. Paciente continua Free.</p>
+                  </div>
+
+                  {/* Opção 3: Agendamento de Consulta */}
+                  <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                    <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                      <Calendar size={16} className="text-blue-500" /> Nova Consulta
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-light text-stone-300">R$</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={consultationPrice} 
+                        onChange={(e) => setConsultationPrice(e.target.value)}
+                        className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">Valor cobrado para o paciente comprar uma consulta avulsa.</p>
+                  </div>
                 </div>
-                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
-                  Acesso total ao app: métricas, histórico e plano alimentar em PDF.
-                </p>
               </div>
 
-              {/* Opção 2: Apenas Plano Alimentar */}
-              <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
-                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
-                  <FileText size={16} className="text-nutri-800" /> Meu Plano (PDF)
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-light text-stone-300">R$</span>
+              {/* BLOCO DE INTEGRAÇÕES */}
+              <div>
+                <h3 className="text-sm font-black text-stone-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Link2 size={16} /> Integrações Externas</h3>
+                <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                  <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                    <Calendar size={16} className="text-blue-500" /> URL do Calendly Oficial
+                  </label>
                   <input 
-                    type="number" 
-                    step="0.01" 
-                    value={mealPlanPrice} 
-                    onChange={(e) => setMealPlanPrice(e.target.value)}
-                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
-                    placeholder="0.00"
+                    type="url" 
+                    value={calendlyUrl} 
+                    onChange={(e) => setCalendlyUrl(e.target.value)}
+                    className="w-full bg-transparent text-base font-medium text-stone-900 outline-none border-b border-stone-200 focus:border-nutri-800 pb-2 transition-colors"
+                    placeholder="https://calendly.com/seu-link-aqui"
                   />
+                  <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
+                    Cole aqui o link principal da sua agenda. Ele será exibido na tela do paciente e na aba "Minha Agenda" aqui no painel.
+                  </p>
                 </div>
-                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
-                  Compra avulsa apenas do cardápio em PDF. Paciente continua Free.
-                </p>
-              </div>
-
-              {/* Opção 3: Agendamento de Consulta */}
-              <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
-                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
-                  <Calendar size={16} className="text-blue-500" /> Nova Consulta
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-light text-stone-300">R$</span>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={consultationPrice} 
-                    onChange={(e) => setConsultationPrice(e.target.value)}
-                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
-                    placeholder="0.00"
-                  />
-                </div>
-                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
-                  Valor cobrado para o paciente agendar um novo encontro.
-                </p>
               </div>
 
             </div>
 
-            <div className="pt-4 border-t border-stone-50">
+            <div className="pt-8 border-t border-stone-50">
               <button 
-                onClick={handleSavePrice}
+                onClick={handleSaveSettings}
                 disabled={isSavingPrice}
                 className="w-full md:w-auto px-10 flex mx-auto items-center justify-center gap-3 bg-nutri-900 text-white py-5 rounded-2xl font-bold text-lg hover:bg-nutri-800 transition-all shadow-xl shadow-nutri-900/20 active:scale-[0.98] disabled:opacity-50"
               >
                 {isSavingPrice ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
-                Salvar Todos os Valores
+                Salvar Configurações
               </button>
             </div>
           </div>
