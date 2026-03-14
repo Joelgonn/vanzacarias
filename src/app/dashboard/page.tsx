@@ -39,9 +39,10 @@ export default function Dashboard() {
       return;
     }
 
+    // ADICIONADO: has_meal_plan_access na busca
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at')
+      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access')
       .eq('id', session.user.id)
       .single();
 
@@ -78,8 +79,8 @@ export default function Dashboard() {
     loadData();
   };
 
-  // INTEGRAÇÃO COM MERCADO PAGO - GERA O LINK E REDIRECIONA
-  const handleUpgradeClick = async () => {
+  // INTEGRAÇÃO COM MERCADO PAGO - AGORA RECEBE O TIPO DE PLANO
+  const handleUpgradeClick = async (planType: string = 'premium') => {
     setProcessingCheckout(true);
     try {
       // 1. Pega os dados da sessão atual
@@ -89,7 +90,7 @@ export default function Dashboard() {
         return;
       }
 
-      // 2. Chama a nossa API de Checkout
+      // 2. Chama a nossa API de Checkout passando o tipo de plano
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: {
@@ -99,12 +100,13 @@ export default function Dashboard() {
           userId: session.user.id,
           email: session.user.email,
           name: profile?.full_name || 'Paciente Vanusa Nutri',
+          planType: planType // NOVO: envia qual plano está comprando
         }),
       });
 
       const data = await response.json();
 
-      // 3. Redireciona para o link de pagamento criptografado
+      // 3. Redireciona para o link de pagamento
       if (data.init_point) {
         window.location.href = data.init_point; 
       } else {
@@ -155,10 +157,13 @@ export default function Dashboard() {
   }, [checkins]);
 
   // ==========================================
-  // LÓGICA DE FREEMIUM / ASSINATURA
+  // LÓGICA DE FREEMIUM / ASSINATURA E ACESSOS
   // ==========================================
 
   const isPremium = profile?.account_type === 'premium';
+  
+  // NOVO: Ele pode não ser premium, mas ter acesso avulso ao plano
+  const canAccessMealPlan = isPremium || profile?.has_meal_plan_access;
   
   const trialData = useMemo(() => {
     if (!profile) return { isActive: false, daysLeft: 0 };
@@ -195,7 +200,7 @@ export default function Dashboard() {
         <nav className="flex-1 space-y-6">
           <Link href="/dashboard" className="text-nutri-800 font-bold text-sm block transition-all">Painel Geral</Link>
           <Link href="/dashboard/meu-plano" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors flex justify-between items-center">
-            Meu Plano {!isPremium && <Lock size={12} className="text-stone-300"/>}
+            Meu Plano {!canAccessMealPlan && <Lock size={12} className="text-stone-300"/>}
           </Link>
           <Link href="/dashboard/agendamentos" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Agendamentos</Link>
           <Link href="/dashboard/perfil" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Meu Perfil</Link>
@@ -206,7 +211,7 @@ export default function Dashboard() {
       {/* CONTEÚDO PRINCIPAL */}
       <section className="flex-1 p-6 md:p-10 lg:p-12 overflow-y-auto w-full">
         
-        {/* BANNER DE STATUS DA CONTA (FREE TRIAL OU EXPIRADO) */}
+        {/* BANNER DE STATUS DA CONTA - SÓ UPSELL PARA PREMIUM AQUI */}
         {!isPremium && (
           <div className={`mb-8 p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border animate-fade-in-up ${trialData.isActive ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
             <div className="flex items-center gap-3 text-center sm:text-left">
@@ -220,12 +225,12 @@ export default function Dashboard() {
                     : 'Seu período de teste gratuito expirou.'}
                 </p>
                 <p className={`text-xs md:text-sm mt-0.5 ${trialData.isActive ? 'text-amber-700' : 'text-red-700'}`}>
-                  Desbloqueie o plano alimentar completo e métricas exclusivas.
+                  Desbloqueie o acesso completo (Check-ins, Métricas e Plano Alimentar).
                 </p>
               </div>
             </div>
             <button 
-              onClick={handleUpgradeClick}
+              onClick={() => handleUpgradeClick('premium')}
               disabled={processingCheckout}
               className="w-full sm:w-auto whitespace-nowrap bg-nutri-900 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-md hover:bg-nutri-800 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
             >
@@ -306,7 +311,7 @@ export default function Dashboard() {
             </p>
           </div>
           
-          {/* Card Medidas - COM LÓGICA FREEMIUM (BLUR E CADEADO) */}
+          {/* Card Medidas - EXCLUSIVO DO PACOTE PREMIUM (has_meal_plan_access NÃO desbloqueia isso) */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 relative overflow-hidden flex flex-col justify-between min-h-[160px]">
             <div className="flex items-center gap-2 mb-6 text-stone-400 relative z-10">
               <Ruler size={18} />
@@ -345,7 +350,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* SEÇÃO: GRÁFICO DE EVOLUÇÃO (Sempre visível para o paciente registrar peso) */}
+        {/* SEÇÃO: GRÁFICO DE EVOLUÇÃO */}
         <div className="mb-10 bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 border-b border-stone-50 pb-6 gap-6">
             <div>
@@ -385,25 +390,26 @@ export default function Dashboard() {
         {/* CARDS DE AÇÃO RÁPIDA */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
           
+          {/* CARD PLANO ALIMENTAR - NAVEGA PARA MEU PLANO INDEPENDENTE DE ACESSO */}
           <Link 
-            href={isPremium ? "/dashboard/meu-plano" : "#"} 
-            onClick={(e) => { if(!isPremium) { e.preventDefault(); handleUpgradeClick(); } }}
-            className={`p-8 rounded-[2.5rem] border transition-all group relative overflow-hidden ${isPremium ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200 hover:shadow-md' : 'bg-stone-50 border-stone-200 cursor-pointer'}`}
+            href="/dashboard/meu-plano"
+            className={`p-8 rounded-[2.5rem] border transition-all group relative overflow-hidden ${canAccessMealPlan ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200 hover:shadow-md' : 'bg-stone-50 border-stone-200'}`}
           >
             <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2">
-              Documentação {!isPremium && <Lock size={12} className="text-amber-500" />}
+              Documentação {!canAccessMealPlan && <Lock size={12} className="text-amber-500" />}
             </h4>
-            <h3 className={`font-bold text-lg mb-4 ${isPremium ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
-            <p className={`text-sm font-bold flex items-center gap-1 transition-all ${isPremium ? 'text-nutri-800 group-hover:gap-2' : 'text-stone-400'}`}>
-              {isPremium ? (profile?.status === 'plano_liberado' ? 'Acessar PDF' : 'Em elaboração') : 'Desbloquear Acesso'} 
-              {isPremium && <ArrowRight size={14} />}
+            <h3 className={`font-bold text-lg mb-4 ${canAccessMealPlan ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
+            <p className={`text-sm font-bold flex items-center gap-1 transition-all ${canAccessMealPlan ? 'text-nutri-800 group-hover:gap-2' : 'text-stone-400'}`}>
+              {canAccessMealPlan ? (profile?.status === 'plano_liberado' ? 'Acessar PDF' : 'Em elaboração') : 'Desbloquear Acesso'} 
+              <ArrowRight size={14} className={canAccessMealPlan ? 'opacity-100' : 'opacity-50'} />
             </p>
           </Link>
 
+          {/* CARD CONSULTAS */}
           <Link href="/dashboard/agendamentos" className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 hover:border-nutri-200 hover:shadow-md transition-all group">
             <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3">Consultas</h4>
             <h3 className="font-bold text-stone-900 text-lg mb-4">Agendamento</h3>
-            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1 group-hover:gap-2 transition-all">Ver horários <ArrowRight size={14} /></p>
+            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1 group-hover:gap-2 transition-all">Ver opções de horários <ArrowRight size={14} /></p>
           </Link>
 
           <Link href="/dashboard/perfil" className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 hover:border-nutri-200 hover:shadow-md transition-all group">

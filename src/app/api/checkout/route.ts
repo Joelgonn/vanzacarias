@@ -5,11 +5,11 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userId, email, name } = body;
+    // Adicionamos o planType para identificar o que está sendo comprado
+    // Pode ser: 'premium', 'meal_plan' ou 'consultation'
+    const { userId, email, name, planType = 'premium' } = body;
 
     // 1. LÓGICA DE URL PARA LOCALHOST:
-    // O Mercado Pago é exigente com URLs. Se estivermos locais, usamos um domínio fake com HTTPS
-    // apenas para o validador aceitar a criação do link.
     let siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
     if (!siteUrl || siteUrl.includes('localhost')) {
       siteUrl = 'https://vanusazacariasnutri.com.br'; 
@@ -19,26 +19,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User ID é obrigatório' }, { status: 400 });
     }
 
-    // 2. BUSCAR PREÇO DINÂMICO NO SUPABASE (Configurado pela Vanusa no Painel)
-    let finalPrice = 297.00; // Valor de segurança caso o banco falhe
+    // 2. BUSCAR PREÇOS DINÂMICOS NO SUPABASE
+    // Valores de segurança caso o banco falhe
+    let finalPrice = 297.00; 
+    let productTitle = 'Plano Premium - Vanusa Zacarias';
+    let productDescription = 'Acesso completo ao plano alimentar, métricas e histórico clínico.';
+    let productId = 'premium_plan';
+
     try {
       const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL || '',
         process.env.SUPABASE_SERVICE_ROLE_KEY || ''
       );
       
+      // Assumindo que você criará as colunas meal_plan_price e consultation_price na tabela system_settings
       const { data: settings } = await supabaseAdmin
         .from('system_settings')
-        .select('premium_price')
+        .select('premium_price, meal_plan_price, consultation_price')
         .eq('id', 1)
         .single();
 
-      if (settings?.premium_price) {
-        finalPrice = parseFloat(settings.premium_price);
-        console.log("Preço dinâmico recuperado do banco:", finalPrice);
+      // Define o valor e os detalhes com base no tipo de plano escolhido
+      if (planType === 'premium') {
+        if (settings?.premium_price) finalPrice = parseFloat(settings.premium_price);
+        productId = 'premium_plan';
+        productTitle = 'Plano Premium - Vanusa Zacarias';
+        productDescription = 'Acesso completo ao plano alimentar, métricas e check-ins.';
+      } 
+      else if (planType === 'meal_plan') {
+        if (settings?.meal_plan_price) finalPrice = parseFloat(settings.meal_plan_price);
+        // Se a coluna ainda não existir no DB, usamos um valor padrão de fallback
+        else finalPrice = 147.00; 
+        productId = 'meal_plan_only';
+        productTitle = 'Meu Plano Alimentar - Vanusa Zacarias';
+        productDescription = 'Acesso exclusivo ao plano alimentar (cardápio) em PDF.';
       }
+      else if (planType === 'consultation') {
+        if (settings?.consultation_price) finalPrice = parseFloat(settings.consultation_price);
+        else finalPrice = 197.00;
+        productId = 'consultation';
+        productTitle = 'Agendamento de Consulta - Vanusa Zacarias';
+        productDescription = 'Pagamento referente à consulta com a Nutricionista.';
+      }
+
+      console.log(`Checkout gerado para: ${planType} | Preço: ${finalPrice}`);
     } catch (e) {
-      console.error("Erro ao buscar preço, usando padrão 297.00");
+      console.error("Erro ao buscar preços dinâmicos, usando valores padrão.", e);
     }
 
     // 3. VALIDAR TOKEN MERCADO PAGO
@@ -51,41 +77,42 @@ export async function POST(request: Request) {
     const client = new MercadoPagoConfig({ accessToken: mpToken });
     const preference = new Preference(client);
 
-    // 5. CRIAR PREFERÊNCIA DE PAGAMENTO (O que o cliente vê na tela do MP)
+    // 5. CRIAR PREFERÊNCIA DE PAGAMENTO
     const response = await preference.create({
       body: {
         items: [
           {
-            id: 'premium_plan',
-            title: 'Plano Premium - Vanusa Zacarias',
-            description: 'Acesso completo ao plano alimentar, métricas e histórico clínico.',
-            unit_price: finalPrice, // <--- VALOR QUE VEM DO PAINEL ADMIN!
+            id: productId,
+            title: productTitle,
+            description: productDescription,
+            unit_price: finalPrice,
             quantity: 1,
             currency_id: 'BRL',
           }
         ],
         payer: {
-          // Se o email for o da Vanusa (vendedor), trocamos para um teste para evitar erro de auto-pagamento
           email: email.includes('vankadosh') ? 'paciente_teste_mp@email.com' : email,
           name: name || 'Paciente',
         },
         external_reference: userId, // ID vital para o Webhook saber quem pagou
+        // Passamos o planType na metadata para o webhook saber O QUE liberar no banco de dados
+        metadata: {
+          plan_type: planType
+        },
         back_urls: {
           success: `${siteUrl}/dashboard?payment=success`,
           failure: `${siteUrl}/dashboard?payment=failure`,
           pending: `${siteUrl}/dashboard?payment=pending`,
         },
-        // Métodos de pagamento: Bloqueamos Boleto (ticket) para evitar demora na liberação
         payment_methods: {
           excluded_payment_types: [{ id: 'ticket' }],
-          installments: 12 // Permite parcelar em até 12x
+          installments: 12 
         },
-        // URL que o Mercado Pago avisará quando o PIX/Cartão for aprovado
         notification_url: `${siteUrl}/api/webhook`,
       }
     });
 
-    // 6. RETORNAR O LINK DE PAGAMENTO (init_point)
+    // 6. RETORNAR O LINK DE PAGAMENTO
     return NextResponse.json({ 
       init_point: response.init_point,
       id: response.id

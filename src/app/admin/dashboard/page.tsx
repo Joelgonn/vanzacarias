@@ -7,7 +7,7 @@ import {
   Loader2, LogOut, Users, MessageCircle, Search, Filter, 
   Edit2, Save, X, TrendingUp, AlertCircle, Bell, BellRing, 
   Activity, Target, Eye, UserPlus, Clock, ChevronRight, Star,
-  DollarSign, CreditCard, Settings
+  DollarSign, CreditCard, Settings, FileText, Calendar
 } from 'lucide-react';
 import AdminUpload from '@/components/AdminUpload';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
@@ -44,16 +44,20 @@ export default function AdminDashboard() {
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   const [evalModalOpen, setEvalModalOpen] = useState<{isOpen: boolean, data: any, name: string}>({ isOpen: false, data: null, name: '' });
   
-  // Estado do Financeiro
+  // Estado do Financeiro (Adicionado os novos preços)
   const [premiumPrice, setPremiumPrice] = useState('297.00');
+  const [mealPlanPrice, setMealPlanPrice] = useState('147.00');
+  const [consultationPrice, setConsultationPrice] = useState('197.00');
   const [isSavingPrice, setIsSavingPrice] = useState(false);
 
+  // Estado do formulário de edição (Adicionado has_meal_plan_access)
   const [editForm, setEditForm] = useState({ 
     data_nascimento: '', 
     sexo: '', 
     tipo_perfil: 'adulto',
     meta_peso: '',
-    account_type: 'free'
+    account_type: 'free',
+    has_meal_plan_access: false
   });
 
   const router = useRouter();
@@ -62,10 +66,13 @@ export default function AdminDashboard() {
   async function fetchAdminData() {
     setLoading(true);
     try {
-      // 1. Busca Configurações do Sistema (Preço)
-      const { data: settings } = await supabase.from('system_settings').select('premium_price').eq('id', 1).single();
+      // 1. Busca Configurações do Sistema (Preços)
+      const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
       if (settings) {
-        setPremiumPrice(settings.premium_price.toString());
+        if (settings.premium_price) setPremiumPrice(settings.premium_price.toString());
+        // Usamos fallback caso a coluna ainda não exista no banco
+        if (settings.meal_plan_price) setMealPlanPrice(settings.meal_plan_price.toString());
+        if (settings.consultation_price) setConsultationPrice(settings.consultation_price.toString());
       }
 
       // 2. Busca os Pacientes Oficiais
@@ -138,18 +145,30 @@ export default function AdminDashboard() {
     }
   };
 
-  // Salvar Novo Preço do Premium
+  // Salvar Novos Preços
   const handleSavePrice = async () => {
     setIsSavingPrice(true);
+    
+    const updatePayload: any = { 
+      premium_price: parseFloat(premiumPrice) 
+    };
+    
+    // Tenta atualizar as novas colunas, se falhar não quebra o sistema todo
+    try {
+      updatePayload.meal_plan_price = parseFloat(mealPlanPrice);
+      updatePayload.consultation_price = parseFloat(consultationPrice);
+    } catch(e) {}
+
     const { error } = await supabase
       .from('system_settings')
-      .update({ premium_price: parseFloat(premiumPrice) })
+      .update(updatePayload)
       .eq('id', 1);
 
     if (!error) {
       alert("Configurações financeiras atualizadas com sucesso!");
     } else {
-      alert("Erro ao atualizar preço.");
+      console.error(error);
+      alert("Erro ao atualizar preços. Verifique se as novas colunas foram criadas no banco de dados.");
     }
     setIsSavingPrice(false);
   };
@@ -305,14 +324,35 @@ export default function AdminDashboard() {
                       <option value="idoso">Idoso</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1"><Star size={12}/> Plano de Acesso</label>
-                    <select className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl font-bold text-sm mt-1 text-amber-900 outline-none" defaultValue={p.account_type || 'free'} onChange={e => setEditForm({...editForm, account_type: e.target.value})}>
-                      <option value="free">Básico (Apenas Check-in)</option>
-                      <option value="premium">Premium (Acesso Total Liberado)</option>
-                    </select>
+                  
+                  {/* SEÇÃO DE PERMISSÕES E PLANOS NO EDITAR */}
+                  <div className="space-y-3 pt-2 border-t border-stone-100">
+                    <div>
+                      <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1"><Star size={12}/> Tipo de Conta (App Completo)</label>
+                      <select className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl font-bold text-sm mt-1 text-amber-900 outline-none" defaultValue={p.account_type || 'free'} onChange={e => setEditForm({...editForm, account_type: e.target.value})}>
+                        <option value="free">Básico (Apenas Check-in)</option>
+                        <option value="premium">Premium (Acesso Total Liberado)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
+                      <div>
+                        <p className="text-xs font-bold text-stone-700 flex items-center gap-1"><FileText size={14} className="text-nutri-800"/> PDF do Plano Alimentar</p>
+                        <p className="text-[10px] text-stone-500">Liberar apenas o cardápio</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={editForm.has_meal_plan_access}
+                          onChange={(e) => setEditForm({...editForm, has_meal_plan_access: e.target.checked})}
+                        />
+                        <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nutri-800"></div>
+                      </label>
+                    </div>
                   </div>
-                  <div className="flex gap-3 pt-2">
+
+                  <div className="flex gap-3 pt-2 border-t border-stone-100 mt-2">
                     <button onClick={() => updateProfile(p.id)} className="bg-nutri-900 text-white p-3 rounded-xl flex-1 flex justify-center hover:bg-nutri-800"><Save size={20}/></button>
                     <button onClick={() => setEditingId(null)} className="bg-stone-100 text-stone-600 p-3 rounded-xl flex-1 flex justify-center hover:bg-stone-200"><X size={20}/></button>
                   </div>
@@ -346,7 +386,17 @@ export default function AdminDashboard() {
                         <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${p.status === 'plano_liberado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                           {p.status === 'plano_liberado' ? 'Liberado' : 'Pendente'}
                         </span>
-                        <button onClick={() => { setEditingId(p.id); setEditForm({ data_nascimento: p.data_nascimento, sexo: p.sexo, tipo_perfil: p.tipo_perfil, meta_peso: p.meta_peso, account_type: p.account_type || 'free' }); }} className="p-2 hover:bg-stone-100 rounded-lg transition-colors"><Edit2 size={16} className="text-stone-400" /></button>
+                        <button onClick={() => { 
+                          setEditingId(p.id); 
+                          setEditForm({ 
+                            data_nascimento: p.data_nascimento, 
+                            sexo: p.sexo, 
+                            tipo_perfil: p.tipo_perfil, 
+                            meta_peso: p.meta_peso, 
+                            account_type: p.account_type || 'free',
+                            has_meal_plan_access: p.has_meal_plan_access || false
+                          }); 
+                        }} className="p-2 hover:bg-stone-100 rounded-lg transition-colors"><Edit2 size={16} className="text-stone-400" /></button>
                       </div>
                     </div>
 
@@ -419,51 +469,96 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* NOVO CONTEÚDO: FINANCEIRO */}
+      {/* CONTEÚDO: FINANCEIRO REFATORADO COM AS 3 OPÇÕES */}
       {activeTab === 'financeiro' && (
-        <div className="max-w-2xl mx-auto animate-fade-in-up">
+        <div className="max-w-4xl mx-auto animate-fade-in-up">
           <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-sm border border-stone-100">
             <div className="flex items-center gap-4 mb-10 border-b border-stone-50 pb-8">
               <div className="bg-amber-100 p-4 rounded-3xl text-amber-600">
                 <CreditCard size={32} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">Configurações de Venda</h2>
-                <p className="text-stone-500">Estipule os valores cobrados pelo sistema automaticamente.</p>
+                <h2 className="text-2xl font-bold text-stone-900">Configurações de Preços</h2>
+                <p className="text-stone-500">Defina os valores dos serviços oferecidos no aplicativo do paciente.</p>
               </div>
             </div>
 
-            <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              
+              {/* Opção 1: Pacote Premium Completo */}
               <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
-                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                  <Star size={14} className="text-amber-500" /> Valor do Plano Premium (R$)
+                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                  <Star size={16} className="text-amber-500" /> Premium Completo
                 </label>
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl font-light text-stone-300">R$</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-light text-stone-300">R$</span>
                   <input 
                     type="number" 
                     step="0.01" 
                     value={premiumPrice} 
                     onChange={(e) => setPremiumPrice(e.target.value)}
-                    className="w-full bg-transparent text-4xl font-black text-stone-900 outline-none"
+                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
                     placeholder="0.00"
                   />
                 </div>
-                <p className="text-xs text-stone-400 mt-4 leading-relaxed italic">
-                  Este é o valor que o paciente verá ao clicar em "Desbloquear Premium". O sistema irá gerar o link do Mercado Pago com este valor exato.
+                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
+                  Acesso total ao app: métricas, histórico e plano alimentar em PDF.
                 </p>
               </div>
 
-              <div className="pt-4">
-                <button 
-                  onClick={handleSavePrice}
-                  disabled={isSavingPrice}
-                  className="w-full flex items-center justify-center gap-3 bg-nutri-900 text-white py-5 rounded-2xl font-bold text-lg hover:bg-nutri-800 transition-all shadow-xl shadow-nutri-900/20 active:scale-[0.98] disabled:opacity-50"
-                >
-                  {isSavingPrice ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
-                  Salvar Configurações Financeiras
-                </button>
+              {/* Opção 2: Apenas Plano Alimentar */}
+              <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                  <FileText size={16} className="text-nutri-800" /> Meu Plano (PDF)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-light text-stone-300">R$</span>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={mealPlanPrice} 
+                    onChange={(e) => setMealPlanPrice(e.target.value)}
+                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
+                  Compra avulsa apenas do cardápio em PDF. Paciente continua Free.
+                </p>
               </div>
+
+              {/* Opção 3: Agendamento de Consulta */}
+              <div className="relative group flex flex-col bg-stone-50 p-6 rounded-3xl border border-stone-100 focus-within:bg-white focus-within:ring-4 focus-within:ring-nutri-800/10 transition-all">
+                <label className="text-xs font-black text-stone-400 uppercase tracking-[0.1em] mb-3 flex items-center gap-2">
+                  <Calendar size={16} className="text-blue-500" /> Nova Consulta
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-light text-stone-300">R$</span>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={consultationPrice} 
+                    onChange={(e) => setConsultationPrice(e.target.value)}
+                    className="w-full bg-transparent text-3xl font-black text-stone-900 outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-3 leading-relaxed">
+                  Valor cobrado para o paciente agendar um novo encontro.
+                </p>
+              </div>
+
+            </div>
+
+            <div className="pt-4 border-t border-stone-50">
+              <button 
+                onClick={handleSavePrice}
+                disabled={isSavingPrice}
+                className="w-full md:w-auto px-10 flex mx-auto items-center justify-center gap-3 bg-nutri-900 text-white py-5 rounded-2xl font-bold text-lg hover:bg-nutri-800 transition-all shadow-xl shadow-nutri-900/20 active:scale-[0.98] disabled:opacity-50"
+              >
+                {isSavingPrice ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
+                Salvar Todos os Valores
+              </button>
             </div>
           </div>
         </div>
