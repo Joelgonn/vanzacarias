@@ -15,6 +15,16 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'Vanusa Zacarias Nutri - Sua Jornada para uma Vida Saudável',
   description: 'Nutrição personalizada e descomplicada para você alcançar seus objetivos de bem-estar.',
+  manifest: '/manifest.webmanifest', // Linka o manifesto que criamos
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'VZ Nutri',
+    // startupImage: [] <-- Se quiser, no futuro pode adicionar imagens de splash screen do iPhone aqui
+  },
+  formatDetection: {
+    telephone: false, // Evita que o iOS transforme números aleatórios na tela em links de telefone
+  },
 };
 
 export default function RootLayout({
