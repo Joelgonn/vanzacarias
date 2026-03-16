@@ -3,11 +3,22 @@
 import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Loader2, FileText, Download, ChevronLeft, Lock, Star, Check, 
-  Clock, Utensils, ChevronRight, Apple, Info, Filter, ShoppingCart, X, CalendarDays
+  Loader2, FileText, Download, ChevronLeft, Lock, Star, 
+  Clock, Utensils, ChevronRight, Info, Filter, ShoppingCart, 
+  X, CalendarDays, Copy, CheckCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { jsPDF } from 'jspdf';
+
+// =========================================================================
+// ÍCONE CUSTOMIZADO DO WHATSAPP
+// =========================================================================
+const WhatsAppIcon = ({ size = 24, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.888-.788-1.487-1.761-1.66-2.06-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
+  </svg>
+);
 
 // =========================================================================
 // INTERFACES E FUNÇÕES DA LISTA DE MERCADO
@@ -20,13 +31,11 @@ interface ParsedIngredient {
   original: string;
 }
 
-// Função inteligente que lê o texto "Arroz (100g)" e transforma em dados matemáticos
 const parseDescription = (desc: string): ParsedIngredient[] => {
   if (!desc) return [];
   const parts = desc.split('+').map(s => s.trim());
   
   return parts.map(part => {
-    // Busca o padrão "Nome do Alimento (Quantidade Unidade)"
     const match = part.match(/^(.*?)(?:\s*\((.*?)\))?$/);
     let name = part;
     let qty = 0;
@@ -38,14 +47,13 @@ const parseDescription = (desc: string): ParsedIngredient[] => {
       const qtyUnit = match[2] ? match[2].trim() : '';
 
       if (qtyUnit && !qtyUnit.toLowerCase().includes('vontade')) {
-        // Separa número de letras (ex: "100g" -> 100, "g")
         const numMatch = qtyUnit.match(/^([\d.,]+)\s*(.*)$/);
         if (numMatch) {
           qty = parseFloat(numMatch[1].replace(',', '.'));
           unit = numMatch[2].trim();
           isTextOnly = false;
         } else {
-          unit = qtyUnit; // Caso seja só texto como "pequena", "média"
+          unit = qtyUnit; 
         }
       } else if (qtyUnit.toLowerCase().includes('vontade')) {
         unit = 'à vontade';
@@ -68,9 +76,9 @@ export default function MeuPlano() {
   
   const [selectedDayFilter, setSelectedDayFilter] = useState<string>('Todos');
 
-  // NOVO: Estados para a Lista de Mercado
   const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
-  const [marketMultiplier, setMarketMultiplier] = useState<number>(7); // Padrão: Semanal (7 dias)
+  const [marketMultiplier, setMarketMultiplier] = useState<number>(7); 
+  const [isCopied, setIsCopied] = useState(false);
 
   const supabase = createClient();
   const router = useRouter();
@@ -118,16 +126,6 @@ export default function MeuPlano() {
 
           if (profileData?.meal_plan_pdf_url) {
             setPlanoPDF(profileData.meal_plan_pdf_url);
-          } else {
-            const { data: pdfData } = await supabase
-              .from('plans')
-              .select('*')
-              .eq('user_id', session.user.id)
-              .order('created_at', { ascending: false });
-
-            if (pdfData && pdfData.length > 0) {
-              setPlanoPDF(pdfData[0]);
-            }
           }
         }
       } catch (err: any) {
@@ -145,10 +143,7 @@ export default function MeuPlano() {
     setProcessingCheckout(planType);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
+      if (!session) return router.push('/login');
 
       const response = await fetch('/api/checkout', {
         method: 'POST',
@@ -173,16 +168,12 @@ export default function MeuPlano() {
   const filterTabs = useMemo(() => {
     if (!mealPlanJSON) return [];
     const days = new Set<string>();
-    
     mealPlanJSON.forEach(meal => {
       meal.options?.forEach((opt: any) => {
         const d = opt.day?.trim();
-        if (d && d.toLowerCase() !== 'todos os dias') {
-          days.add(d);
-        }
+        if (d && d.toLowerCase() !== 'todos os dias') days.add(d);
       });
     });
-    
     return Array.from(days);
   }, [mealPlanJSON]);
 
@@ -195,35 +186,26 @@ export default function MeuPlano() {
         const optDay = opt.day?.trim();
         return optDay?.toLowerCase() === 'todos os dias' || optDay === selectedDayFilter;
       }) || [];
-
       return { ...meal, options: filteredOptions };
     }).filter(meal => meal.options.length > 0); 
   }, [mealPlanJSON, selectedDayFilter]);
 
-  // =========================================================================
-  // GERAÇÃO DA LISTA DE MERCADO
-  // =========================================================================
   const marketList = useMemo(() => {
     if (!mealPlanJSON) return { measured: [], others: [] };
     const map = new Map<string, ParsedIngredient>();
     const textItems = new Set<string>();
 
     mealPlanJSON.forEach(meal => {
-      // Para evitar que a lista fique gigante se houver várias opções na mesma refeição,
-      // nós usamos a Opção 1 como base para o cálculo semanal de mercado.
       if (meal.options && meal.options.length > 0) {
         const opt = meal.options[0]; 
-        
-        // Determina a proporção de repetição de acordo com o dia da semana
         let localMultiplier = marketMultiplier;
         const dayStr = opt.day?.trim().toLowerCase();
         
-        // Se for um dia específico (ex: "Sábado"), reduz a multiplicação
         if (dayStr && dayStr !== 'todos os dias' && dayStr !== 'opção') {
           if (marketMultiplier === 7) localMultiplier = 1;
           else if (marketMultiplier === 15) localMultiplier = 2;
           else if (marketMultiplier === 30) localMultiplier = 4;
-          else if (marketMultiplier === 1) localMultiplier = 0; // Se filtra 1 dia, ignoramos se não for o dia de hoje
+          else if (marketMultiplier === 1) localMultiplier = 0; 
         }
 
         const parsed = parseDescription(opt.description);
@@ -250,6 +232,229 @@ export default function MeuPlano() {
   }, [mealPlanJSON, marketMultiplier]);
 
   // =========================================================================
+  // GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD (À Prova de falhas de codificação)
+  // =========================================================================
+  const generateShareText = () => {
+    // Usando Unicode Code Points, os emojis funcionarão mesmo se o arquivo não for salvo em UTF-8
+    const eCart = String.fromCodePoint(0x1F6D2);   // 🛒
+    const eUser = String.fromCodePoint(0x1F464);   // 👤
+    const eDate = String.fromCodePoint(0x1F4C5);   // 📅
+    const eScale = String.fromCodePoint(0x2696, 0xFE0F); // ⚖️
+    const eCheck = String.fromCodePoint(0x2705);   // ✅
+    const eGreen = String.fromCodePoint(0x1F7E2);  // 🟢
+    const eApple = String.fromCodePoint(0x1F34F);  // 🍏
+    const eMuscle = String.fromCodePoint(0x1F4AA); // 💪
+
+    let text = `${eCart} *Lista de Mercado - Nutri Vanusa* ${eCart}\n`;
+    text += `${eUser} *Paciente:* ${profile?.full_name || 'Paciente'}\n`;
+    
+    let periodText = 'Diário';
+    if (marketMultiplier === 7) periodText = '7 Dias (Semanal)';
+    else if (marketMultiplier === 15) periodText = '15 Dias (Quinzenal)';
+    else if (marketMultiplier === 30) periodText = '30 Dias (Mensal)';
+    
+    text += `${eDate} *Período:* ${periodText}\n\n`;
+
+    if (marketList.measured.length > 0) {
+      text += `${eScale} *ITENS COM MEDIDA:*\n`;
+      marketList.measured.forEach(item => {
+        const qty = Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2));
+        text += `${eCheck} ${qty} ${item.unit} - ${item.name}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (marketList.others.length > 0) {
+      text += `${eGreen} *CONSUMO LIVRE / OUTROS:*\n`;
+      marketList.others.forEach(item => {
+        text += `${eCheck} ${item}\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `${eApple} *Foco na dieta! Você consegue!* ${eMuscle}\n`;
+    text += `_Gerado pelo App Meu Plano Alimentar_`;
+
+    return text;
+  };
+
+  const handleShareWhatsApp = () => {
+    const text = generateShareText();
+    const encodedText = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+  };
+
+  const handleCopyToClipboard = async () => {
+    try {
+      const text = generateShareText();
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar:', err);
+    }
+  };
+
+  // =========================================================================
+  // GERAÇÃO DE PDF PAGINADO (COM LOGO E ESPAÇAMENTO CORRIGIDO)
+  // =========================================================================
+  const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = error => reject(error);
+      img.src = imageUrl;
+    });
+  };
+
+  const handleGenerateDynamicPDF = async () => {
+    if (!mealPlanJSON) return;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+
+    const totalKcal = mealPlanJSON.reduce((acc, meal) => acc + (meal.options[0]?.kcal || 0), 0);
+
+    const daysMap = new Map<string, any[]>();
+    mealPlanJSON.forEach(meal => {
+      meal.options.forEach((opt: any) => {
+        const dayName = opt.day?.trim() || "Opção";
+        if (!daysMap.has(dayName)) daysMap.set(dayName, []);
+        daysMap.get(dayName)!.push({
+          mealName: meal.name,
+          time: meal.time,
+          description: opt.description,
+          kcal: opt.kcal
+        });
+      });
+    });
+
+    const dayOrder = ["Todos os dias", "Segunda a Sexta", "Finais de Semana", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+    const sortedDays = Array.from(daysMap.keys()).sort((a, b) => {
+      let idxA = dayOrder.indexOf(a); let idxB = dayOrder.indexOf(b);
+      return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    });
+
+    let logoBase64: string | null = null;
+    try {
+      logoBase64 = await getBase64ImageFromUrl('/images/logo-vanusa.png');
+    } catch (error) {
+      console.warn("Logo não encontrada em /images/logo-vanusa.png");
+    }
+
+    const printHeaderAndFooter = () => {
+      let currentY = 20;
+      
+      if (logoBase64) doc.addImage(logoBase64, 'PNG', margin, currentY - 6, 16, 16); 
+      const textStartX = logoBase64 ? margin + 20 : margin;
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(26);
+      doc.setTextColor(26, 58, 42); 
+      doc.text("Vanusa Zacarias", textStartX, currentY + 2);
+      doc.setFontSize(10);
+      doc.setTextColor(139, 131, 120); 
+      doc.text("NUTRIÇÃO CLÍNICA", textStartX, currentY + 8, { charSpace: 1.5 });
+      doc.setFontSize(12);
+      doc.setTextColor(200, 200, 200);
+      doc.text("PLANO ALIMENTAR", pageWidth - margin, currentY + 8, { align: "right" });
+
+      currentY += 18;
+      doc.setDrawColor(26, 58, 42);
+      doc.setLineWidth(0.5);
+      doc.line(margin, currentY, pageWidth - margin, currentY);
+      currentY += 8;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("PACIENTE:", margin, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      doc.text(profile?.full_name || "Paciente", margin + 20, currentY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("DATA:", margin + 85, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      doc.text(new Date().toLocaleDateString('pt-BR'), margin + 98, currentY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("BASE DIÁRIA:", pageWidth - margin - 52, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(234, 88, 12); 
+      doc.text(`~${totalKcal} kcal`, pageWidth - margin, currentY, { align: "right" });
+
+      currentY += 6;
+      doc.setDrawColor(230, 230, 230);
+      doc.line(margin, currentY, pageWidth - margin, currentY);
+      currentY += 12;
+
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(150, 150, 150);
+      doc.text("Plano alimentar individual e intransferível elaborado por Vanusa Zacarias - Nutrição Clínica.", pageWidth / 2, pageHeight - 10, { align: "center" });
+
+      return currentY;
+    };
+
+    sortedDays.forEach((day, index) => {
+      if (index > 0) doc.addPage();
+      let y = printHeaderAndFooter();
+
+      doc.setFillColor(26, 58, 42); 
+      doc.rect(margin, y, pageWidth - (margin * 2), 12, 'F');
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255); 
+      const titleText = day.toUpperCase() === 'TODOS OS DIAS' ? 'CARDÁPIO PADRÃO (TODOS OS DIAS)' : `CARDÁPIO: ${day.toUpperCase()}`;
+      doc.text(titleText, pageWidth / 2, y + 8, { align: "center", charSpace: 1 });
+      y += 20;
+
+      const mealsForDay = daysMap.get(day) || [];
+      mealsForDay.forEach(meal => {
+        if (y > pageHeight - 40) { doc.addPage(); y = printHeaderAndFooter(); }
+
+        doc.setFillColor(245, 248, 246); 
+        doc.rect(margin, y - 6, pageWidth - (margin * 2), 10, 'F');
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(26, 58, 42);
+        doc.text(`${meal.mealName.toUpperCase()} - ${meal.time}`, margin + 3, y + 1);
+        
+        if (meal.kcal > 0) {
+          doc.setFontSize(9);
+          doc.setTextColor(234, 88, 12);
+          doc.text(`~${meal.kcal} kcal`, pageWidth - margin - 3, y + 1, { align: "right" });
+        }
+        y += 10;
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(50, 50, 50);
+        const maxWidth = pageWidth - (margin * 2);
+        const splitDesc = doc.splitTextToSize(meal.description, maxWidth);
+        doc.text(splitDesc, margin + 3, y);
+        y += (splitDesc.length * 5) + 6; 
+      });
+    });
+
+    doc.save(`Plano_Alimentar_${profile?.full_name?.split(' ')[0] || 'Paciente'}.pdf`);
+  };
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50">
@@ -338,25 +543,29 @@ export default function MeuPlano() {
               <>
                 {/* BOTÕES DE AÇÕES (PDF e MERCADO) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 animate-fade-in-up">
-                  {planoPDF && finalPdfUrl !== '#' && (
-                    <a 
-                      href={finalPdfUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="w-full flex flex-col justify-center bg-nutri-900 text-white p-6 rounded-[2rem] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all group active:scale-[0.98]"
-                    >
-                      <div className="flex justify-between items-center w-full">
-                        <div className="bg-white/10 p-3 rounded-2xl text-white">
-                          <FileText size={20} />
-                        </div>
-                        <div className="bg-white text-nutri-900 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
-                          <Download size={16} />
-                        </div>
+                  
+                  {/* BOTÃO PDF INTELIGENTE */}
+                  <button 
+                    onClick={() => {
+                      if (planoPDF && finalPdfUrl !== '#') {
+                        window.open(finalPdfUrl, '_blank');
+                      } else {
+                        handleGenerateDynamicPDF();
+                      }
+                    }}
+                    className="w-full flex flex-col justify-center text-left bg-nutri-900 text-white p-6 rounded-[2rem] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all group active:scale-[0.98]"
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <div className="bg-white/10 p-3 rounded-2xl text-white">
+                        <FileText size={20} />
                       </div>
-                      <p className="font-bold text-lg mt-4 mb-0.5">Meu Cardápio</p>
-                      <p className="text-xs text-nutri-100 font-medium">Baixar versão PDF</p>
-                    </a>
-                  )}
+                      <div className="bg-white text-nutri-900 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
+                        <Download size={16} />
+                      </div>
+                    </div>
+                    <p className="font-bold text-lg mt-4 mb-0.5">Meu Cardápio</p>
+                    <p className="text-xs text-nutri-100 font-medium">Baixar versão PDF</p>
+                  </button>
 
                   {mealPlanJSON && mealPlanJSON.length > 0 && (
                     <button 
@@ -377,6 +586,7 @@ export default function MeuPlano() {
                   )}
                 </div>
 
+                {/* LISTAGEM DAS REFEIÇÕES INTERATIVAS */}
                 {filteredMeals && filteredMeals.length > 0 && (
                   <div className="space-y-6">
                     {filteredMeals.map((refeicao: any, idx: number) => (
@@ -450,8 +660,9 @@ export default function MeuPlano() {
       {/* MODAL DA LISTA DE MERCADO */}
       {isMarketModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4 md:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh]">
             
+            {/* Header Modal */}
             <div className="p-6 bg-emerald-700 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2.5 rounded-xl">
@@ -459,7 +670,7 @@ export default function MeuPlano() {
                 </div>
                 <div>
                   <h3 className="font-bold text-xl leading-tight">Lista de Mercado</h3>
-                  <p className="text-xs text-emerald-100 font-medium opacity-90">Calculada baseada na Opção 1 de cada refeição</p>
+                  <p className="text-xs text-emerald-100 font-medium opacity-90">Opção 1 de cada refeição</p>
                 </div>
               </div>
               <button 
@@ -470,6 +681,7 @@ export default function MeuPlano() {
               </button>
             </div>
 
+            {/* Filtro de Período */}
             <div className="bg-stone-50 border-b border-stone-200 p-4">
               <label className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-2">
                 <CalendarDays size={14} /> Período de Compras
@@ -496,6 +708,7 @@ export default function MeuPlano() {
               </div>
             </div>
 
+            {/* Conteúdo da Lista */}
             <div className="p-6 overflow-y-auto bg-white flex-1 space-y-6">
               {marketList.measured.length === 0 && marketList.others.length === 0 ? (
                 <div className="text-center py-10 text-stone-400">
@@ -511,7 +724,6 @@ export default function MeuPlano() {
                           <li key={i} className="flex justify-between items-center text-sm">
                             <span className="font-bold text-stone-700">{item.name}</span>
                             <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg font-bold">
-                              {/* Formata a quantidade para evitar números como "14.000000001" */}
                               {Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2))} {item.unit}
                             </span>
                           </li>
@@ -535,12 +747,32 @@ export default function MeuPlano() {
                 </>
               )}
             </div>
-            
-            <div className="p-4 bg-stone-50 border-t border-stone-200 text-center">
-               <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest">
-                 Dica: Leve o celular para o mercado ou tire um print!
-               </p>
-            </div>
+
+            {/* Footer com botões de Compartilhamento Premium */}
+            {(marketList.measured.length > 0 || marketList.others.length > 0) && (
+              <div className="p-4 border-t border-stone-100 bg-stone-50 flex gap-3">
+                <button 
+                  onClick={handleShareWhatsApp}
+                  className="flex-1 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-[#25D366]/20 active:scale-[0.98]"
+                >
+                  <WhatsAppIcon size={20} />
+                  <span>Enviar para WhatsApp</span>
+                </button>
+                
+                <button 
+                  onClick={handleCopyToClipboard}
+                  className={`px-5 rounded-xl font-bold flex items-center justify-center transition-all border ${
+                    isCopied 
+                      ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                      : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                  }`}
+                  title="Copiar lista"
+                >
+                  {isCopied ? <CheckCheck size={20} /> : <Copy size={20} />}
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}
