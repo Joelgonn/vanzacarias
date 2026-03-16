@@ -4,10 +4,56 @@ import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, FileText, Download, ChevronLeft, Lock, Star, Check, 
-  Clock, Utensils, ChevronRight, Apple, Info, Filter
+  Clock, Utensils, ChevronRight, Apple, Info, Filter, ShoppingCart, X, CalendarDays
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+// =========================================================================
+// INTERFACES E FUNÇÕES DA LISTA DE MERCADO
+// =========================================================================
+interface ParsedIngredient {
+  name: string;
+  qty: number;
+  unit: string;
+  isTextOnly: boolean;
+  original: string;
+}
+
+// Função inteligente que lê o texto "Arroz (100g)" e transforma em dados matemáticos
+const parseDescription = (desc: string): ParsedIngredient[] => {
+  if (!desc) return [];
+  const parts = desc.split('+').map(s => s.trim());
+  
+  return parts.map(part => {
+    // Busca o padrão "Nome do Alimento (Quantidade Unidade)"
+    const match = part.match(/^(.*?)(?:\s*\((.*?)\))?$/);
+    let name = part;
+    let qty = 0;
+    let unit = '';
+    let isTextOnly = true;
+
+    if (match) {
+      name = match[1].trim();
+      const qtyUnit = match[2] ? match[2].trim() : '';
+
+      if (qtyUnit && !qtyUnit.toLowerCase().includes('vontade')) {
+        // Separa número de letras (ex: "100g" -> 100, "g")
+        const numMatch = qtyUnit.match(/^([\d.,]+)\s*(.*)$/);
+        if (numMatch) {
+          qty = parseFloat(numMatch[1].replace(',', '.'));
+          unit = numMatch[2].trim();
+          isTextOnly = false;
+        } else {
+          unit = qtyUnit; // Caso seja só texto como "pequena", "média"
+        }
+      } else if (qtyUnit.toLowerCase().includes('vontade')) {
+        unit = 'à vontade';
+      }
+    }
+    return { name, qty, unit, isTextOnly, original: part };
+  });
+};
 
 export default function MeuPlano() {
   const [planoPDF, setPlanoPDF] = useState<any>(null);
@@ -20,8 +66,11 @@ export default function MeuPlano() {
   const [prices, setPrices] = useState({ premium: 297.00, mealPlan: 147.00 });
   const [processingCheckout, setProcessingCheckout] = useState<string | null>(null);
   
-  // NOVO: Estado para controlar o filtro de dias da semana
   const [selectedDayFilter, setSelectedDayFilter] = useState<string>('Todos');
+
+  // NOVO: Estados para a Lista de Mercado
+  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
+  const [marketMultiplier, setMarketMultiplier] = useState<number>(7); // Padrão: Semanal (7 dias)
 
   const supabase = createClient();
   const router = useRouter();
@@ -36,7 +85,6 @@ export default function MeuPlano() {
           return;
         }
 
-        // Busca configurações do sistema (preços)
         const { data: settings } = await supabase
           .from('system_settings')
           .select('*')
@@ -50,7 +98,6 @@ export default function MeuPlano() {
           });
         }
 
-        // Busca o perfil do paciente
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -61,21 +108,17 @@ export default function MeuPlano() {
 
         setProfile(profileData);
         
-        // Verifica se o paciente tem acesso
         const hasAccess = profileData?.account_type === 'premium' || profileData?.has_meal_plan_access === true;
         setCanAccess(hasAccess);
 
         if (hasAccess) {
-          // 1. Pega a dieta interativa (JSON do construtor)
           if (profileData?.meal_plan && Array.isArray(profileData.meal_plan)) {
             setMealPlanJSON(profileData.meal_plan);
           }
 
-          // 2. Pega o PDF (Upload feito pela Nutri no Painel Admin)
           if (profileData?.meal_plan_pdf_url) {
             setPlanoPDF(profileData.meal_plan_pdf_url);
           } else {
-            // Fallback por segurança: busca na tabela antiga de plans caso o paciente seja antigo
             const { data: pdfData } = await supabase
               .from('plans')
               .select('*')
@@ -127,11 +170,6 @@ export default function MeuPlano() {
     }
   };
 
-  // =========================================================================
-  // LÓGICA DE FILTRAGEM POR DIAS DA SEMANA
-  // =========================================================================
-
-  // 1. Extrai todos os dias únicos usados no cardápio (ignorando "Todos os dias")
   const filterTabs = useMemo(() => {
     if (!mealPlanJSON) return [];
     const days = new Set<string>();
@@ -148,24 +186,68 @@ export default function MeuPlano() {
     return Array.from(days);
   }, [mealPlanJSON]);
 
-  // 2. Filtra as refeições com base na aba selecionada
   const filteredMeals = useMemo(() => {
     if (!mealPlanJSON) return [];
     if (selectedDayFilter === 'Todos') return mealPlanJSON;
 
     return mealPlanJSON.map(meal => {
-      // Filtra as opções dentro desta refeição
       const filteredOptions = meal.options?.filter((opt: any) => {
         const optDay = opt.day?.trim();
-        // Se a opção for "Todos os dias", ela deve aparecer sempre.
-        // Se for igual ao dia selecionado, também aparece.
         return optDay?.toLowerCase() === 'todos os dias' || optDay === selectedDayFilter;
       }) || [];
 
-      // Retorna a refeição com as opções filtradas
       return { ...meal, options: filteredOptions };
-    }).filter(meal => meal.options.length > 0); // Se a refeição ficar vazia após o filtro, esconde ela.
+    }).filter(meal => meal.options.length > 0); 
   }, [mealPlanJSON, selectedDayFilter]);
+
+  // =========================================================================
+  // GERAÇÃO DA LISTA DE MERCADO
+  // =========================================================================
+  const marketList = useMemo(() => {
+    if (!mealPlanJSON) return { measured: [], others: [] };
+    const map = new Map<string, ParsedIngredient>();
+    const textItems = new Set<string>();
+
+    mealPlanJSON.forEach(meal => {
+      // Para evitar que a lista fique gigante se houver várias opções na mesma refeição,
+      // nós usamos a Opção 1 como base para o cálculo semanal de mercado.
+      if (meal.options && meal.options.length > 0) {
+        const opt = meal.options[0]; 
+        
+        // Determina a proporção de repetição de acordo com o dia da semana
+        let localMultiplier = marketMultiplier;
+        const dayStr = opt.day?.trim().toLowerCase();
+        
+        // Se for um dia específico (ex: "Sábado"), reduz a multiplicação
+        if (dayStr && dayStr !== 'todos os dias' && dayStr !== 'opção') {
+          if (marketMultiplier === 7) localMultiplier = 1;
+          else if (marketMultiplier === 15) localMultiplier = 2;
+          else if (marketMultiplier === 30) localMultiplier = 4;
+          else if (marketMultiplier === 1) localMultiplier = 0; // Se filtra 1 dia, ignoramos se não for o dia de hoje
+        }
+
+        const parsed = parseDescription(opt.description);
+        parsed.forEach(ing => {
+          if (ing.isTextOnly) {
+            textItems.add(ing.original);
+          } else {
+            const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;
+            if (map.has(key)) {
+              const existing = map.get(key)!;
+              existing.qty += (ing.qty * localMultiplier);
+            } else {
+              map.set(key, { ...ing, qty: ing.qty * localMultiplier });
+            }
+          }
+        });
+      }
+    });
+
+    return {
+      measured: Array.from(map.values()).sort((a,b) => a.name.localeCompare(b.name)),
+      others: Array.from(textItems)
+    };
+  }, [mealPlanJSON, marketMultiplier]);
 
   // =========================================================================
 
@@ -176,17 +258,14 @@ export default function MeuPlano() {
   );
 
   const hasAnyPlan = (mealPlanJSON && mealPlanJSON.length > 0) || !!planoPDF;
-
-  // Blinda o URL do PDF: se vier um objeto do banco, ele extrai o link em formato de texto.
   const finalPdfUrl = typeof planoPDF === 'string' 
     ? planoPDF 
     : (planoPDF?.publicUrl || planoPDF?.file_url || planoPDF?.meal_plan_pdf_url || '#');
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-48 md:pt-60">
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-48 md:pt-60 relative">
       <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
         
-        {/* Navegação */}
         <nav className="flex items-center justify-between mb-12 animate-fade-in-up mt-4">
           <Link href="/dashboard" className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-colors font-bold text-sm bg-white px-5 py-2.5 rounded-full border border-stone-200 shadow-sm">
             <ChevronLeft size={18} /> Painel
@@ -219,7 +298,6 @@ export default function MeuPlano() {
               <p className="text-stone-500 text-sm mt-1 font-medium">Siga as orientações da Nutri Vanusa para melhores resultados.</p>
             </div>
 
-            {/* BARRA DE FILTRO POR DIAS (Só aparece se tiver dias diferentes de "Todos os dias") */}
             {hasAnyPlan && filterTabs.length > 0 && (
               <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-2 pt-2 animate-fade-in-up">
                 <button
@@ -249,7 +327,6 @@ export default function MeuPlano() {
             )}
 
             {!hasAnyPlan ? (
-              // ESTADO VAZIO: Nenhum JSON e nenhum PDF
               <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-stone-100 text-center animate-fade-in-up">
                 <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Utensils className="text-stone-300" size={24} />
@@ -259,32 +336,47 @@ export default function MeuPlano() {
               </div>
             ) : (
               <>
-                {/* MOSTRA O BOTÃO DE PDF SE TIVER UPLOAD OU PLANO ANTIGO */}
-                {planoPDF && finalPdfUrl !== '#' && (
-                  <div className="animate-fade-in-up mb-8">
+                {/* BOTÕES DE AÇÕES (PDF e MERCADO) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 animate-fade-in-up">
+                  {planoPDF && finalPdfUrl !== '#' && (
                     <a 
                       href={finalPdfUrl} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="w-full flex items-center justify-between bg-nutri-900 text-white p-6 rounded-[2rem] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all group active:scale-[0.98]"
+                      className="w-full flex flex-col justify-center bg-nutri-900 text-white p-6 rounded-[2rem] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all group active:scale-[0.98]"
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="bg-white/10 p-3.5 rounded-2xl text-white">
-                          <FileText size={24} />
+                      <div className="flex justify-between items-center w-full">
+                        <div className="bg-white/10 p-3 rounded-2xl text-white">
+                          <FileText size={20} />
                         </div>
-                        <div className="text-left">
-                          <p className="font-bold text-lg mb-0.5">Baixar Meu Cardápio</p>
-                          <p className="text-xs text-nutri-100 font-medium">Versão em PDF pronta para impressão</p>
+                        <div className="bg-white text-nutri-900 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
+                          <Download size={16} />
                         </div>
                       </div>
-                      <div className="bg-white text-nutri-900 p-3 rounded-xl group-hover:-translate-y-1 transition-transform">
-                        <Download size={20} />
-                      </div>
+                      <p className="font-bold text-lg mt-4 mb-0.5">Meu Cardápio</p>
+                      <p className="text-xs text-nutri-100 font-medium">Baixar versão PDF</p>
                     </a>
-                  </div>
-                )}
+                  )}
 
-                {/* MOSTRA A LISTA INTERATIVA FILTRADA */}
+                  {mealPlanJSON && mealPlanJSON.length > 0 && (
+                    <button 
+                      onClick={() => setIsMarketModalOpen(true)}
+                      className="w-full flex flex-col justify-center text-left bg-emerald-700 text-white p-6 rounded-[2rem] shadow-xl shadow-emerald-700/20 hover:bg-emerald-800 transition-all group active:scale-[0.98]"
+                    >
+                      <div className="flex justify-between items-center w-full">
+                        <div className="bg-white/10 p-3 rounded-2xl text-white">
+                          <ShoppingCart size={20} />
+                        </div>
+                        <div className="bg-white text-emerald-700 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
+                          <ChevronRight size={16} />
+                        </div>
+                      </div>
+                      <p className="font-bold text-lg mt-4 mb-0.5">Lista de Mercado</p>
+                      <p className="text-xs text-emerald-100 font-medium">Calcular compras</p>
+                    </button>
+                  )}
+                </div>
+
                 {filteredMeals && filteredMeals.length > 0 && (
                   <div className="space-y-6">
                     {filteredMeals.map((refeicao: any, idx: number) => (
@@ -331,7 +423,6 @@ export default function MeuPlano() {
                   </div>
                 )}
                 
-                {/* Se o filtro não retornar nada (por exemplo, se der algum erro lógico, mostra um aviso amigável) */}
                 {filteredMeals && filteredMeals.length === 0 && selectedDayFilter !== 'Todos' && (
                    <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-stone-100 text-center">
                      <p className="text-stone-500 font-medium">Nenhuma refeição específica configurada para <b>{selectedDayFilter}</b>.</p>
@@ -355,6 +446,105 @@ export default function MeuPlano() {
           </div>
         )}
       </div>
+
+      {/* MODAL DA LISTA DE MERCADO */}
+      {isMarketModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4 md:p-8 animate-fade-in">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className="p-6 bg-emerald-700 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2.5 rounded-xl">
+                  <ShoppingCart size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xl leading-tight">Lista de Mercado</h3>
+                  <p className="text-xs text-emerald-100 font-medium opacity-90">Calculada baseada na Opção 1 de cada refeição</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsMarketModalOpen(false)} 
+                className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="bg-stone-50 border-b border-stone-200 p-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-2">
+                <CalendarDays size={14} /> Período de Compras
+              </label>
+              <div className="flex bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+                {[
+                  { label: 'Diário', val: 1 },
+                  { label: '7 Dias', val: 7 },
+                  { label: '15 Dias', val: 15 },
+                  { label: 'Mês', val: 30 }
+                ].map(tab => (
+                  <button 
+                    key={tab.val}
+                    onClick={() => setMarketMultiplier(tab.val)}
+                    className={`flex-1 py-3 text-xs font-bold transition-all ${
+                      marketMultiplier === tab.val 
+                        ? 'bg-emerald-700 text-white' 
+                        : 'text-stone-500 hover:bg-stone-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto bg-white flex-1 space-y-6">
+              {marketList.measured.length === 0 && marketList.others.length === 0 ? (
+                <div className="text-center py-10 text-stone-400">
+                  <p>Não foi possível calcular a lista de mercado.</p>
+                </div>
+              ) : (
+                <>
+                  {marketList.measured.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-stone-400 tracking-widest mb-3 border-b border-stone-100 pb-2">Alimentos com Medidas</h4>
+                      <ul className="space-y-3">
+                        {marketList.measured.map((item, i) => (
+                          <li key={i} className="flex justify-between items-center text-sm">
+                            <span className="font-bold text-stone-700">{item.name}</span>
+                            <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg font-bold">
+                              {/* Formata a quantidade para evitar números como "14.000000001" */}
+                              {Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2))} {item.unit}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {marketList.others.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-stone-400 tracking-widest mb-3 border-b border-stone-100 pb-2">Outros / Consumo Livre</h4>
+                      <ul className="space-y-2">
+                        {marketList.others.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-stone-600 font-medium">
+                            <span className="text-emerald-500 mt-0.5">•</span> {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            
+            <div className="p-4 bg-stone-50 border-t border-stone-200 text-center">
+               <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest">
+                 Dica: Leve o celular para o mercado ou tire um print!
+               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
