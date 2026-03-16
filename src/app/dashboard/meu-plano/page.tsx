@@ -232,57 +232,62 @@ export default function MeuPlano() {
   }, [mealPlanJSON, marketMultiplier]);
 
   // =========================================================================
-  // GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD (À Prova de falhas de codificação)
-  // =========================================================================
-  const generateShareText = () => {
-    // Usando Unicode Code Points, os emojis funcionarão mesmo se o arquivo não for salvo em UTF-8
-    const eCart = String.fromCodePoint(0x1F6D2);   // 🛒
-    const eUser = String.fromCodePoint(0x1F464);   // 👤
-    const eDate = String.fromCodePoint(0x1F4C5);   // 📅
-    const eScale = String.fromCodePoint(0x2696, 0xFE0F); // ⚖️
-    const eCheck = String.fromCodePoint(0x2705);   // ✅
-    const eGreen = String.fromCodePoint(0x1F7E2);  // 🟢
-    const eApple = String.fromCodePoint(0x1F34F);  // 🍏
-    const eMuscle = String.fromCodePoint(0x1F4AA); // 💪
+// GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD (VERSÃO CORRIGIDA)
+// =========================================================================
+const generateShareText = () => {
+  let periodText = 'Diário';
+  if (marketMultiplier === 7) periodText = '7 Dias (Semanal)';
+  if (marketMultiplier === 15) periodText = '15 Dias (Quinzenal)';
+  if (marketMultiplier === 30) periodText = '30 Dias (Mensal)';
 
-    let text = `${eCart} *Lista de Mercado - Nutri Vanusa* ${eCart}\n`;
-    text += `${eUser} *Paciente:* ${profile?.full_name || 'Paciente'}\n`;
-    
-    let periodText = 'Diário';
-    if (marketMultiplier === 7) periodText = '7 Dias (Semanal)';
-    else if (marketMultiplier === 15) periodText = '15 Dias (Quinzenal)';
-    else if (marketMultiplier === 30) periodText = '30 Dias (Mensal)';
-    
-    text += `${eDate} *Período:* ${periodText}\n\n`;
+  const lines = [];
 
-    if (marketList.measured.length > 0) {
-      text += `${eScale} *ITENS COM MEDIDA:*\n`;
-      marketList.measured.forEach(item => {
-        const qty = Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2));
-        text += `${eCheck} ${qty} ${item.unit} - ${item.name}\n`;
-      });
-      text += `\n`;
-    }
+  // Usando \u{código} garante que o emoji nunca vai quebrar (virar )
+  lines.push(`\u{1F6D2} *Lista Mercado - Nutri Vanusa*`);
+  lines.push(`\u{1F464} *Paciente:* ${profile?.full_name || 'Paciente'}`);
+  lines.push(`\u{1F4C5} *Período:* ${periodText}`);
+  lines.push('');
 
-    if (marketList.others.length > 0) {
-      text += `${eGreen} *CONSUMO LIVRE / OUTROS:*\n`;
-      marketList.others.forEach(item => {
-        text += `${eCheck} ${item}\n`;
-      });
-      text += `\n`;
-    }
+  if (marketList.measured.length > 0) {
+    lines.push(`\u{1F4CA} *ITENS COM MEDIDA:*`);
+    marketList.measured.forEach(item => {
+      const qty = Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2));
+      lines.push(`\u{2705} ${qty} ${item.unit} - ${item.name}`);
+    });
+    lines.push('');
+  }
 
-    text += `${eApple} *Foco na dieta! Você consegue!* ${eMuscle}\n`;
-    text += `_Gerado pelo App Meu Plano Alimentar_`;
+  if (marketList.others.length > 0) {
+    lines.push(`\u{1F7E2} *CONSUMO LIVRE / OUTROS:*`);
+    marketList.others.forEach(item => {
+      lines.push(`\u{2705} ${item}`);
+    });
+    lines.push('');
+  }
 
-    return text;
-  };
+  lines.push(`\u{1F34E} *Foco! Você consegue!* \u{1F4AA}`);
+  lines.push(`_Gerado pelo App Meu Plano Alimentar_`);
+
+  return lines.join('\n');
+};
 
   const handleShareWhatsApp = () => {
-    const text = generateShareText();
-    const encodedText = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
-  };
+  const text = generateShareText().trim();
+  const encodedText = encodeURIComponent(text);
+
+  // Verifica se o usuário está acessando por um celular
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Se for celular, usa a API mobile. Se for PC, força o WhatsApp Web.
+  const baseUrl = isMobile 
+    ? 'https://api.whatsapp.com/send?text=' 
+    : 'https://web.whatsapp.com/send?text=';
+
+  const url = `${baseUrl}${encodedText}`;
+
+  // Abre a janela
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
 
   const handleCopyToClipboard = async () => {
     try {
