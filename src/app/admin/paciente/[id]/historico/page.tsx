@@ -7,7 +7,7 @@ import {
   Loader2, ChevronLeft, TrendingUp, User, Ruler, Layers, 
   Syringe, CalendarCheck, BookOpen, Send, Trash2, 
   AlertCircle, CheckCircle2, AlertTriangle, Activity, Target,
-  Clock, Zap, ChevronRight, Scale
+  Clock, Zap, ChevronRight, Scale, Droplets, Smile, Frown, Meh, Coffee, Check, Brain, Flame
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -23,14 +23,14 @@ export default function PacienteHistoricoAdmin() {
   const [antroData, setAntroData] = useState<any[]>([]);
   const [skinfoldsData, setSkinfoldsData] = useState<any[]>([]);
   const [bioData, setBioData] = useState<any[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<any[]>([]);
   
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'checkins' | 'antropometria' | 'dobras' | 'bioquimicos' | 'prontuario'>('prontuario');
+  const [activeTab, setActiveTab] = useState<'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos'>('prontuario');
   
-  // NOVO: Estado da Lente do Gráfico
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
 
   const router = useRouter();
@@ -57,6 +57,7 @@ export default function PacienteHistoricoAdmin() {
     const { data: skin } = await supabase.from('skinfolds').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
     const { data: bio } = await supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false });
     const { data: notesData } = await supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false });
+    const { data: dailyData } = await supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false });
 
     setProfile(profileData);
     setHistory(processedHistory);
@@ -64,6 +65,7 @@ export default function PacienteHistoricoAdmin() {
     setSkinfoldsData(skin || []);
     setBioData(bio || []);
     setNotes(notesData || []);
+    setDailyLogs(dailyData || []);
     setLoading(false);
   }
 
@@ -88,9 +90,6 @@ export default function PacienteHistoricoAdmin() {
     fetchData();
   };
 
-  // ==========================================
-  // INTELIGÊNCIA BIOQUÍMICA & REFERÊNCIAS
-  // ==========================================
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
       return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
@@ -169,64 +168,122 @@ export default function PacienteHistoricoAdmin() {
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
+  // =========================================================================
+  // NOVO CÉREBRO DO RADAR CLÍNICO (IA DE CORRELAÇÃO)
+  // =========================================================================
   const activeAlerts = useMemo(() => {
     const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any }[] = [];
     
+    let lastCheckin: any = null;
+    let daysSinceLastCheckin = 0;
+    
+    // 1. BASE DE CHECK-INS
     if (history.length > 0) {
-      const lastCheckin = history[history.length - 1];
-      const daysSince = Math.floor((new Date().getTime() - new Date(lastCheckin.created_at).getTime()) / (1000 * 3600 * 24));
+      lastCheckin = history[history.length - 1];
+      daysSinceLastCheckin = Math.floor((new Date().getTime() - new Date(lastCheckin.created_at).getTime()) / (1000 * 3600 * 24));
       
-      if (daysSince > 10) {
-        alerts.push({ id: 'a1', type: 'warning', text: `Ausente: Sem check-in há ${daysSince} dias.`, icon: <Clock size={16}/> });
+      if (daysSinceLastCheckin > 14) {
+        alerts.push({ id: 'a1', type: 'danger', text: `Risco de Evasão: Sem check-in há ${daysSinceLastCheckin} dias. Chame-o no WhatsApp.`, icon: <Clock size={16}/> });
+      } else if (daysSinceLastCheckin > 7) {
+        alerts.push({ id: 'a2', type: 'warning', text: `Atraso no relato semanal. Lembrete recomendado.`, icon: <Clock size={16}/> });
       }
       
-      if (lastCheckin.adesao_ao_plano <= 2) {
-        alerts.push({ id: 'a2', type: 'danger', text: `Baixa adesão no último relato (${lastCheckin.adesao_ao_plano}/5).`, icon: <AlertTriangle size={16}/> });
-      } else if (lastCheckin.adesao_ao_plano === 5) {
-        alerts.push({ id: 'a3', type: 'success', text: `Adesão excelente no último check-in!`, icon: <Star size={16} className="text-emerald-500"/> });
-      }
-    }
-
-    if (antroData.length >= 2) {
-      if (antroData[0].waist && antroData[1].waist) {
-        const diff = antroData[0].waist - antroData[1].waist;
-        if (diff < 0) {
-          alerts.push({ id: 'm1', type: 'success', text: `Cintura reduziu ${Math.abs(diff).toFixed(1)}cm desde a última medida.`, icon: <TrendingUp size={16} className="rotate-180"/> });
-        } else if (diff > 0) {
-          alerts.push({ id: 'm2', type: 'warning', text: `Cintura aumentou ${Math.abs(diff).toFixed(1)}cm.`, icon: <TrendingUp size={16}/> });
+      // Reconhecimento de Consistência
+      if (history.length >= 3) {
+        const last3 = history.slice(-3);
+        const allGood = last3.every(c => c.adesao_ao_plano >= 4);
+        if (allGood) {
+          alerts.push({ id: 'a3', type: 'success', text: `Fase de Cruzeiro: Alta consistência na adesão há 3 semanas. Momento excelente do paciente!`, icon: <Flame size={16} className="text-orange-500"/> });
         }
       }
     }
 
+    // 2. CORRELAÇÃO DE DIÁRIO (Água, Refeições e Humor)
+    let avgWater = 0;
+    let hasRecentDifficultMood = false;
+    
+    if (dailyLogs.length > 0) {
+      const recentLogs = dailyLogs.slice(0, 3); // Analisa últimos 3 dias
+      
+      avgWater = recentLogs.reduce((acc, log) => acc + (log.water_ml || 0), 0) / recentLogs.length;
+      hasRecentDifficultMood = recentLogs.some(log => log.mood === 'dificil');
+
+      // Cruza Humor Crítico com Check-in (Adesão caindo)
+      if (hasRecentDifficultMood && lastCheckin && lastCheckin.adesao_ao_plano <= 3) {
+        alerts.push({ 
+          id: 'ia1', type: 'danger', 
+          text: 'Comportamental: Dias relatados como "difíceis" combinados com baixa adesão. Sugerida conduta de acolhimento e escuta.', 
+          icon: <Brain size={16}/> 
+        });
+      }
+
+      // Alerta Hídrico Simples
+      if (avgWater > 0 && avgWater < 1200) {
+        alerts.push({ id: 'ia2', type: 'warning', text: `Desidratação Crônica: Média hídrica dos últimos dias é de apenas ${Math.round(avgWater)}ml.`, icon: <Droplets size={16}/> });
+      }
+    }
+
+    // 3. CORRELAÇÃO METABÓLICA (Exames)
     if (bioData.length > 0) {
       const latestBio = bioData[0];
-      const examsToCheck = ['glucose', 'insulin', 'hba1c', 'ldl', 'hdl', 'triglycerides', 'vitamin_d', 'vitamin_b12', 'ferritin', 'pcr', 'tsh', 'iron'];
-      let dangerCount = 0;
-      let warningCount = 0;
+      const examMap: Record<string, string> = {
+        glucose: 'Glicose', insulin: 'Insulina', hba1c: 'HbA1c', homair: 'HOMA-IR',
+        ldl: 'LDL', hdl: 'HDL', triglycerides: 'Triglicerídeos', vitamin_d: 'Vit. D',
+        vitamin_b12: 'Vit. B12', ferritin: 'Ferritina', pcr: 'PCR', tsh: 'TSH', iron: 'Ferro'
+      };
+      
+      const dangerExams: string[] = [];
+      const warningExams: string[] = [];
 
-      examsToCheck.forEach(exam => {
-        if(latestBio[exam] !== null && latestBio[exam] !== undefined) {
-          const analysis = interpretBiochemical(exam, parseFloat(latestBio[exam]));
-          if(analysis.status === 'danger') dangerCount++;
-          if(analysis.status === 'warning') warningCount++;
+      Object.keys(examMap).forEach(key => {
+        let value = latestBio[key];
+        
+        // Calcular HOMA-IR se não vier salvo mas tiver os componentes
+        if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) {
+          value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
+        }
+
+        if(value !== null && value !== undefined) {
+          const analysis = interpretBiochemical(key, parseFloat(value));
+          if(analysis.status === 'danger') dangerExams.push(examMap[key]);
+          if(analysis.status === 'warning') warningExams.push(examMap[key]);
         }
       });
 
-      if (dangerCount > 0) {
-        alerts.push({ id: 'b1', type: 'danger', text: `${dangerCount} exame(s) em nível de RISCO no laboratório atual.`, icon: <Activity size={16}/> });
-      } else if (warningCount > 0) {
-        alerts.push({ id: 'b2', type: 'warning', text: `${warningCount} exame(s) merecem atenção dietética.`, icon: <Syringe size={16}/> });
+      if (dangerExams.length > 0) {
+        alerts.push({ 
+          id: 'b1', type: 'danger', 
+          text: `Atenção Clínica Crítica: ${dangerExams.join(', ')} em níveis de risco elevado.`, 
+          icon: <Activity size={16}/> 
+        });
+      } else if (warningExams.length > 0) {
+        alerts.push({ 
+          id: 'b2', type: 'warning', 
+          text: `Ajuste Dietético Necessário: Olhar com atenção para ${warningExams.slice(0, 3).join(', ')}.`, 
+          icon: <Syringe size={16}/> 
+        });
+      }
+    }
+
+    // 4. CORRELAÇÃO DE ESTAGNAÇÃO (Peso + Água)
+    if (history.length >= 2) {
+      const w1 = history[history.length - 1].peso;
+      const w2 = history[history.length - 2].peso;
+      
+      // Se peso subiu ou manteve E água está baixa
+      if (w1 >= w2 && avgWater > 0 && avgWater < 1500) {
+        alerts.push({ 
+          id: 'ia3', type: 'warning', 
+          text: `Fator de Estagnação: O ganho/manutenção de peso recente pode estar agravado pelo baixo consumo hídrico diário.`, 
+          icon: <TrendingUp size={16}/> 
+        });
       }
     }
 
     return alerts;
-  }, [history, antroData, bioData]);
+  }, [history, antroData, bioData, dailyLogs]);
 
-  // ==========================================
-  // LÓGICA DO GRÁFICO UNIFICADO (LINHA DO TEMPO)
-  // ==========================================
   const timelineData = useMemo(() => {
-    // 1. Coleta todas as datas únicas de todas as fontes
     const dateSet = new Set<string>();
     const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
 
@@ -235,24 +292,20 @@ export default function PacienteHistoricoAdmin() {
     skinfoldsData.forEach(s => dateSet.add(formatD(s.measurement_date)));
     bioData.forEach(b => dateSet.add(formatD(b.exam_date)));
 
-    // 2. Ordena cronologicamente
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-    // 3. Monta o objeto unificado para cada data
     return sortedDates.map(dateStr => {
       const checkin = history.find(h => formatD(h.created_at) === dateStr);
       const antro = antroData.find(a => formatD(a.measurement_date) === dateStr);
       const skin = skinfoldsData.find(s => formatD(s.measurement_date) === dateStr);
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
-      // Somatório de 7 Dobras
       let sumFolds: number | null = null;
       if (skin) {
         const s1 = parseFloat(skin.triceps||0) + parseFloat(skin.biceps||0) + parseFloat(skin.subscapular||0) + parseFloat(skin.suprailiac||0) + parseFloat(skin.abdominal||0) + parseFloat(skin.thigh||0) + parseFloat(skin.calf||0);
         if (s1 > 0) sumFolds = parseFloat(s1.toFixed(1));
       }
 
-      // Cálculo HOMA-IR se houver insulina e glicose
       let homa: number | null = null;
       if (bio && bio.glucose && bio.insulin) {
         homa = parseFloat(((parseFloat(bio.glucose) * parseFloat(bio.insulin)) / 405).toFixed(2));
@@ -270,7 +323,6 @@ export default function PacienteHistoricoAdmin() {
     });
   }, [history, antroData, skinfoldsData, bioData]);
 
-  // GPS (Projeção de Meta)
   const projectionDate = useMemo(() => {
     if (history.length < 3 || !profile?.meta_peso) return null;
     const recentData = history.slice(-5); 
@@ -313,6 +365,13 @@ export default function PacienteHistoricoAdmin() {
         </div>
       </div>
     );
+  };
+
+  const getMoodIcon = (mood: string) => {
+    if (mood === 'feliz') return <div className="bg-green-100 text-green-600 p-2 rounded-full"><Smile size={20} /></div>;
+    if (mood === 'neutro') return <div className="bg-amber-100 text-amber-600 p-2 rounded-full"><Meh size={20} /></div>;
+    if (mood === 'dificil') return <div className="bg-rose-100 text-rose-600 p-2 rounded-full"><Frown size={20} /></div>;
+    return <div className="bg-stone-100 text-stone-400 p-2 rounded-full"><Meh size={20} /></div>;
   };
 
   if (loading) return (
@@ -374,17 +433,17 @@ export default function PacienteHistoricoAdmin() {
               <div className="space-y-3 relative z-10">
                 {activeAlerts.length > 0 ? (
                   activeAlerts.map(alert => (
-                    <div key={alert.id} className={`flex items-start gap-3 p-3.5 rounded-xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
+                    <div key={alert.id} className={`flex items-start gap-3 p-4 rounded-2xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
                       <div className={`mt-0.5 ${alert.type === 'danger' ? 'text-red-400' : alert.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {alert.icon}
                       </div>
-                      <p className="text-sm leading-snug font-medium">{alert.text}</p>
+                      <p className="text-[13px] leading-snug font-medium">{alert.text}</p>
                     </div>
                   ))
                 ) : (
-                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-stone-800/50 border border-stone-800 text-stone-300">
-                    <CheckCircle2 size={16} className="text-stone-500 mt-0.5" />
-                    <p className="text-sm leading-snug font-medium">Sem alertas urgentes ou dados insuficientes.</p>
+                  <div className="flex items-center gap-3 p-4 rounded-2xl bg-stone-800/50 border border-stone-800 text-stone-300">
+                    <CheckCircle2 size={16} className="text-stone-500 mt-0.5 shrink-0" />
+                    <p className="text-[13px] leading-snug font-medium">Sem alertas urgentes. Paciente estável dentro dos dados fornecidos.</p>
                   </div>
                 )}
               </div>
@@ -398,7 +457,6 @@ export default function PacienteHistoricoAdmin() {
                 <TrendingUp className="text-nutri-800" size={24} /> Diagnóstico Evolutivo
               </h2>
 
-              {/* LENTES DO GRÁFICO (FILTROS) */}
               <div className="flex bg-stone-100 p-1.5 rounded-2xl w-full sm:w-auto">
                 <button 
                   onClick={() => setActiveLens('medidas')} 
@@ -481,7 +539,6 @@ export default function PacienteHistoricoAdmin() {
                     }}
                   />
                   
-                  {/* CONFIGURAÇÃO DINÂMICA DAS LENTES */}
                   {activeLens === 'medidas' && (
                     <>
                       {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="5 5" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
@@ -506,7 +563,6 @@ export default function PacienteHistoricoAdmin() {
                     </>
                   )}
                   
-                  {/* MARCADOR DE EXAME NO GRÁFICO (Comum a todas as lentes) */}
                   <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
                     const { cx, cy, payload } = props;
                     if (!payload.hasExam) return <g></g>;
@@ -524,14 +580,15 @@ export default function PacienteHistoricoAdmin() {
           </section>
         </div>
 
-        {/* --- ABAS DE TABELAS (PRONTUÁRIO, EXAMES, ETC) --- */}
+        {/* --- ABAS DE TABELAS (PRONTUÁRIO, DIÁRIO, EXAMES, ETC) --- */}
         <section className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-4 pt-4 gap-1 scrollbar-hide">
-            <button onClick={() => setActiveTab('prontuario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'prontuario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><BookOpen size={18} /> Prontuário / Evolução</button>
+            <button onClick={() => setActiveTab('prontuario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'prontuario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><BookOpen size={18} /> Prontuário</button>
+            <button onClick={() => setActiveTab('diario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'diario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Coffee size={18} /> Diário do Paciente</button>
             <button onClick={() => setActiveTab('checkins')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'checkins' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><CalendarCheck size={18} /> Check-ins</button>
             <button onClick={() => setActiveTab('antropometria')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'antropometria' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Ruler size={18} /> Antropometria</button>
-            <button onClick={() => setActiveTab('dobras')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'dobras' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Layers size={18} /> Dobras Cutâneas</button>
-            <button onClick={() => setActiveTab('bioquimicos')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'bioquimicos' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Activity size={18} /> Análise Bioquímica</button>
+            <button onClick={() => setActiveTab('dobras')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'dobras' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Layers size={18} /> Dobras</button>
+            <button onClick={() => setActiveTab('bioquimicos')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'bioquimicos' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Activity size={18} /> Bioquímicos</button>
           </div>
 
           <div className="p-6 md:p-8">
@@ -560,6 +617,73 @@ export default function PacienteHistoricoAdmin() {
                   ))}
                   {notes.length === 0 && <div className="text-center py-10 text-stone-400 italic bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">Nenhuma anotação registrada ainda.</div>}
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'diario' && (
+              <div className="animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2">
+                      <Coffee className="text-nutri-800" /> Rotina Diária
+                    </h2>
+                    <p className="text-sm text-stone-500 mt-1">Acompanhe o que o paciente registra no aplicativo dia a dia.</p>
+                  </div>
+                </div>
+
+                {dailyLogs.length === 0 ? (
+                  <div className="text-center py-12 text-stone-400 italic bg-stone-50/50 rounded-[2rem] border border-dashed border-stone-200 flex flex-col items-center justify-center">
+                    <Coffee size={40} className="mb-4 text-stone-300" />
+                    <p>O paciente ainda não começou a registrar sua rotina diária no app.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {dailyLogs.map((log) => {
+                      const mealCount = Array.isArray(log.meals_checked) ? log.meals_checked.length : 0;
+                      return (
+                        <div key={log.id} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                          
+                          <div className="flex justify-between items-start mb-6 border-b border-stone-50 pb-4">
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p>
+                              <h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
+                            </div>
+                            <div title={`Humor: ${log.mood || 'Não informado'}`}>
+                              {getMoodIcon(log.mood)}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col justify-center items-center text-center">
+                              <Droplets size={18} className="text-blue-500 mb-2" />
+                              <p className="text-xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p>
+                              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Água</p>
+                            </div>
+
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-center items-center text-center relative">
+                              <Check size={18} className="text-green-500 mb-2" />
+                              <p className="text-xl font-black text-stone-900">{mealCount}</p>
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Refeições</p>
+                            </div>
+                          </div>
+
+                          {mealCount > 0 && (
+                            <div className="mt-4 pt-4 border-t border-stone-100">
+                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Refeições Marcadas:</p>
+                              <ul className="flex flex-wrap gap-1.5">
+                                {log.meals_checked.map((meal: string, idx: number) => (
+                                  <li key={idx} className="bg-stone-100 text-stone-600 text-[10px] px-2 py-1 rounded-md font-medium">
+                                    {meal}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -593,7 +717,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* TABELA ANTROPOMETRIA COM TODAS AS COLUNAS */}
             {activeTab === 'antropometria' && (
               <div className="animate-fade-in overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Medidas de Circunferência</h2>
@@ -628,7 +751,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* TABELA DOBRAS COM TODAS AS COLUNAS */}
             {activeTab === 'dobras' && (
               <div className="animate-fade-in overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
                 <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Protocolo de Dobras (mm)</h2>
@@ -663,7 +785,6 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* GRUPOS BIOQUÍMICOS COMPLETOS */}
             {activeTab === 'bioquimicos' && (
               <div className="animate-fade-in space-y-12">
                 <div className="flex items-center justify-between">
@@ -693,7 +814,6 @@ export default function PacienteHistoricoAdmin() {
                         
                         <div className="p-6 space-y-8">
                           
-                          {/* GRUPO 1: Glicêmico & Insulina */}
                           {(item.glucose || item.insulin || item.hba1c) && (
                             <div className="border-b border-stone-100 pb-8">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Perfil Glicêmico</h3>
@@ -706,7 +826,6 @@ export default function PacienteHistoricoAdmin() {
                             </div>
                           )}
 
-                          {/* GRUPO 2: Perfil Lipídico */}
                           {(item.total_cholesterol || item.hdl || item.ldl || item.triglycerides) && (
                             <div className="border-b border-stone-100 pb-8">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Perfil Lipídico</h3>
@@ -719,7 +838,6 @@ export default function PacienteHistoricoAdmin() {
                             </div>
                           )}
 
-                          {/* GRUPO 3: Inflamação & Órgãos */}
                           {(item.ferritin || item.pcr || item.tgp || item.creatinine || item.urea) && (
                             <div className="border-b border-stone-100 pb-8">
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Inflamação & Órgãos</h3>
@@ -733,7 +851,6 @@ export default function PacienteHistoricoAdmin() {
                             </div>
                           )}
 
-                          {/* GRUPO 4: Vitaminas & Hormonal */}
                           {(item.vitamin_d || item.vitamin_b12 || item.tsh || item.iron) && (
                             <div>
                               <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Vitaminas & Hormonal</h3>

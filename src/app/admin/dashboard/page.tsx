@@ -1,17 +1,18 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, LogOut, Users, MessageCircle, Search, Filter, 
   Edit2, Save, X, TrendingUp, AlertCircle, Bell, BellRing, 
   Activity, Target, Eye, UserPlus, Clock, ChevronRight, Star,
-  DollarSign, CreditCard, Settings, FileText, Calendar, Link2, Copy, Check, ExternalLink, Utensils, CheckCircle2, Flame, Upload
+  DollarSign, CreditCard, Settings, FileText, Calendar, Link2, Copy, Check, ExternalLink, Utensils, CheckCircle2, Flame
 } from 'lucide-react';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder'; 
 import Link from 'next/link';
+import { jsPDF } from 'jspdf';
 
 // Mapeamento das perguntas do Quiz
 const questionTitles = [
@@ -26,6 +27,24 @@ const questionTitles = [
   "Rotina e Tempo para Cozinhar",
   "Maiores Obstáculos com Dietas"
 ];
+
+// Helper para converter imagem em Base64 para o jsPDF
+const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = error => reject(error);
+    img.src = imageUrl;
+  });
+};
 
 export default function AdminDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
@@ -47,14 +66,6 @@ export default function AdminDashboard() {
   // Estado para controlar o Modal do Construtor de Cardápio
   const [dietModalOpen, setDietModalOpen] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
   
-  // Estado para armazenar qual paciente vai ser impresso no PDF
-  const [patientToPrint, setPatientToPrint] = useState<any | null>(null);
-  
-  // Estados para Upload de PDF
-  const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
-  const [patientForUpload, setPatientForUpload] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   // Estado do Financeiro e Configurações
   const [premiumPrice, setPremiumPrice] = useState('297.00');
   const [mealPlanPrice, setMealPlanPrice] = useState('147.00');
@@ -201,7 +212,12 @@ export default function AdminDashboard() {
   const filteredPatients = useMemo(() => {
     return patients.filter(p => {
       const nameMatch = p.full_name?.toLowerCase().includes(searchTerm.toLowerCase());
-      const statusMatch = statusFilter === 'todos' || p.status === statusFilter;
+      const isDietReady = p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
+      
+      let statusMatch = true;
+      if (statusFilter === 'plano_liberado') statusMatch = isDietReady;
+      if (statusFilter === 'pendente') statusMatch = !isDietReady;
+
       const newMatch = showOnlyNew ? p.isNew : true;
       return nameMatch && statusMatch && newMatch;
     });
@@ -245,82 +261,154 @@ export default function AdminDashboard() {
     }
   };
 
-  // Função para abrir o Gerador de PDF em tela
-  const handleGeneratePDF = (patient: any) => {
+  // =========================================================================
+  // GERAÇÃO DE PDF PAGINADO USANDO jsPDF (ABRE EM NOVA GUIA NO CHROME)
+  // =========================================================================
+  const handleGeneratePDF = async (patient: any) => {
     if (!patient.meal_plan || patient.meal_plan.length === 0) {
       alert("A dieta está vazia. Adicione refeições primeiro antes de gerar o PDF!");
       return;
     }
-    setPatientToPrint(patient);
-    setTimeout(() => {
-      window.print();
-    }, 300);
-  };
 
-  const calculateTotalKcal = (mealPlan: any[]) => {
-    if (!mealPlan) return 0;
-    return mealPlan.reduce((acc, meal) => acc + (meal.options[0]?.kcal || 0), 0);
-  };
+    const mealPlanJSON = patient.meal_plan;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
 
-  // Funções para lidar com o Upload do PDF
-  const triggerUpload = (patientId: string) => {
-    setPatientForUpload(patientId);
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
+    const totalKcal = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.kcal || 0), 0);
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !patientForUpload) return;
-
-    setUploadingPdf(patientForUpload);
-
-    try {
-      // Simplificado: Salva direto na raiz com o ID do paciente.
-      // Upsert: true garante que o arquivo antigo será substituído.
-      const filePath = `${patientForUpload}.pdf`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('planos-alimentares')
-        .upload(filePath, file, { 
-          upsert: true,
-          contentType: 'application/pdf' // Define explicitamente para evitar erros 400
+    const daysMap = new Map<string, any[]>();
+    mealPlanJSON.forEach((meal: any) => {
+      meal.options.forEach((opt: any) => {
+        const dayName = opt.day?.trim() || "Opção";
+        if (!daysMap.has(dayName)) daysMap.set(dayName, []);
+        daysMap.get(dayName)!.push({
+          mealName: meal.name,
+          time: meal.time,
+          description: opt.description,
+          kcal: opt.kcal
         });
+      });
+    });
 
-      if (uploadError) {
-        throw new Error(`Erro do Supabase Storage: ${uploadError.message}`);
-      }
+    const dayOrder = ["Todos os dias", "Segunda a Sexta", "Finais de Semana", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+    const sortedDays = Array.from(daysMap.keys()).sort((a, b) => {
+      let idxA = dayOrder.indexOf(a); let idxB = dayOrder.indexOf(b);
+      return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    });
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('planos-alimentares')
-        .getPublicUrl(filePath);
-
-      // Adiciona um timestamp na URL para o navegador não usar o cache antigo
-      const urlWithCacheBuster = `${publicUrl}?t=${new Date().getTime()}`;
-
-      // Atualiza o perfil para adicionar o link e mudar o status para plano_liberado
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ meal_plan_pdf_url: urlWithCacheBuster, status: 'plano_liberado' })
-        .eq('id', patientForUpload);
-
-      if (updateError) {
-        throw new Error(`Erro ao atualizar perfil do paciente: ${updateError.message}`);
-      }
-
-      alert('PDF enviado e dieta liberada com sucesso!');
-      fetchAdminData();
-    } catch (error: any) {
-      console.error('Erro completo no upload:', error);
-      alert(error.message || 'Ocorreu um erro ao enviar o PDF.');
-    } finally {
-      setUploadingPdf(null);
-      setPatientForUpload(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    let logoBase64: string | null = null;
+    try {
+      logoBase64 = await getBase64ImageFromUrl('/images/logo-vanusa.png');
+    } catch (error) {
+      console.warn("Logo não encontrada em /images/logo-vanusa.png");
     }
+
+    const printHeaderAndFooter = () => {
+      let currentY = 20;
+      
+      if (logoBase64) doc.addImage(logoBase64, 'PNG', margin, currentY - 6, 16, 16); 
+      const textStartX = logoBase64 ? margin + 20 : margin;
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(26);
+      doc.setTextColor(26, 58, 42); 
+      doc.text("Vanusa Zacarias", textStartX, currentY + 2);
+      doc.setFontSize(10);
+      doc.setTextColor(139, 131, 120); 
+      doc.text("NUTRIÇÃO CLÍNICA", textStartX, currentY + 8, { charSpace: 1.5 });
+      doc.setFontSize(12);
+      doc.setTextColor(200, 200, 200);
+      doc.text("PLANO ALIMENTAR", pageWidth - margin, currentY + 8, { align: "right" });
+
+      currentY += 18;
+      doc.setDrawColor(26, 58, 42);
+      doc.setLineWidth(0.5);
+      doc.line(margin, currentY, pageWidth - margin, currentY);
+      currentY += 8;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("PACIENTE:", margin, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      doc.text(patient.full_name || "Paciente", margin + 20, currentY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("DATA:", margin + 85, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      doc.text(new Date().toLocaleDateString('pt-BR'), margin + 98, currentY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("BASE DIÁRIA:", pageWidth - margin - 52, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(234, 88, 12); 
+      doc.text(`~${totalKcal} kcal`, pageWidth - margin, currentY, { align: "right" });
+
+      currentY += 6;
+      doc.setDrawColor(230, 230, 230);
+      doc.line(margin, currentY, pageWidth - margin, currentY);
+      currentY += 12;
+
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(150, 150, 150);
+      doc.text("Plano alimentar individual e intransferível elaborado por Vanusa Zacarias - Nutrição Clínica.", pageWidth / 2, pageHeight - 10, { align: "center" });
+
+      return currentY;
+    };
+
+    sortedDays.forEach((day, index) => {
+      if (index > 0) doc.addPage();
+      let y = printHeaderAndFooter();
+
+      doc.setFillColor(26, 58, 42); 
+      doc.rect(margin, y, pageWidth - (margin * 2), 12, 'F');
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255); 
+      const titleText = day.toUpperCase() === 'TODOS OS DIAS' ? 'CARDÁPIO PADRÃO (TODOS OS DIAS)' : `CARDÁPIO: ${day.toUpperCase()}`;
+      doc.text(titleText, pageWidth / 2, y + 8, { align: "center", charSpace: 1 });
+      y += 20;
+
+      const mealsForDay = daysMap.get(day) || [];
+      mealsForDay.forEach(meal => {
+        if (y > pageHeight - 40) { doc.addPage(); y = printHeaderAndFooter(); }
+
+        doc.setFillColor(245, 248, 246); 
+        doc.rect(margin, y - 6, pageWidth - (margin * 2), 10, 'F');
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(26, 58, 42);
+        doc.text(`${meal.mealName.toUpperCase()} - ${meal.time}`, margin + 3, y + 1);
+        
+        if (meal.kcal > 0) {
+          doc.setFontSize(9);
+          doc.setTextColor(234, 88, 12);
+          doc.text(`~${meal.kcal} kcal`, pageWidth - margin - 3, y + 1, { align: "right" });
+        }
+        y += 10;
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(50, 50, 50);
+        const maxWidth = pageWidth - (margin * 2);
+        const splitDesc = doc.splitTextToSize(meal.description, maxWidth);
+        doc.text(splitDesc, margin + 3, y);
+        y += (splitDesc.length * 5) + 6; 
+      });
+    });
+
+    // CORREÇÃO: Abre o PDF diretamente no Chrome (nova aba) em vez de forçar o download
+    const pdfUrl = doc.output('bloburl');
+    window.open(pdfUrl, '_blank');
   };
 
   if (loading) return (
@@ -331,7 +419,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-24 lg:pt-28 font-sans text-stone-800 print:hidden">
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-24 lg:pt-28 font-sans text-stone-800">
       
       {/* HEADER E FILTROS */}
       <header className="flex flex-col gap-6 mb-8 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100">
@@ -422,7 +510,7 @@ export default function AdminDashboard() {
       {activeTab === 'pacientes' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
           {filteredPatients.map((p) => {
-            const isDietReady = p.status === 'plano_liberado';
+            const isDietReady = p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
 
             return (
             <div key={p.id} className={`bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border flex flex-col justify-between transition-all ${p.isNew ? 'border-nutri-300 ring-2 ring-nutri-50' : p.isLate ? 'border-amber-200 ring-2 ring-amber-50' : isDietReady ? 'border-green-100 bg-green-50/10' : 'border-stone-100'}`}>
@@ -474,7 +562,6 @@ export default function AdminDashboard() {
                           <Users size={18} className="text-nutri-800" /> 
                           {p.full_name || 'Sem nome'}
                           
-                          {/* ESTRELA DE PERFIL (Preenchida = Premium, Vazada = Free) */}
                           <span title={p.account_type === 'premium' ? "Paciente Premium" : "Paciente Básico"}>
                             <Star size={14} className={p.account_type === 'premium' ? "text-green-500 fill-green-500" : "text-stone-300"} />
                           </span>
@@ -493,7 +580,6 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         
-                        {/* ETIQUETA INTELIGENTE DOURADA/VERDE */}
                         <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-black tracking-widest flex items-center gap-1 ${isDietReady ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                           {isDietReady ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
                           {isDietReady ? 'Pronto' : 'Pendente'}
@@ -532,7 +618,6 @@ export default function AdminDashboard() {
 
                   <div className="pt-4 border-t border-stone-100 flex items-center justify-between flex-wrap gap-2">
                     
-                    {/* BOTOES DE CARDÁPIO, PDF E UPLOAD */}
                     <div className="flex gap-2 w-full sm:w-auto">
                       <button 
                         onClick={() => setDietModalOpen({ isOpen: true, id: p.id, name: p.full_name })}
@@ -546,26 +631,15 @@ export default function AdminDashboard() {
                         <Utensils size={16} /> {isDietReady ? 'Editar' : 'Montar Dieta'}
                       </button>
 
-                      {/* Botão de gerar PDF nativo (se tiver dieta pronta) */}
                       {isDietReady && (
                         <button 
                           onClick={() => handleGeneratePDF(p)}
-                          title="Baixar Dieta em PDF"
-                          className="px-4 py-2.5 bg-[#25D366] text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-[#1ebd5b] shadow-lg shadow-green-600/20 transition-all active:scale-95"
+                          title="Visualizar/Imprimir Dieta em PDF"
+                          className="px-4 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all active:scale-95"
                         >
                           <FileText size={16} /> PDF
                         </button>
                       )}
-
-                      {/* Botão de Upload de Arquivo Manual */}
-                      <button 
-                        onClick={() => triggerUpload(p.id)}
-                        disabled={uploadingPdf === p.id}
-                        title="Fazer Upload de um PDF do seu computador"
-                        className="px-4 py-2.5 bg-stone-100 text-stone-600 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-stone-200 transition-all active:scale-95 disabled:opacity-50"
-                      >
-                        {uploadingPdf === p.id ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />} 
-                      </button>
                     </div>
 
                     <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0 justify-end">
@@ -858,100 +932,7 @@ export default function AdminDashboard() {
         patientName={selectedPatient?.name || ''} 
       />
 
-      {/* INPUT INVISÍVEL PARA UPLOAD DE PDF */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept=".pdf" 
-        onChange={handleFileChange} 
-      />
     </main>
-
-    {/* =========================================================
-        NOVO LAYOUT DE IMPRESSÃO (PDF IDÊNTICO ÀS IMAGENS)
-        ========================================================= */}
-    {patientToPrint && (
-      <div 
-        className="hidden print:block absolute inset-0 bg-stone-50 text-stone-900 p-8 font-sans z-[99999]" 
-        style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', minHeight: '100vh' }}
-      >
-        <style dangerouslySetInnerHTML={{ __html: `
-          @media print {
-            @page { margin: 15mm; }
-            body { background-color: #FAFAFA !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .break-inside-avoid { break-inside: avoid; }
-          }
-        `}} />
-        
-        {/* CABEÇALHO */}
-        <div className="flex justify-between items-center border-b border-stone-200 pb-6 mb-8">
-          <div>
-            <h1 className="text-3xl font-black text-stone-900 tracking-[0.1em] uppercase">VANUSA ZACARIAS</h1>
-            <p className="text-stone-500 font-bold uppercase tracking-widest text-[10px] mt-1">NUTRIÇÃO CLÍNICA & ESPORTIVA</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">PLANO ALIMENTAR</p>
-            <p className="text-sm font-black text-[#1F5036] mt-0.5">{new Date().toLocaleDateString('pt-BR')}</p> 
-          </div>
-        </div>
-
-        {/* DADOS DO PACIENTE */}
-        <div className="bg-stone-50 border border-stone-200 p-6 rounded-2xl mb-8 flex justify-between items-center">
-          <div>
-            <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">PACIENTE</p>
-            <h2 className="text-xl font-bold text-stone-900">{patientToPrint.full_name}</h2>
-          </div>
-          <div className="text-right flex flex-col items-end">
-            <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">BASE DIÁRIA APROX.</p>
-            <div className="flex items-center gap-1.5 text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg">
-              <Flame size={16} />
-              <span className="font-bold text-sm">{calculateTotalKcal(patientToPrint.meal_plan)} kcal</span>
-            </div>
-          </div>
-        </div>
-
-        {/* LISTA DE REFEIÇÕES (CARDS BRANCOS) */}
-        <div className="space-y-6">
-          {patientToPrint.meal_plan?.map((meal: any) => (
-            <div key={meal.id} className="break-inside-avoid bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
-              
-              {/* Título do Card */}
-              <div className="px-6 py-4 flex justify-between items-center border-b border-stone-100 bg-white">
-                <h3 className="text-base font-black text-stone-800 uppercase tracking-widest flex items-center gap-2">
-                  <Utensils size={18} className="text-[#1F5036]"/> {meal.name}
-                </h3>
-                <span className="bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-lg text-xs font-bold text-stone-600 flex items-center gap-1.5">
-                  <Clock size={14}/> {meal.time}
-                </span>
-              </div>
-
-              {/* Corpo do Card (Opções/Dias) */}
-              <div className="p-6 bg-white">
-                {meal.options.map((opt: any, idx: number) => (
-                  <div key={opt.id} className={idx !== meal.options.length - 1 ? 'mb-6 pb-6 border-b border-stone-50' : ''}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-[11px] bg-stone-50 border border-stone-200 text-stone-800 px-3 py-1.5 rounded-md font-black uppercase tracking-widest">
-                        {opt.day}
-                      </span>
-                      {opt.kcal > 0 && (
-                        <span className="text-[11px] text-orange-500 font-bold">
-                          (~{opt.kcal} kcal)
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-stone-700 leading-relaxed font-medium whitespace-pre-wrap">
-                      {opt.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-      </div>
-    )}
     </>
   );
 }
