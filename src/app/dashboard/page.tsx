@@ -38,8 +38,7 @@ export default function Dashboard() {
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
 
-  // NOVO: Controle de Notificações
-  const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(true); // Começa true para não piscar
+  const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(true); 
   const [isSubscribingPush, setIsSubscribingPush] = useState(false);
 
   const [dailyLog, setDailyLog] = useState({
@@ -121,7 +120,6 @@ export default function Dashboard() {
     setCheckins(checkinData || []);
     setAntroData(antro || []);
     
-    // NOVO: Verifica se o dispositivo atual já permite notificações
     checkPushSubscription();
 
     setLoading(false);
@@ -129,10 +127,9 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, [router, supabase]);
 
-  // NOVO: Funções de Notificação
   const checkPushSubscription = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setIsPushSubscribed(true); // Se não suporta, esconde o botão
+      setIsPushSubscribed(true); 
       return;
     }
     const registration = await navigator.serviceWorker.ready;
@@ -140,11 +137,24 @@ export default function Dashboard() {
     setIsPushSubscribed(!!subscription);
   };
 
+  // CORREÇÃO: Forçar a pergunta de permissão antes de assinar
   const subscribeToPush = async () => {
     setIsSubscribingPush(true);
     try {
-      if (Notification.permission === 'denied') {
-        alert('Você bloqueou as notificações. Libere nas configurações do seu navegador/celular.');
+      if (!('Notification' in window)) {
+        alert('Este navegador não suporta notificações.');
+        setIsSubscribingPush(false);
+        return;
+      }
+
+      // FORÇA A JANELA DE PERMISSÃO DO NAVEGADOR
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission !== 'granted') {
+        alert('Você precisa permitir as notificações no seu navegador/celular para ativar os lembretes.');
         setIsSubscribingPush(false);
         return;
       }
@@ -466,7 +476,6 @@ export default function Dashboard() {
                     <Droplets size={16} fill="currentColor" className={dailyLog.water_ml > 0 ? "text-blue-400 group-hover:text-white" : ""} /> + 250ml
                   </button>
 
-                  {/* NOVO: Botão de Ativar Lembretes (Push Notifications) */}
                   {!isPushSubscribed && (
                     <button 
                       onClick={subscribeToPush}
