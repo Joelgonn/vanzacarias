@@ -43,3 +43,5 @@ next-env.d.ts
 # PWA files
 public/sw.js
 public/sw.js.map
+.vercel
+.env*.local
