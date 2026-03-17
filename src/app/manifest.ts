@@ -3,7 +3,7 @@ import type { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Vanusa Zacarias Nutri',
-    short_name: 'VZ Nutri',
+    short_name: 'VanZ Nutri',
     description: 'Sua Jornada para uma Vida Saudável',
     start_url: '/',
     display: 'standalone', // Faz abrir como App (sem barra de navegação)

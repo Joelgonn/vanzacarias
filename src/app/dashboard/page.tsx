@@ -5,13 +5,27 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, CheckCircle2, TrendingDown, PlusCircle, X,
-  Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, Lock, Star, Zap, Utensils, ClipboardCheck
+  Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, 
+  Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
+  Smile, Frown, Meh, BellRing
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
+
+// Função auxiliar para converter a chave VAPID base64
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
@@ -20,14 +34,27 @@ export default function Dashboard() {
   const [antroData, setAntroData] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   
-  // NOVO: Estado para verificar se o QFA foi concluído
   const [hasCompletedQFA, setHasCompletedQFA] = useState<boolean>(true);
-
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
 
+  // NOVO: Controle de Notificações
+  const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(true); // Começa true para não piscar
+  const [isSubscribingPush, setIsSubscribingPush] = useState(false);
+
+  const [dailyLog, setDailyLog] = useState({
+    water_ml: 0,
+    meals_checked: [] as string[],
+    mood: null as string | null
+  });
+
   const router = useRouter();
   const supabase = createClient();
+
+  const getTodayString = () => {
+    const today = new Date();
+    return today.toLocaleDateString('en-CA'); 
+  };
 
   async function loadData() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -42,7 +69,6 @@ export default function Dashboard() {
       return;
     }
 
-    // Busca do campo meal_plan para verificar se já foi montado
     const { data: profileData } = await supabase
       .from('profiles')
       .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan')
@@ -55,7 +81,6 @@ export default function Dashboard() {
       .eq('user_id', session.user.id)
       .single();
 
-    // NOVO: Verifica se existe resposta na tabela qfa_responses
     const { data: qfaData } = await supabase
       .from('qfa_responses')
       .select('id')
@@ -74,15 +99,126 @@ export default function Dashboard() {
       .eq('user_id', session.user.id)
       .order('measurement_date', { ascending: false });
 
+    const todayStr = getTodayString();
+    const { data: dailyData } = await supabase
+      .from('daily_logs')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('date', todayStr)
+      .single();
+
+    if (dailyData) {
+      setDailyLog({
+        water_ml: dailyData.water_ml || 0,
+        meals_checked: dailyData.meals_checked || [],
+        mood: dailyData.mood || null
+      });
+    }
+
     setProfile(profileData);
     setEvaluation(evalData?.answers || null);
-    setHasCompletedQFA(!!qfaData); // Define como true se houver dados, false se não houver
+    setHasCompletedQFA(!!qfaData); 
     setCheckins(checkinData || []);
     setAntroData(antro || []);
+    
+    // NOVO: Verifica se o dispositivo atual já permite notificações
+    checkPushSubscription();
+
     setLoading(false);
   }
 
   useEffect(() => { loadData(); }, [router, supabase]);
+
+  // NOVO: Funções de Notificação
+  const checkPushSubscription = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setIsPushSubscribed(true); // Se não suporta, esconde o botão
+      return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    setIsPushSubscribed(!!subscription);
+  };
+
+  const subscribeToPush = async () => {
+    setIsSubscribingPush(true);
+    try {
+      if (Notification.permission === 'denied') {
+        alert('Você bloqueou as notificações. Libere nas configurações do seu navegador/celular.');
+        setIsSubscribingPush(false);
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) throw new Error('VAPID key não configurada no .env');
+
+      const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey
+      });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: session.user.id,
+          subscription: subscription
+        })
+      });
+
+      if (!response.ok) throw new Error('Falha ao salvar no banco');
+
+      setIsPushSubscribed(true);
+      alert('Notificações ativadas! Você receberá lembretes de água.');
+
+    } catch (error) {
+      console.error('Erro ao assinar push:', error);
+      alert('Não foi possível ativar as notificações.');
+    } finally {
+      setIsSubscribingPush(false);
+    }
+  };
+
+  const handleUpdateDailyLog = async (updates: Partial<typeof dailyLog>) => {
+    const newLog = { ...dailyLog, ...updates };
+    setDailyLog(newLog); 
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const todayStr = getTodayString();
+
+    await supabase
+      .from('daily_logs')
+      .upsert({
+        user_id: session.user.id,
+        date: todayStr,
+        water_ml: newLog.water_ml,
+        meals_checked: newLog.meals_checked,
+        mood: newLog.mood
+      }, { onConflict: 'user_id, date' });
+  };
+
+  const handleAddWater = () => {
+    handleUpdateDailyLog({ water_ml: dailyLog.water_ml + 250 });
+  };
+
+  const handleToggleMeal = (mealName: string) => {
+    const current = dailyLog.meals_checked;
+    const isChecked = current.includes(mealName);
+    const newMeals = isChecked 
+      ? current.filter(m => m !== mealName) 
+      : [...current, mealName];
+    
+    handleUpdateDailyLog({ meals_checked: newMeals });
+  };
 
   const handleCheckinSuccess = () => {
     setIsCheckinModalOpen(false);
@@ -150,8 +286,8 @@ export default function Dashboard() {
   const isPremium = profile?.account_type === 'premium';
   const canAccessMealPlan = isPremium || profile?.has_meal_plan_access;
   
-  // Verifica se o plano já está preenchido (JSON) ou se há status de liberado
   const isMealPlanReady = profile?.meal_plan && Array.isArray(profile.meal_plan) && profile.meal_plan.length > 0;
+  const mealNames = isMealPlanReady ? profile.meal_plan.map((meal: any) => meal.name) : [];
 
   const trialData = useMemo(() => {
     if (!profile) return { isActive: false, daysLeft: 0 };
@@ -181,7 +317,6 @@ export default function Dashboard() {
         <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-10">Menu do Paciente</h2>        
         <nav className="flex-1 space-y-6">
           <Link href="/dashboard" className="text-nutri-800 font-bold text-sm block transition-all">Painel Geral</Link>
-          {/* NOVO: Link para a Avaliação no Menu */}
           <Link href="/paciente/avaliacao" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Minha Avaliação (QFA)</Link>
           <Link href="/dashboard/meu-plano" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors flex justify-between items-center">
             Meu Plano {!canAccessMealPlan && <Lock size={12} className="text-stone-300"/>}
@@ -194,7 +329,6 @@ export default function Dashboard() {
 
       <section className="flex-1 p-6 md:p-10 lg:p-12 overflow-y-auto w-full">
         
-        {/* NOVO: BANNER DE ALERTA PARA QFA PENDENTE */}
         {!hasCompletedQFA && (
           <div className="mb-8 p-6 bg-rose-600 rounded-[2rem] text-white shadow-xl shadow-rose-600/20 flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in-up">
             <div className="flex items-center gap-4 text-center md:text-left">
@@ -212,7 +346,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* BANNER UPSELL */}
         {!isPremium && (
           <div className={`mb-8 p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border animate-fade-in-up ${trialData.isActive ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
             <div className="flex items-center gap-3 text-center sm:text-left">
@@ -251,15 +384,14 @@ export default function Dashboard() {
             )}
             {!isCheckinDoneThisWeek ? (
               <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all shadow-xl shadow-nutri-900/10 ${(!isPremium && !trialData.isActive) ? 'bg-stone-200 text-stone-400 cursor-not-allowed' : 'bg-nutri-900 text-white hover:bg-nutri-800 active:scale-[0.98]'}`}>
-                {!isPremium && !trialData.isActive ? <Lock size={20} /> : <PlusCircle size={20} />} {!isPremium && !trialData.isActive ? 'Check-in Bloqueado' : 'Fazer Check-in'}
+                {!isPremium && !trialData.isActive ? <Lock size={20} /> : <PlusCircle size={20} />} {!isPremium && !trialData.isActive ? 'Check-in Bloqueado' : 'Relato Semanal'}
               </button>
             ) : (
-              <div className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-50 text-green-700 px-6 py-4 rounded-2xl font-bold border border-green-100"><CheckCircle2 size={20} /> Check-in Feito!</div>
+              <div className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-50 text-green-700 px-6 py-4 rounded-2xl font-bold border border-green-100"><CheckCircle2 size={20} /> Relato Semanal Feito!</div>
             )}
           </div>
         </header>
 
-        {/* FEEDBACK INTELIGENTE */}
         {smartFeedback && (
           <div className={`mb-8 p-5 md:p-6 rounded-[2rem] border ${smartFeedback.bg} ${smartFeedback.border} flex flex-col sm:flex-row items-start sm:items-center gap-4 animate-fade-in-up`}>
             <div className={`p-3 bg-white rounded-2xl shadow-sm ${smartFeedback.color} shrink-0`}><smartFeedback.icon size={24} /></div>
@@ -270,7 +402,114 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* OBJETIVO E MÉTRICAS */}
+        {canAccessMealPlan && (
+          <div className="mb-8 bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-nutri-50 p-2.5 rounded-2xl text-nutri-800">
+                <CheckCircle2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl md:text-2xl font-bold text-stone-900">Meu Diário de Hoje</h3>
+                <p className="text-sm text-stone-500">Marque o que você conseguiu fazer hoje.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <div className="md:col-span-2 bg-stone-50 p-6 rounded-3xl border border-stone-100">
+                <h4 className="text-xs font-black uppercase text-stone-400 tracking-widest mb-4 flex items-center gap-2">
+                  <Utensils size={14} /> Refeições
+                </h4>
+                {isMealPlanReady ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {mealNames.map((mealName: string, i: number) => {
+                      const isChecked = dailyLog.meals_checked.includes(mealName);
+                      return (
+                        <button 
+                          key={i}
+                          onClick={() => handleToggleMeal(mealName)}
+                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all text-left ${
+                            isChecked 
+                              ? 'bg-nutri-50 border-nutri-200 text-nutri-900 shadow-sm' 
+                              : 'bg-white border-stone-200 text-stone-600 hover:border-nutri-200 hover:bg-white'
+                          }`}
+                        >
+                          <span className={`text-sm font-bold ${isChecked ? 'line-through opacity-70' : ''}`}>{mealName}</span>
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                            isChecked ? 'bg-nutri-600 border-nutri-600 text-white' : 'bg-stone-50 border-stone-300'
+                          }`}>
+                            {isChecked && <Check size={14} strokeWidth={3} />}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-500 italic bg-white p-4 rounded-2xl border border-stone-200 text-center">
+                    Seu cardápio ainda está sendo elaborado.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                
+                <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex flex-col items-center justify-center relative overflow-hidden group">
+                  <h4 className="text-xs font-black uppercase text-blue-400 tracking-widest mb-3 z-10 w-full text-center">Água Consumida</h4>
+                  <div className="flex items-baseline gap-1 mb-4 z-10">
+                    <span className="text-3xl font-black text-blue-900">{dailyLog.water_ml}</span>
+                    <span className="text-sm font-bold text-blue-600">ml</span>
+                  </div>
+                  <button 
+                    onClick={handleAddWater}
+                    className="bg-white border-2 border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm z-10 active:scale-95"
+                  >
+                    <Droplets size={16} fill="currentColor" className={dailyLog.water_ml > 0 ? "text-blue-400 group-hover:text-white" : ""} /> + 250ml
+                  </button>
+
+                  {/* NOVO: Botão de Ativar Lembretes (Push Notifications) */}
+                  {!isPushSubscribed && (
+                    <button 
+                      onClick={subscribeToPush}
+                      disabled={isSubscribingPush}
+                      className="mt-4 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg z-10 hover:bg-blue-200 transition-colors"
+                    >
+                      {isSubscribingPush ? <Loader2 size={12} className="animate-spin" /> : <BellRing size={12} />}
+                      Ativar Lembretes
+                    </button>
+                  )}
+
+                  <Droplets size={120} className="absolute -bottom-6 -right-6 text-blue-500 opacity-5 rotate-12" />
+                </div>
+
+                <div className="bg-stone-50 p-6 rounded-3xl border border-stone-100">
+                  <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-3 text-center">Como foi o dia?</h4>
+                  <div className="flex justify-center gap-3">
+                    <button 
+                      onClick={() => handleUpdateDailyLog({ mood: 'feliz' })}
+                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'feliz' ? 'bg-green-100 border-green-500 text-green-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100'}`}
+                    >
+                      <Smile size={28} />
+                    </button>
+                    <button 
+                      onClick={() => handleUpdateDailyLog({ mood: 'neutro' })}
+                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'neutro' ? 'bg-amber-100 border-amber-500 text-amber-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100'}`}
+                    >
+                      <Meh size={28} />
+                    </button>
+                    <button 
+                      onClick={() => handleUpdateDailyLog({ mood: 'dificil' })}
+                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'dificil' ? 'bg-rose-100 border-rose-500 text-rose-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100'}`}
+                    >
+                      <Frown size={28} />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
           <div className="lg:col-span-2 bg-nutri-900 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group flex flex-col justify-center">
             <h3 className="text-nutri-200 font-bold uppercase text-[10px] tracking-[0.2em] mb-4">Foco Principal</h3>
@@ -298,7 +537,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* GRÁFICO */}
         <div className="mb-10 bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 border-b border-stone-50 pb-6 gap-6">
             <div><h3 className="text-xl md:text-2xl font-bold text-stone-900 flex items-center gap-3"><TrendingDown className="text-nutri-800" size={24} /> Minha Balança</h3></div>
@@ -319,9 +557,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* CARDS DE AÇÃO */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up">
-          
           <Link href="/dashboard/meu-plano" className={`p-8 rounded-[2.5rem] border transition-all group relative overflow-hidden ${canAccessMealPlan ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200' : 'bg-stone-50 border-stone-200'}`}>
             <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2">Alimentação {!canAccessMealPlan && <Lock size={12} className="text-amber-500" />}</h4>
             <h3 className={`font-bold text-lg mb-4 ${canAccessMealPlan ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
@@ -334,7 +570,6 @@ export default function Dashboard() {
             </div>
           </Link>
 
-          {/* NOVO CARD: Raio-X Alimentar (QFA) */}
           <Link href="/paciente/avaliacao" className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 hover:border-nutri-200 transition-all group">
             <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3">Minha Rotina</h4>
             <h3 className="font-bold text-stone-900 text-lg mb-4">Raio-X Alimentar</h3>
@@ -352,7 +587,6 @@ export default function Dashboard() {
 
       </section>
 
-      {/* MODAL CHECK-IN */}
       {isCheckinModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm sm:p-4 animate-fade-in">
           <div className="relative w-full max-w-lg bg-white sm:bg-transparent rounded-t-[2.5rem] sm:rounded-none">

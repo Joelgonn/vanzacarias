@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'VZ Nutri',
+    title: 'VanZ Nutri',
     // startupImage: [] <-- Se quiser, no futuro pode adicionar imagens de splash screen do iPhone aqui
   },
   formatDetection: {
