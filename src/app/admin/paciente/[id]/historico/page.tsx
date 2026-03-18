@@ -7,7 +7,8 @@ import {
   Loader2, ChevronLeft, TrendingUp, User, Ruler, Layers, 
   Syringe, CalendarCheck, BookOpen, Send, Trash2, 
   AlertCircle, CheckCircle2, AlertTriangle, Activity, Target,
-  Clock, Zap, ChevronRight, Scale, Droplets, Smile, Frown, Meh, Coffee, Check, Brain, Flame
+  Clock, Zap, ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
+  Coffee, Check, Brain, Flame, MessageCircle, FileText, ClipboardList, Stethoscope, ListChecks, Save
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -24,13 +25,13 @@ export default function PacienteHistoricoAdmin() {
   const [skinfoldsData, setSkinfoldsData] = useState<any[]>([]);
   const [bioData, setBioData] = useState<any[]>([]);
   const [dailyLogs, setDailyLogs] = useState<any[]>([]);
-  
   const [notes, setNotes] = useState<any[]>([]);
-  const [newNote, setNewNote] = useState('');
+  
+  // Estado para o Prontuário SOAP
+  const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos'>('prontuario');
-  
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
 
   const router = useRouter();
@@ -71,15 +72,22 @@ export default function PacienteHistoricoAdmin() {
 
   useEffect(() => { fetchData(); }, [supabase, router, pacienteId]);
 
+  // =========================================================================
+  // SALVAR PRONTUÁRIO SOAP
+  // =========================================================================
   const handleSaveNote = async () => {
-    if (!newNote.trim()) return;
+    if (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p) return;
     setSavingNote(true);
-    const { error } = await supabase.from('clinical_notes').insert([{ user_id: pacienteId, content: newNote }]);
+    
+    // Formatação estruturada do SOAP para salvar no banco
+    const formattedContent = `**Subjetivo (S):**\n${soapNote.s || '---'}\n\n**Objetivo (O):**\n${soapNote.o || '---'}\n\n**Avaliação (A):**\n${soapNote.a || '---'}\n\n**Plano (P):**\n${soapNote.p || '---'}`;
+    
+    const { error } = await supabase.from('clinical_notes').insert([{ user_id: pacienteId, content: formattedContent }]);
     if (!error) {
-      setNewNote('');
+      setSoapNote({ s: '', o: '', a: '', p: '' });
       fetchData();
     } else {
-      alert("Erro ao salvar nota.");
+      alert("Erro ao salvar prontuário.");
     }
     setSavingNote(false);
   };
@@ -90,6 +98,47 @@ export default function PacienteHistoricoAdmin() {
     fetchData();
   };
 
+  // =========================================================================
+  // CÁLCULO DE COMPOSIÇÃO CORPORAL (JACKSON & POLLOCK 7 DOBRAS)
+  // =========================================================================
+  const calculateAge = (dob: string | null) => {
+    if (!dob) return 30; // fallback para cálculo
+    const diff = Date.now() - new Date(dob).getTime();
+    return Math.abs(new Date(diff).getUTCFullYear() - 1970);
+  };
+
+  const calculateBodyComposition = (sum7: number, age: number, gender: string, weight: number) => {
+    if (!sum7 || sum7 === 0 || !weight) return null;
+    
+    let bd = 0;
+    const isMale = gender?.toLowerCase() === 'masculino' || gender?.toLowerCase() === 'homem';
+    
+    if (isMale) {
+      bd = 1.112 - (0.00043499 * sum7) + (0.00000055 * (sum7 * sum7)) - (0.00028826 * age);
+    } else {
+      // Feminino (Padrão caso não especificado)
+      bd = 1.097 - (0.00046971 * sum7) + (0.00000056 * (sum7 * sum7)) - (0.00012828 * age);
+    }
+
+    if (bd === 0) return null;
+    const bf = (4.95 / bd - 4.5) * 100;
+    const validBF = bf > 0 && bf < 60 ? bf : null;
+
+    if (!validBF) return null;
+
+    const fatMass = weight * (validBF / 100);
+    const leanMass = weight - fatMass;
+
+    return { 
+      bf: validBF.toFixed(1), 
+      fatMass: fatMass.toFixed(1), 
+      leanMass: leanMass.toFixed(1) 
+    };
+  };
+
+  // =========================================================================
+  // INTERPRETAÇÃO DE EXAMES
+  // =========================================================================
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
       return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
@@ -169,61 +218,84 @@ export default function PacienteHistoricoAdmin() {
   };
 
   // =========================================================================
-  // NOVO CÉREBRO DO RADAR CLÍNICO (IA DE CORRELAÇÃO)
+  // RADAR CLÍNICO INTELIGENTE COM BOTÕES DE AÇÃO (WHATSAPP)
   // =========================================================================
   const activeAlerts = useMemo(() => {
-    const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any }[] = [];
+    const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any, waLink?: string, waText?: string }[] = [];
     
     let lastCheckin: any = null;
     let daysSinceLastCheckin = 0;
     
-    // 1. BASE DE CHECK-INS
+    const phone = profile?.phone?.replace(/\D/g, '');
+    const firstName = profile?.full_name?.split(' ')[0] || 'Paciente';
+    const waBase = phone ? `https://wa.me/55${phone}?text=` : '';
+
     if (history.length > 0) {
       lastCheckin = history[history.length - 1];
       daysSinceLastCheckin = Math.floor((new Date().getTime() - new Date(lastCheckin.created_at).getTime()) / (1000 * 3600 * 24));
       
       if (daysSinceLastCheckin > 14) {
-        alerts.push({ id: 'a1', type: 'danger', text: `Risco de Evasão: Sem check-in há ${daysSinceLastCheckin} dias. Chame-o no WhatsApp.`, icon: <Clock size={16}/> });
+        alerts.push({ 
+          id: 'a1', type: 'danger', 
+          text: `Risco de Evasão: Sem check-in há ${daysSinceLastCheckin} dias.`, 
+          icon: <Clock size={16}/>,
+          waText: 'Cobrar Retorno',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Olá ${firstName}, notei que faz um tempinho que você não preenche seu check-in semanal. Está tudo bem? Precisando de ajuda com o plano, me avise!`)}` : undefined
+        });
       } else if (daysSinceLastCheckin > 7) {
-        alerts.push({ id: 'a2', type: 'warning', text: `Atraso no relato semanal. Lembrete recomendado.`, icon: <Clock size={16}/> });
+        alerts.push({ 
+          id: 'a2', type: 'warning', 
+          text: `Atraso no relato semanal. Lembrete recomendado.`, 
+          icon: <Clock size={16}/>,
+          waText: 'Lembrar',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Oie ${firstName}, passando pra lembrar de enviar seu check-in dessa semana lá no App, tá bom? Beijos!`)}` : undefined
+        });
       }
       
-      // Reconhecimento de Consistência
       if (history.length >= 3) {
         const last3 = history.slice(-3);
         const allGood = last3.every(c => c.adesao_ao_plano >= 4);
         if (allGood) {
-          alerts.push({ id: 'a3', type: 'success', text: `Fase de Cruzeiro: Alta consistência na adesão há 3 semanas. Momento excelente do paciente!`, icon: <Flame size={16} className="text-orange-500"/> });
+          alerts.push({ 
+            id: 'a3', type: 'success', 
+            text: `Fase de Cruzeiro: Alta consistência na adesão há 3 semanas.`, 
+            icon: <Flame size={16} className="text-orange-500"/>,
+            waText: 'Elogiar',
+            waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}! Analisando seu histórico vi que sua adesão nas últimas 3 semanas foi impecável. Parabéns pelo foco, você tá arrasando! 👏🏻🔥`)}` : undefined
+          });
         }
       }
     }
 
-    // 2. CORRELAÇÃO DE DIÁRIO (Água, Refeições e Humor)
     let avgWater = 0;
     let hasRecentDifficultMood = false;
     
     if (dailyLogs.length > 0) {
-      const recentLogs = dailyLogs.slice(0, 3); // Analisa últimos 3 dias
-      
+      const recentLogs = dailyLogs.slice(0, 3);
       avgWater = recentLogs.reduce((acc, log) => acc + (log.water_ml || 0), 0) / recentLogs.length;
       hasRecentDifficultMood = recentLogs.some(log => log.mood === 'dificil');
 
-      // Cruza Humor Crítico com Check-in (Adesão caindo)
       if (hasRecentDifficultMood && lastCheckin && lastCheckin.adesao_ao_plano <= 3) {
         alerts.push({ 
           id: 'ia1', type: 'danger', 
-          text: 'Comportamental: Dias relatados como "difíceis" combinados com baixa adesão. Sugerida conduta de acolhimento e escuta.', 
-          icon: <Brain size={16}/> 
+          text: 'Comportamental: Dias relatados como "difíceis" combinados com baixa adesão.', 
+          icon: <Brain size={16}/>,
+          waText: 'Acolher',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}, vi pelo seu diário que os últimos dias foram um pouco difíceis. Quer conversar sobre isso? Podemos adaptar o plano se necessário.`)}` : undefined
         });
       }
 
-      // Alerta Hídrico Simples
       if (avgWater > 0 && avgWater < 1200) {
-        alerts.push({ id: 'ia2', type: 'warning', text: `Desidratação Crônica: Média hídrica dos últimos dias é de apenas ${Math.round(avgWater)}ml.`, icon: <Droplets size={16}/> });
+        alerts.push({ 
+          id: 'ia2', type: 'warning', 
+          text: `Desidratação Crônica: Média hídrica recente é de apenas ${Math.round(avgWater)}ml.`, 
+          icon: <Droplets size={16}/>,
+          waText: 'Avisar H2O',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}, vi no app que sua ingestão de água caiu bastante esses dias. Lembra da sua garrafinha! O metabolismo precisa de água pra funcionar bem. 💧`)}` : undefined
+        });
       }
     }
 
-    // 3. CORRELAÇÃO METABÓLICA (Exames)
     if (bioData.length > 0) {
       const latestBio = bioData[0];
       const examMap: Record<string, string> = {
@@ -233,20 +305,13 @@ export default function PacienteHistoricoAdmin() {
       };
       
       const dangerExams: string[] = [];
-      const warningExams: string[] = [];
 
       Object.keys(examMap).forEach(key => {
         let value = latestBio[key];
-        
-        // Calcular HOMA-IR se não vier salvo mas tiver os componentes
-        if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) {
-          value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
-        }
-
+        if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
         if(value !== null && value !== undefined) {
           const analysis = interpretBiochemical(key, parseFloat(value));
           if(analysis.status === 'danger') dangerExams.push(examMap[key]);
-          if(analysis.status === 'warning') warningExams.push(examMap[key]);
         }
       });
 
@@ -256,36 +321,28 @@ export default function PacienteHistoricoAdmin() {
           text: `Atenção Clínica Crítica: ${dangerExams.join(', ')} em níveis de risco elevado.`, 
           icon: <Activity size={16}/> 
         });
-      } else if (warningExams.length > 0) {
-        alerts.push({ 
-          id: 'b2', type: 'warning', 
-          text: `Ajuste Dietético Necessário: Olhar com atenção para ${warningExams.slice(0, 3).join(', ')}.`, 
-          icon: <Syringe size={16}/> 
-        });
       }
     }
 
-    // 4. CORRELAÇÃO DE ESTAGNAÇÃO (Peso + Água)
     if (history.length >= 2) {
       const w1 = history[history.length - 1].peso;
       const w2 = history[history.length - 2].peso;
-      
-      // Se peso subiu ou manteve E água está baixa
       if (w1 >= w2 && avgWater > 0 && avgWater < 1500) {
         alerts.push({ 
           id: 'ia3', type: 'warning', 
-          text: `Fator de Estagnação: O ganho/manutenção de peso recente pode estar agravado pelo baixo consumo hídrico diário.`, 
+          text: `Fator de Estagnação: O ganho/manutenção de peso recente pode estar agravado pelo baixo consumo hídrico.`, 
           icon: <TrendingUp size={16}/> 
         });
       }
     }
 
     return alerts;
-  }, [history, antroData, bioData, dailyLogs]);
+  }, [history, antroData, bioData, dailyLogs, profile]);
 
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
     const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
+    const age = calculateAge(profile?.data_nascimento);
 
     history.forEach(h => dateSet.add(formatD(h.created_at)));
     antroData.forEach(a => dateSet.add(formatD(a.measurement_date)));
@@ -300,10 +357,20 @@ export default function PacienteHistoricoAdmin() {
       const skin = skinfoldsData.find(s => formatD(s.measurement_date) === dateStr);
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
+      const currentWeight = checkin?.peso || antro?.weight || null;
+
       let sumFolds: number | null = null;
+      let bf: number | null = null;
+      
       if (skin) {
         const s1 = parseFloat(skin.triceps||0) + parseFloat(skin.biceps||0) + parseFloat(skin.subscapular||0) + parseFloat(skin.suprailiac||0) + parseFloat(skin.abdominal||0) + parseFloat(skin.thigh||0) + parseFloat(skin.calf||0);
-        if (s1 > 0) sumFolds = parseFloat(s1.toFixed(1));
+        if (s1 > 0) {
+          sumFolds = parseFloat(s1.toFixed(1));
+          if (currentWeight) {
+            const comp = calculateBodyComposition(s1, age, profile?.sexo, currentWeight);
+            if (comp) bf = parseFloat(comp.bf);
+          }
+        }
       }
 
       let homa: number | null = null;
@@ -313,15 +380,16 @@ export default function PacienteHistoricoAdmin() {
 
       return {
         date: dateStr,
-        peso: checkin?.peso || antro?.weight || null,
+        peso: currentWeight,
         cintura: antro?.waist || null,
         somatorio_dobras: sumFolds,
+        bf: bf,
         homair: homa,
         adesao: checkin?.adesao_ao_plano || null,
         hasExam: !!bio, 
       };
     });
-  }, [history, antroData, skinfoldsData, bioData]);
+  }, [history, antroData, skinfoldsData, bioData, profile]);
 
   const projectionDate = useMemo(() => {
     if (history.length < 3 || !profile?.meta_peso) return null;
@@ -391,7 +459,7 @@ export default function PacienteHistoricoAdmin() {
             <span className="text-sm font-semibold text-stone-600 group-hover:text-nutri-900">Voltar ao Painel Admin</span>
           </Link>
           <div className="text-center sm:text-right w-full sm:w-auto">
-            <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest">Prontuário</p>
+            <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest">Prontuário e Evolução</p>
             <h1 className="text-xl md:text-2xl font-bold text-nutri-900 flex items-center gap-2 justify-center sm:justify-end tracking-tight">
               <User size={20} /> {profile?.full_name}
             </h1>
@@ -406,9 +474,9 @@ export default function PacienteHistoricoAdmin() {
               <div>
                 <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
                 <div className="space-y-6 md:space-y-5">
-                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil}</p></div>
+                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil || 'Não definido'}</p></div>
                   <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
-                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso (Check-in)</p><p className="font-bold text-stone-700 text-lg">{history.length > 0 ? `${history[history.length - 1].peso} kg` : '---'}</p></div>
+                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso Registrado</p><p className="font-bold text-stone-700 text-lg">{timelineData.length > 0 && timelineData[timelineData.length - 1].peso ? `${timelineData[timelineData.length - 1].peso} kg` : '---'}</p></div>
                   
                   {projectionDate && projectionDate !== "Estagnado/Subindo" && (
                     <div className="bg-nutri-50 p-4 rounded-xl border border-nutri-100 mt-6 flex items-start gap-3">
@@ -424,7 +492,7 @@ export default function PacienteHistoricoAdmin() {
             </section>
 
             {/* RADAR CLÍNICO */}
-            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group">
+            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex-1">
               <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl transition-opacity"></div>
               <h2 className="text-sm font-black text-stone-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 relative z-10">
                 <Zap size={16} className="text-amber-400" /> Radar Clínico (IA)
@@ -433,11 +501,29 @@ export default function PacienteHistoricoAdmin() {
               <div className="space-y-3 relative z-10">
                 {activeAlerts.length > 0 ? (
                   activeAlerts.map(alert => (
-                    <div key={alert.id} className={`flex items-start gap-3 p-4 rounded-2xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
-                      <div className={`mt-0.5 ${alert.type === 'danger' ? 'text-red-400' : alert.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                        {alert.icon}
+                    <div key={alert.id} className={`flex flex-col gap-3 p-4 rounded-2xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 ${alert.type === 'danger' ? 'text-red-400' : alert.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {alert.icon}
+                        </div>
+                        <p className="text-[13px] leading-snug font-medium flex-1">{alert.text}</p>
                       </div>
-                      <p className="text-[13px] leading-snug font-medium">{alert.text}</p>
+                      
+                      {/* BOTÃO MÁGICO DO WHATSAPP */}
+                      {alert.waLink && (
+                        <a 
+                          href={alert.waLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className={`mt-1 self-end flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                            alert.type === 'danger' ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200' : 
+                            alert.type === 'warning' ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-200' : 
+                            'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200'
+                          }`}
+                        >
+                          <MessageCircle size={12} /> {alert.waText}
+                        </a>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -518,6 +604,7 @@ export default function PacienteHistoricoAdmin() {
                               <>
                                 {data.peso && <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>}
                                 {data.somatorio_dobras && <p className="font-black text-pink-400 flex justify-between gap-4">7 Dobras: <span>{data.somatorio_dobras} mm</span></p>}
+                                {data.bf && <p className="font-black text-amber-400 flex justify-between gap-4">% Gordura: <span>{data.bf}%</span></p>}
                               </>
                             )}
 
@@ -549,9 +636,12 @@ export default function PacienteHistoricoAdmin() {
 
                   {activeLens === 'composicao' && (
                     <>
-                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="5 5" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
                       <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls />
                       <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 4, fill: "#ec4899" }} connectNulls />
+                      {/* Adicionando a linha de % de Gordura se houver dados */}
+                      {timelineData.some(d => d.bf) && (
+                         <Line type="monotone" yAxisId="right" dataKey="bf" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 4, fill: "#f59e0b" }} connectNulls />
+                      )}
                     </>
                   )}
 
@@ -580,14 +670,14 @@ export default function PacienteHistoricoAdmin() {
           </section>
         </div>
 
-        {/* --- ABAS DE TABELAS (PRONTUÁRIO, DIÁRIO, EXAMES, ETC) --- */}
+        {/* --- ABAS DE TABELAS E PRONTUÁRIO --- */}
         <section className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-4 pt-4 gap-1 scrollbar-hide">
             <button onClick={() => setActiveTab('prontuario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'prontuario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><BookOpen size={18} /> Prontuário</button>
             <button onClick={() => setActiveTab('diario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'diario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Coffee size={18} /> Diário do Paciente</button>
             <button onClick={() => setActiveTab('checkins')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'checkins' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><CalendarCheck size={18} /> Check-ins</button>
             <button onClick={() => setActiveTab('antropometria')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'antropometria' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Ruler size={18} /> Antropometria</button>
-            <button onClick={() => setActiveTab('dobras')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'dobras' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Layers size={18} /> Dobras</button>
+            <button onClick={() => setActiveTab('dobras')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'dobras' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Layers size={18} /> Dobras e BF%</button>
             <button onClick={() => setActiveTab('bioquimicos')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'bioquimicos' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Activity size={18} /> Bioquímicos</button>
           </div>
 
@@ -596,88 +686,92 @@ export default function PacienteHistoricoAdmin() {
             {activeTab === 'prontuario' && (
               <div className="animate-fade-in max-w-4xl mx-auto">
                 <h2 className="text-lg md:text-xl font-bold mb-8 text-stone-900 flex items-center gap-2">
-                  <BookOpen className="text-nutri-800" /> Evolução Clínica e Conduta
+                  <Stethoscope className="text-nutri-800" /> Prontuário Clínico (Método S.O.A.P)
                 </h2>
-                <div className="mb-12 bg-stone-50/50 p-6 rounded-[2rem] border border-stone-100">
-                  <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Escreva aqui a evolução do paciente nesta consulta ou conduta técnica..." className="w-full p-5 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-32 resize-none text-sm leading-relaxed bg-white"/>
-                  <div className="flex justify-end mt-4"><button onClick={handleSaveNote} disabled={savingNote || !newNote.trim()} className="bg-nutri-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-nutri-800 active:scale-95 transition-all disabled:opacity-50">{savingNote ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} Salvar no Prontuário</button></div>
-                </div>
-                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
-                  {notes.map((note) => (
-                    <div key={note.id} className="relative flex items-start group">
-                      <div className="absolute left-0 flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-nutri-800 shadow-sm z-10"><div className="w-2 h-2 bg-nutri-800 rounded-full"></div></div>
-                      <div className="ml-14 flex-1 bg-white p-6 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-all">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="text-[10px] font-black text-nutri-800 uppercase tracking-widest">{new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
-                          <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                        </div>
-                        <p className="text-stone-600 leading-relaxed text-sm whitespace-pre-wrap">{note.content}</p>
-                      </div>
+                
+                {/* FORMS SOAP */}
+                <div className="mb-12 bg-stone-50 p-6 rounded-[2rem] border border-stone-200 shadow-inner">
+                  <div className="space-y-6">
+                    <div>
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><MessageCircle size={14}/> S - Subjetivo</label>
+                      <textarea value={soapNote.s} onChange={e => setSoapNote({...soapNote, s: e.target.value})} placeholder="Queixas, relatos e informações dadas pelo paciente..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
                     </div>
-                  ))}
-                  {notes.length === 0 && <div className="text-center py-10 text-stone-400 italic bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">Nenhuma anotação registrada ainda.</div>}
+                    <div>
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><ClipboardList size={14}/> O - Objetivo</label>
+                      <textarea value={soapNote.o} onChange={e => setSoapNote({...soapNote, o: e.target.value})} placeholder="Sinais clínicos, resultados de exames e medidas físicas observadas..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><Brain size={14}/> A - Avaliação</label>
+                      <textarea value={soapNote.a} onChange={e => setSoapNote({...soapNote, a: e.target.value})} placeholder="Seu diagnóstico nutricional e análise do quadro..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><ListChecks size={14}/> P - Plano</label>
+                      <textarea value={soapNote.p} onChange={e => setSoapNote({...soapNote, p: e.target.value})} placeholder="Conduta dietética, suplementação prescrita e próximos passos..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-6">
+                    <button onClick={handleSaveNote} disabled={savingNote || (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p)} className="bg-nutri-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-nutri-800 active:scale-95 transition-all disabled:opacity-50">
+                      {savingNote ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Prontuário
+                    </button>
+                  </div>
+                </div>
+
+                {/* HISTÓRICO DE NOTAS */}
+                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
+                  {notes.map((note) => {
+                    // Simples formatador visual se a nota já foi salva com ** ou se é velha
+                    const formattedContent = note.content.includes('**S') ? (
+                      <div dangerouslySetInnerHTML={{ __html: note.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-nutri-900 block mt-2 mb-0.5">$1</strong>').replace(/\n/g, '<br/>') }} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{note.content}</p>
+                    );
+
+                    return (
+                      <div key={note.id} className="relative flex items-start group">
+                        <div className="absolute left-0 flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-nutri-800 shadow-sm z-10"><div className="w-2 h-2 bg-nutri-800 rounded-full"></div></div>
+                        <div className="ml-14 flex-1 bg-white p-6 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-all">
+                          <div className="flex justify-between items-center mb-3 border-b border-stone-100 pb-3">
+                            <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}</span>
+                            <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                          </div>
+                          <div className="text-stone-600 leading-relaxed text-sm">
+                            {formattedContent}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {notes.length === 0 && <div className="text-center py-10 text-stone-400 italic bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">Nenhum prontuário registrado ainda.</div>}
                 </div>
               </div>
             )}
 
+            {/* (O restante das abas Diario, Checkins, Antropometria mantivemos intactas. Vamos apenas refinar a aba de Dobras abaixo) */}
+
             {activeTab === 'diario' && (
               <div className="animate-fade-in">
+                {/* Diário UI - Mesma do seu arquivo anterior */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                  <div>
-                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2">
-                      <Coffee className="text-nutri-800" /> Rotina Diária
-                    </h2>
-                    <p className="text-sm text-stone-500 mt-1">Acompanhe o que o paciente registra no aplicativo dia a dia.</p>
-                  </div>
+                  <div><h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2"><Coffee className="text-nutri-800" /> Rotina Diária</h2><p className="text-sm text-stone-500 mt-1">Acompanhe o que o paciente registra no aplicativo dia a dia.</p></div>
                 </div>
-
                 {dailyLogs.length === 0 ? (
-                  <div className="text-center py-12 text-stone-400 italic bg-stone-50/50 rounded-[2rem] border border-dashed border-stone-200 flex flex-col items-center justify-center">
-                    <Coffee size={40} className="mb-4 text-stone-300" />
-                    <p>O paciente ainda não começou a registrar sua rotina diária no app.</p>
-                  </div>
+                  <div className="text-center py-12 text-stone-400 italic bg-stone-50/50 rounded-[2rem] border border-dashed border-stone-200 flex flex-col items-center justify-center"><Coffee size={40} className="mb-4 text-stone-300" /><p>O paciente ainda não começou a registrar sua rotina diária no app.</p></div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {dailyLogs.map((log) => {
                       const mealCount = Array.isArray(log.meals_checked) ? log.meals_checked.length : 0;
                       return (
                         <div key={log.id} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                          
                           <div className="flex justify-between items-start mb-6 border-b border-stone-50 pb-4">
-                            <div>
-                              <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p>
-                              <h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
-                            </div>
-                            <div title={`Humor: ${log.mood || 'Não informado'}`}>
-                              {getMoodIcon(log.mood)}
-                            </div>
+                            <div><p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p><h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3></div>
+                            <div title={`Humor: ${log.mood || 'Não informado'}`}>{getMoodIcon(log.mood)}</div>
                           </div>
-
                           <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col justify-center items-center text-center">
-                              <Droplets size={18} className="text-blue-500 mb-2" />
-                              <p className="text-xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p>
-                              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Água</p>
-                            </div>
-
-                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-center items-center text-center relative">
-                              <Check size={18} className="text-green-500 mb-2" />
-                              <p className="text-xl font-black text-stone-900">{mealCount}</p>
-                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Refeições</p>
-                            </div>
+                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col justify-center items-center text-center"><Droplets size={18} className="text-blue-500 mb-2" /><p className="text-xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p><p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Água</p></div>
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-center items-center text-center relative"><Check size={18} className="text-green-500 mb-2" /><p className="text-xl font-black text-stone-900">{mealCount}</p><p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Refeições</p></div>
                           </div>
-
                           {mealCount > 0 && (
-                            <div className="mt-4 pt-4 border-t border-stone-100">
-                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Refeições Marcadas:</p>
-                              <ul className="flex flex-wrap gap-1.5">
-                                {log.meals_checked.map((meal: string, idx: number) => (
-                                  <li key={idx} className="bg-stone-100 text-stone-600 text-[10px] px-2 py-1 rounded-md font-medium">
-                                    {meal}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                            <div className="mt-4 pt-4 border-t border-stone-100"><p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Refeições Marcadas:</p><ul className="flex flex-wrap gap-1.5">{log.meals_checked.map((meal: string, idx: number) => (<li key={idx} className="bg-stone-100 text-stone-600 text-[10px] px-2 py-1 rounded-md font-medium">{meal}</li>))}</ul></div>
                           )}
                         </div>
                       )
@@ -751,37 +845,82 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
+            {/* NOVA ABA DE DOBRAS COM CÁLCULO DE % GORDURA */}
             {activeTab === 'dobras' && (
-              <div className="animate-fade-in overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
-                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Protocolo de Dobras (mm)</h2>
-                <table className="w-full text-left min-w-[900px]">
-                  <thead>
-                    <tr className="border-b-2 border-stone-100">
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Tricipital</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Bicipital</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Subescapular</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Suprailíaca</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abdominal</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Panturrilha</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-50">
-                    {skinfoldsData.map(i => (
-                      <tr key={i.id} className="hover:bg-stone-50/50">
-                        <td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                        <td className="py-4 px-2 text-sm">{i.triceps || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.biceps || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.subscapular || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.suprailiac || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.abdominal || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.thigh || '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.calf || '-'}</td>
+              <div className="animate-fade-in">
+                <div className="flex items-center justify-between mb-8">
+                  <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2">
+                    <Layers className="text-nutri-800" /> Dobras Cutâneas & Composição
+                  </h2>
+                </div>
+
+                {/* CARD DE COMPOSIÇÃO CORPORAL ATUAL */}
+                {skinfoldsData.length > 0 && timelineData.length > 0 && (
+                  <div className="bg-nutri-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-nutri-900/20">
+                    <div>
+                      <h3 className="text-[10px] font-black text-nutri-300 uppercase tracking-[0.2em] mb-2">Composição Atual (Jackson & Pollock)</h3>
+                      <p className="text-sm text-nutri-100/80">Cálculo baseado na última dobra realizada e no peso correspondente.</p>
+                    </div>
+                    
+                    {(() => {
+                      const latestSkin = skinfoldsData[0];
+                      const s1 = parseFloat(latestSkin.triceps||0) + parseFloat(latestSkin.biceps||0) + parseFloat(latestSkin.subscapular||0) + parseFloat(latestSkin.suprailiac||0) + parseFloat(latestSkin.abdominal||0) + parseFloat(latestSkin.thigh||0) + parseFloat(latestSkin.calf||0);
+                      const tPoint = timelineData.slice().reverse().find(t => t.somatorio_dobras === parseFloat(s1.toFixed(1)));
+                      
+                      if (tPoint && tPoint.bf) {
+                        return (
+                          <div className="flex gap-4 w-full md:w-auto">
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 md:w-32 text-center border border-white/20">
+                              <p className="text-2xl font-black text-amber-400">{tPoint.bf}%</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">Gordura</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 md:w-32 text-center border border-white/20">
+                              <p className="text-2xl font-black text-emerald-400">{(tPoint.peso - (tPoint.peso * (tPoint.bf / 100))).toFixed(1)}kg</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">Massa Magra</p>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return <p className="text-sm font-medium italic opacity-70">Necessário peso e 7 dobras p/ calcular.</p>;
+                    })()}
+                  </div>
+                )}
+
+                <div className="overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
+                  <table className="w-full text-left min-w-[900px]">
+                    <thead>
+                      <tr className="border-b-2 border-stone-100">
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Somatório (7)</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Tricipital</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Bicipital</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Subescapular</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Suprailíaca</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abdominal</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Panturrilha</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-stone-50">
+                      {skinfoldsData.map(i => {
+                         const sum = parseFloat(i.triceps||0) + parseFloat(i.biceps||0) + parseFloat(i.subscapular||0) + parseFloat(i.suprailiac||0) + parseFloat(i.abdominal||0) + parseFloat(i.thigh||0) + parseFloat(i.calf||0);
+                         return (
+                          <tr key={i.id} className="hover:bg-stone-50/50">
+                            <td className="py-4 px-2 font-bold text-sm text-stone-700">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                            <td className="py-4 px-2 font-black text-nutri-700">{sum > 0 ? sum.toFixed(1) : '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.triceps || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.biceps || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.subscapular || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.suprailiac || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.abdominal || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.thigh || '-'}</td>
+                            <td className="py-4 px-2 text-sm">{i.calf || '-'}</td>
+                          </tr>
+                         )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -870,16 +1009,11 @@ export default function PacienteHistoricoAdmin() {
                 )}
               </div>
             )}
+
           </div>
         </section>
 
       </div>
     </main>
-  );
-}
-
-function Star(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={props.fill || "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
   );
 }
