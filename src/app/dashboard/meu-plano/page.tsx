@@ -614,7 +614,7 @@ export default function MeuPlano() {
     : (planoPDF?.publicUrl || planoPDF?.file_url || planoPDF?.meal_plan_pdf_url || '#');
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-22 md:pt-30 relative">
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-24 md:pt-32 relative">
       <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
         
         <nav className="flex items-center justify-between mb-12 animate-fade-in-up mt-4">

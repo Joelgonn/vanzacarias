@@ -8,7 +8,7 @@ import {
   Loader2, CheckCircle2, TrendingDown, PlusCircle, X,
   Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, 
   Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
-  Smile, Frown, Meh, BellRing, Scale, Layers, Activity, ChevronRight, Syringe,
+  Smile, Frown, Meh, BellRing, Scale, Layers, Activity, Syringe,
   Target, Calendar, ArrowDown, ArrowUp, Minus
 } from 'lucide-react';
 import Link from 'next/link';
@@ -135,7 +135,6 @@ export default function Dashboard() {
       });
     }
 
-    // Tenta buscar a próxima consulta (Ignora erro se a tabela ainda não existir)
     try {
       const { data: apptData } = await supabase
         .from('appointments')
@@ -277,13 +276,12 @@ export default function Dashboard() {
     const newAmount = dailyLog.water_ml + 250;
     handleUpdateDailyLog({ water_ml: newAmount });
 
-    // Dispara confetes se acabou de bater a meta
     if (newAmount >= waterGoal && dailyLog.water_ml < waterGoal) {
       confetti({
         particleCount: 150,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#3b82f6', '#60a5fa', '#bfdbfe'] // Tons de azul
+        colors: ['#3b82f6', '#60a5fa', '#bfdbfe'] 
       });
     }
   };
@@ -297,20 +295,19 @@ export default function Dashboard() {
     
     handleUpdateDailyLog({ meals_checked: newMeals });
 
-    // Confetes para refeições
     if (!isChecked && newMeals.length === totalMeals) {
       confetti({
         particleCount: 150,
         spread: 80,
         origin: { y: 0.5 },
-        colors: ['#166534', '#22c55e', '#bbf7d0'] // Tons da nutri
+        colors: ['#166534', '#22c55e', '#bbf7d0'] 
       });
     }
   };
 
   const handleCheckinSuccess = () => {
     setIsCheckinModalOpen(false);
-    confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } }); // Celebração do relato
+    confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } }); 
     setLoading(true);
     loadData();
   };
@@ -399,7 +396,24 @@ export default function Dashboard() {
   }, [profile, isPremium]);
 
   // =========================================================================
-  // LOGICA DO GRAFICO UNIFICADO (MULTI-LENTES)
+  // FUNÇÕES DE CÁLCULO DE IMC
+  // =========================================================================
+  const getIMC = (peso: number, altura: number) => {
+    if (!peso || !altura || altura === 0) return null;
+    return (peso / (altura * altura)).toFixed(1);
+  };
+
+  const getClassificacaoIMC = (imc: number) => {
+    if (imc < 18.5) return 'Abaixo do peso';
+    if (imc < 25) return 'Peso normal';
+    if (imc < 30) return 'Sobrepeso';
+    if (imc < 35) return 'Obesidade Grau I';
+    if (imc < 40) return 'Obesidade Grau II';
+    return 'Obesidade Grau III';
+  };
+
+  // =========================================================================
+  // LOGICA DO GRAFICO UNIFICADO (MULTI-LENTES) + IMC
   // =========================================================================
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
@@ -412,11 +426,18 @@ export default function Dashboard() {
 
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+    // Busca a altura mais recente que o paciente informou nos check-ins
+    const checkinComAltura = [...checkins].reverse().find(c => c.altura);
+    const ultimaAltura = checkinComAltura?.altura || null;
+
     return sortedDates.map(dateStr => {
       const checkin = checkins.find(h => formatD(h.created_at) === dateStr);
       const antro = antroData.find(a => formatD(a.measurement_date) === dateStr);
       const skin = skinfoldsData.find(s => formatD(s.measurement_date) === dateStr);
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
+
+      const pesoAtual = checkin?.peso || antro?.weight || null;
+      const imcAtual = pesoAtual && ultimaAltura ? getIMC(pesoAtual, ultimaAltura) : null;
 
       let sumFolds: number | null = null;
       if (skin) {
@@ -431,7 +452,9 @@ export default function Dashboard() {
 
       return {
         date: dateStr,
-        peso: checkin?.peso || antro?.weight || null,
+        peso: pesoAtual,
+        imc: imcAtual,
+        classificacao: imcAtual ? getClassificacaoIMC(parseFloat(imcAtual)) : '',
         cintura: antro?.waist || null,
         somatorio_dobras: sumFolds,
         homair: homa,
@@ -455,6 +478,40 @@ export default function Dashboard() {
   }, [timelineData]);
 
   const isGoalMet = profile?.meta_peso && deltas.currentWeight && deltas.currentWeight <= profile.meta_peso;
+
+  // =========================================================================
+  // PROJEÇÃO DE CHEGADA (ETA INTELIGENTE)
+  // =========================================================================
+  const projection = useMemo(() => {
+    if (!profile?.meta_peso) return null;
+    
+    const validPoints = timelineData.filter(d => d.peso !== null);
+    if (validPoints.length < 2) return null; // Precisa de pelo menos 2 registros para ter uma média
+
+    const firstPoint = validPoints[0];
+    const lastPoint = validPoints[validPoints.length - 1];
+    
+    const weightLost = firstPoint.peso! - lastPoint.peso!;
+    if (weightLost <= 0) return null; // Só projeta se estiver perdendo peso
+
+    const daysPassed = (new Date(lastPoint.date).getTime() - new Date(firstPoint.date).getTime()) / (1000 * 3600 * 24);
+    const weeksPassed = daysPassed / 7;
+    
+    if (weeksPassed < 1) return null; // Menos de 1 semana é pouco tempo para estipular um ritmo real
+
+    const ratePerWeek = weightLost / weeksPassed;
+    const weightLeft = lastPoint.peso! - profile.meta_peso;
+    
+    if (weightLeft <= 0) return { achieved: true };
+
+    const weeksLeft = weightLeft / ratePerWeek;
+    
+    return {
+      ratePerWeek: ratePerWeek.toFixed(2),
+      weeksLeft: Math.ceil(weeksLeft),
+      weightLeft: weightLeft.toFixed(1)
+    };
+  }, [timelineData, profile?.meta_peso]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50">
@@ -536,7 +593,6 @@ export default function Dashboard() {
               </div>
             )}
             
-            {/* LÓGICA DE CONTAGEM REGRESSIVA DO CHECKIN */}
             {!isCheckinDoneThisWeek ? (
               <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all shadow-xl shadow-nutri-900/10 ${(!isPremium && !trialData.isActive) ? 'bg-stone-200 text-stone-400 cursor-not-allowed' : 'bg-nutri-900 text-white hover:bg-nutri-800 active:scale-[0.98]'}`}>
                 {!isPremium && !trialData.isActive ? <Lock size={20} /> : <PlusCircle size={20} />} {!isPremium && !trialData.isActive ? 'Check-in Bloqueado' : 'Relato Semanal'}
@@ -585,7 +641,6 @@ export default function Dashboard() {
                   </span>
                 </div>
                 
-                {/* Barra de Progresso das Refeições */}
                 <div className="w-full bg-stone-200 rounded-full h-2.5 mb-6 overflow-hidden">
                   <div 
                     className={`h-2.5 rounded-full transition-all duration-500 ${isMealGoalMet ? 'bg-green-500' : 'bg-nutri-700'}`} 
@@ -777,14 +832,32 @@ export default function Dashboard() {
                             
                             {activeLens === 'medidas' && (
                               <>
-                                {data.peso && <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>}
+                                {data.peso && (
+                                  <div className="space-y-1 mb-2">
+                                    <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
+                                    {data.imc && (
+                                      <p className="text-xs text-stone-300 flex justify-between gap-4">
+                                        IMC: <span className="font-bold text-white">{data.imc} ({data.classificacao})</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                                 {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
                               </>
                             )}
 
                             {activeLens === 'composicao' && (
                               <>
-                                {data.peso && <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>}
+                                {data.peso && (
+                                  <div className="space-y-1 mb-2">
+                                    <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
+                                    {data.imc && (
+                                      <p className="text-xs text-stone-300 flex justify-between gap-4">
+                                        IMC: <span className="font-bold text-white">{data.imc} ({data.classificacao})</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                                 {data.somatorio_dobras && <p className="font-black text-pink-400 flex justify-between gap-4">7 Dobras: <span>{data.somatorio_dobras} mm</span></p>}
                               </>
                             )}
@@ -852,22 +925,39 @@ export default function Dashboard() {
             )}
           </div>
 
-          {profile?.meta_peso && (
-            <div className={`mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl border transition-colors ${isGoalMet ? 'bg-green-50 border-green-200' : 'bg-stone-50 border-stone-100'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-xl ${isGoalMet ? 'bg-green-200 text-green-800' : 'bg-nutri-100 text-nutri-900'}`}>
-                  {isGoalMet ? <Trophy size={20}/> : <Target size={20}/>}
+          {/* PAINEL DE PREVISÃO DE CHEGADA E STATUS DA META */}
+          {profile?.meta_peso && timelineData.length > 0 && (
+            <div className={`mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-2xl border transition-colors ${isGoalMet ? 'bg-green-50 border-green-200' : 'bg-stone-50 border-stone-100'}`}>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className={`p-3 rounded-2xl ${isGoalMet ? 'bg-green-200 text-green-800' : 'bg-nutri-100 text-nutri-900 shadow-sm'}`}>
+                  {isGoalMet ? <Trophy size={24}/> : <Target size={24}/>}
                 </div>
-                <div>
-                  <p className={`text-[10px] font-black uppercase tracking-widest ${isGoalMet ? 'text-green-700' : 'text-stone-400'}`}>
-                    {isGoalMet ? 'Meta de Peso Atingida!' : 'Sua Meta Final'}
+                <div className="text-center sm:text-left">
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isGoalMet ? 'text-green-700' : 'text-stone-400'}`}>
+                    {isGoalMet ? 'Meta Atingida!' : 'Destino: Peso Meta'}
                   </p>
-                  <p className={`font-black text-lg ${isGoalMet ? 'text-green-900' : 'text-stone-900'}`}>{profile.meta_peso} kg</p>
+                  <p className={`font-black text-xl md:text-2xl ${isGoalMet ? 'text-green-900' : 'text-stone-900'}`}>{profile.meta_peso} kg</p>
                 </div>
               </div>
-              <p className={`text-xs font-medium text-center sm:text-right ${isGoalMet ? 'text-green-700' : 'text-stone-500'}`}>
-                {isGoalMet ? 'Parabéns pela dedicação! Continue assim para manter os resultados.' : 'Continue registrando seus relatos semanais para monitorar seu desempenho.'}
-              </p>
+              
+              {!isGoalMet && projection && !projection.achieved && (
+                <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l border-stone-200 pt-4 sm:pt-0 sm:pl-6">
+                   <p className="text-sm text-stone-600 font-medium">Ritmo atual: <strong className="text-emerald-600">-{projection.ratePerWeek} kg/sem</strong></p>
+                   <p className="text-xs text-stone-500 mt-1">Mantendo o foco, você chega lá em <strong className="text-stone-800">~{projection.weeksLeft} semanas</strong>.</p>
+                </div>
+              )}
+              
+              {!isGoalMet && !projection && (
+                <p className={`text-xs font-medium text-center sm:text-right text-stone-500 max-w-xs`}>
+                  Continue registrando seus relatos semanais para o sistema calcular sua previsão de chegada.
+                </p>
+              )}
+              
+              {isGoalMet && (
+                <p className={`text-xs font-medium text-center sm:text-right text-green-700 max-w-xs`}>
+                  Parabéns pela dedicação! Você alcançou seu objetivo. O foco agora é a manutenção.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -923,7 +1013,6 @@ export default function Dashboard() {
             </p>
           </Link>
 
-          {/* CARD DINÂMICO DE PRÓXIMA CONSULTA */}
           <Link href="/dashboard/agendamentos" className={`p-8 rounded-[2.5rem] shadow-sm border transition-all group flex flex-col justify-between ${nextAppointment ? 'bg-nutri-50 border-nutri-200 hover:bg-nutri-100' : 'bg-white border-stone-100 hover:border-nutri-200'}`}>
             <div>
               <h4 className={`font-black uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2 ${nextAppointment ? 'text-nutri-600' : 'text-stone-400'}`}>
