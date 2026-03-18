@@ -8,7 +8,8 @@ import {
   Syringe, CalendarCheck, BookOpen, Send, Trash2, 
   AlertCircle, CheckCircle2, AlertTriangle, Activity, Target,
   Clock, Zap, ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
-  Coffee, Check, Brain, Flame, MessageCircle, FileText, ClipboardList, Stethoscope, ListChecks, Save
+  Coffee, Check, Brain, Flame, MessageCircle, FileText, ClipboardList, 
+  Stethoscope, ListChecks, Save 
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -27,7 +28,6 @@ export default function PacienteHistoricoAdmin() {
   const [dailyLogs, setDailyLogs] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   
-  // Estado para o Prontuário SOAP
   const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
 
@@ -72,14 +72,10 @@ export default function PacienteHistoricoAdmin() {
 
   useEffect(() => { fetchData(); }, [supabase, router, pacienteId]);
 
-  // =========================================================================
-  // SALVAR PRONTUÁRIO SOAP
-  // =========================================================================
   const handleSaveNote = async () => {
     if (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p) return;
     setSavingNote(true);
     
-    // Formatação estruturada do SOAP para salvar no banco
     const formattedContent = `**Subjetivo (S):**\n${soapNote.s || '---'}\n\n**Objetivo (O):**\n${soapNote.o || '---'}\n\n**Avaliação (A):**\n${soapNote.a || '---'}\n\n**Plano (P):**\n${soapNote.p || '---'}`;
     
     const { error } = await supabase.from('clinical_notes').insert([{ user_id: pacienteId, content: formattedContent }]);
@@ -100,28 +96,36 @@ export default function PacienteHistoricoAdmin() {
 
   // =========================================================================
   // CÁLCULO DE COMPOSIÇÃO CORPORAL (JACKSON & POLLOCK 7 DOBRAS)
+  // CORRIGIDO: Idade e Sexo estritos. Se faltar Idade, retorna NULL.
   // =========================================================================
-  const calculateAge = (dob: string | null) => {
-    if (!dob) return 30; // fallback para cálculo
-    const diff = Date.now() - new Date(dob).getTime();
-    return Math.abs(new Date(diff).getUTCFullYear() - 1970);
+  const calculateAge = (dob: string | null): number | null => {
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
   };
 
-  const calculateBodyComposition = (sum7: number, age: number, gender: string, weight: number) => {
-    if (!sum7 || sum7 === 0 || !weight) return null;
+  const calculateBodyComposition = (sum7: number, age: number | null, gender: string, weight: number) => {
+    if (!sum7 || sum7 === 0 || !weight || age === null) return null; 
     
     let bd = 0;
     const isMale = gender?.toLowerCase() === 'masculino' || gender?.toLowerCase() === 'homem';
     
     if (isMale) {
+      // Fórmula Homens (Jackson & Pollock, 1978)
       bd = 1.112 - (0.00043499 * sum7) + (0.00000055 * (sum7 * sum7)) - (0.00028826 * age);
     } else {
-      // Feminino (Padrão caso não especificado)
+      // Fórmula Mulheres (Jackson, Pollock & Ward, 1980)
       bd = 1.097 - (0.00046971 * sum7) + (0.00000056 * (sum7 * sum7)) - (0.00012828 * age);
     }
 
     if (bd === 0) return null;
-    const bf = (4.95 / bd - 4.5) * 100;
+    const bf = (4.95 / bd - 4.5) * 100; // Equação de Siri
     const validBF = bf > 0 && bf < 60 ? bf : null;
 
     if (!validBF) return null;
@@ -136,9 +140,6 @@ export default function PacienteHistoricoAdmin() {
     };
   };
 
-  // =========================================================================
-  // INTERPRETAÇÃO DE EXAMES
-  // =========================================================================
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
       return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
@@ -217,9 +218,6 @@ export default function PacienteHistoricoAdmin() {
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
-  // =========================================================================
-  // RADAR CLÍNICO INTELIGENTE COM BOTÕES DE AÇÃO (WHATSAPP)
-  // =========================================================================
   const activeAlerts = useMemo(() => {
     const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any, waLink?: string, waText?: string }[] = [];
     
@@ -339,11 +337,12 @@ export default function PacienteHistoricoAdmin() {
     return alerts;
   }, [history, antroData, bioData, dailyLogs, profile]);
 
+  const patientAge = useMemo(() => calculateAge(profile?.data_nascimento), [profile]);
+
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
     const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
-    const age = calculateAge(profile?.data_nascimento);
-
+    
     history.forEach(h => dateSet.add(formatD(h.created_at)));
     antroData.forEach(a => dateSet.add(formatD(a.measurement_date)));
     skinfoldsData.forEach(s => dateSet.add(formatD(s.measurement_date)));
@@ -351,24 +350,43 @@ export default function PacienteHistoricoAdmin() {
 
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+    // Captura a altura baseada no histórico caso falte na linha do tempo atual (A altura em adultos é constante)
+    let defaultHeightRaw = antroData.find(a => a.height)?.height || history.find(h => h.altura)?.altura || profile?.altura || null;
+    const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw) : null;
+
     return sortedDates.map(dateStr => {
       const checkin = history.find(h => formatD(h.created_at) === dateStr);
       const antro = antroData.find(a => formatD(a.measurement_date) === dateStr);
       const skin = skinfoldsData.find(s => formatD(s.measurement_date) === dateStr);
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
-      const currentWeight = checkin?.peso || antro?.weight || null;
+      const currentWeightRaw = checkin?.peso || antro?.weight;
+      const currentWeight = currentWeightRaw ? parseFloat(currentWeightRaw) : null;
+
+      const currentHeightRaw = checkin?.altura || antro?.height;
+      const currentHeight = currentHeightRaw ? parseFloat(currentHeightRaw) : defaultHeight;
+
+      let imc: number | null = null;
+      if (currentWeight && currentHeight) {
+        imc = parseFloat((currentWeight / (currentHeight * currentHeight)).toFixed(1));
+      }
 
       let sumFolds: number | null = null;
       let bf: number | null = null;
+      let fatMass: number | null = null;
+      let leanMass: number | null = null;
       
       if (skin) {
         const s1 = parseFloat(skin.triceps||0) + parseFloat(skin.biceps||0) + parseFloat(skin.subscapular||0) + parseFloat(skin.suprailiac||0) + parseFloat(skin.abdominal||0) + parseFloat(skin.thigh||0) + parseFloat(skin.calf||0);
         if (s1 > 0) {
           sumFolds = parseFloat(s1.toFixed(1));
-          if (currentWeight) {
-            const comp = calculateBodyComposition(s1, age, profile?.sexo, currentWeight);
-            if (comp) bf = parseFloat(comp.bf);
+          if (currentWeight && patientAge !== null) {
+            const comp = calculateBodyComposition(s1, patientAge, profile?.sexo, currentWeight);
+            if (comp) {
+              bf = parseFloat(comp.bf);
+              fatMass = parseFloat(comp.fatMass);
+              leanMass = parseFloat(comp.leanMass);
+            }
           }
         }
       }
@@ -383,13 +401,16 @@ export default function PacienteHistoricoAdmin() {
         peso: currentWeight,
         cintura: antro?.waist || null,
         somatorio_dobras: sumFolds,
-        bf: bf,
+        imc,
+        bf,
+        fatMass,
+        leanMass,
         homair: homa,
         adesao: checkin?.adesao_ao_plano || null,
         hasExam: !!bio, 
       };
     });
-  }, [history, antroData, skinfoldsData, bioData, profile]);
+  }, [history, antroData, skinfoldsData, bioData, profile, patientAge]);
 
   const projectionDate = useMemo(() => {
     if (history.length < 3 || !profile?.meta_peso) return null;
@@ -474,6 +495,13 @@ export default function PacienteHistoricoAdmin() {
               <div>
                 <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
                 <div className="space-y-6 md:space-y-5">
+                  <div>
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Idade e Sexo</p>
+                    <p className="font-bold text-stone-700 text-lg">
+                      {patientAge !== null ? `${patientAge} anos` : <span className="text-red-500 text-sm flex items-center gap-1"><AlertCircle size={14}/> Faltando no Perfil</span>} 
+                      {profile?.sexo ? ` • ${profile.sexo}` : ' • Sexo não def.'}
+                    </p>
+                  </div>
                   <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil || 'Não definido'}</p></div>
                   <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
                   <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso Registrado</p><p className="font-bold text-stone-700 text-lg">{timelineData.length > 0 && timelineData[timelineData.length - 1].peso ? `${timelineData[timelineData.length - 1].peso} kg` : '---'}</p></div>
@@ -746,11 +774,9 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* (O restante das abas Diario, Checkins, Antropometria mantivemos intactas. Vamos apenas refinar a aba de Dobras abaixo) */}
-
             {activeTab === 'diario' && (
               <div className="animate-fade-in">
-                {/* Diário UI - Mesma do seu arquivo anterior */}
+                {/* Diário UI */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <div><h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2"><Coffee className="text-nutri-800" /> Rotina Diária</h2><p className="text-sm text-stone-500 mt-1">Acompanhe o que o paciente registra no aplicativo dia a dia.</p></div>
                 </div>
@@ -845,7 +871,7 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* NOVA ABA DE DOBRAS COM CÁLCULO DE % GORDURA */}
+            {/* ABA DE DOBRAS COM QUADRANTE DE OURO (IMC, % GORDURA, M. MAGRA E M. GORDA) */}
             {activeTab === 'dobras' && (
               <div className="animate-fade-in">
                 <div className="flex items-center justify-between mb-8">
@@ -856,10 +882,15 @@ export default function PacienteHistoricoAdmin() {
 
                 {/* CARD DE COMPOSIÇÃO CORPORAL ATUAL */}
                 {skinfoldsData.length > 0 && timelineData.length > 0 && (
-                  <div className="bg-nutri-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-nutri-900/20">
-                    <div>
+                  <div className="bg-nutri-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col lg:flex-row items-center justify-between gap-6 shadow-xl shadow-nutri-900/20">
+                    <div className="text-center lg:text-left w-full lg:w-auto">
                       <h3 className="text-[10px] font-black text-nutri-300 uppercase tracking-[0.2em] mb-2">Composição Atual (Jackson & Pollock)</h3>
-                      <p className="text-sm text-nutri-100/80">Cálculo baseado na última dobra realizada e no peso correspondente.</p>
+                      <p className="text-sm text-nutri-100/80">
+                        {patientAge !== null 
+                          ? `Fórmula de 7 dobras. Calculada p/ ${patientAge} anos (${profile?.sexo || 'Não def.'}).`
+                          : <span className="text-red-300 flex items-center gap-1 font-bold justify-center lg:justify-start"><AlertCircle size={14}/> Preencha a data de nascimento no perfil para calcular.</span>
+                        }
+                      </p>
                     </div>
                     
                     {(() => {
@@ -867,48 +898,73 @@ export default function PacienteHistoricoAdmin() {
                       const s1 = parseFloat(latestSkin.triceps||0) + parseFloat(latestSkin.biceps||0) + parseFloat(latestSkin.subscapular||0) + parseFloat(latestSkin.suprailiac||0) + parseFloat(latestSkin.abdominal||0) + parseFloat(latestSkin.thigh||0) + parseFloat(latestSkin.calf||0);
                       const tPoint = timelineData.slice().reverse().find(t => t.somatorio_dobras === parseFloat(s1.toFixed(1)));
                       
-                      if (tPoint && tPoint.bf) {
+                      if (tPoint && tPoint.bf && patientAge !== null) {
                         return (
-                          <div className="flex gap-4 w-full md:w-auto">
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 md:w-32 text-center border border-white/20">
+                          <div className="flex flex-wrap gap-3 w-full lg:w-auto mt-4 lg:mt-0 justify-center lg:justify-end">
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
+                              <p className="text-2xl font-black text-cyan-400">{tPoint.imc || '-'}</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">IMC</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
                               <p className="text-2xl font-black text-amber-400">{tPoint.bf}%</p>
                               <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">Gordura</p>
                             </div>
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 md:w-32 text-center border border-white/20">
-                              <p className="text-2xl font-black text-emerald-400">{(tPoint.peso - (tPoint.peso * (tPoint.bf / 100))).toFixed(1)}kg</p>
-                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">Massa Magra</p>
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
+                              <p className="text-2xl font-black text-emerald-400">{tPoint.leanMass}kg</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">M. Magra</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
+                              <p className="text-2xl font-black text-rose-400">{tPoint.fatMass}kg</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">M. Gorda</p>
                             </div>
                           </div>
                         )
                       }
-                      return <p className="text-sm font-medium italic opacity-70">Necessário peso e 7 dobras p/ calcular.</p>;
+                      return <p className="text-sm font-medium italic opacity-70">Necessário peso atualizado.</p>;
                     })()}
                   </div>
                 )}
 
                 <div className="overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
-                  <table className="w-full text-left min-w-[900px]">
+                  <table className="w-full text-left min-w-[1000px]">
                     <thead>
                       <tr className="border-b-2 border-stone-100">
                         <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Somatório (7)</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Tricipital</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Bicipital</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Subescapular</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Suprailíaca</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abdominal</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Somatório</th>
+                        <th className="py-4 px-2 text-[10px] text-cyan-600 uppercase font-black">IMC</th>
+                        <th className="py-4 px-2 text-[10px] text-amber-500 uppercase font-black">% Gord.</th>
+                        <th className="py-4 px-2 text-[10px] text-emerald-500 uppercase font-black">M. Magra</th>
+                        <th className="py-4 px-2 text-[10px] text-rose-500 uppercase font-black">M. Gorda</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black pl-4 border-l border-stone-100">Tric.</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Bic.</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Sub.</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Sup.</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abd.</th>
                         <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Panturrilha</th>
+                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Pant.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-50">
                       {skinfoldsData.map(i => {
                          const sum = parseFloat(i.triceps||0) + parseFloat(i.biceps||0) + parseFloat(i.subscapular||0) + parseFloat(i.suprailiac||0) + parseFloat(i.abdominal||0) + parseFloat(i.thigh||0) + parseFloat(i.calf||0);
+                         
+                         const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
+                         const tPoint = timelineData.find(t => t.date === formatD(i.measurement_date) && t.somatorio_dobras === parseFloat(sum.toFixed(1)));
+                         
+                         const bf = tPoint?.bf;
+                         const imc = tPoint?.imc;
+                         const mMag = tPoint?.leanMass;
+                         const mGorda = tPoint?.fatMass;
+
                          return (
                           <tr key={i.id} className="hover:bg-stone-50/50">
                             <td className="py-4 px-2 font-bold text-sm text-stone-700">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
                             <td className="py-4 px-2 font-black text-nutri-700">{sum > 0 ? sum.toFixed(1) : '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.triceps || '-'}</td>
+                            <td className="py-4 px-2 font-bold text-cyan-600">{imc ? imc : '-'}</td>
+                            <td className="py-4 px-2 font-bold text-amber-600">{bf ? `${bf}%` : '-'}</td>
+                            <td className="py-4 px-2 font-bold text-emerald-600">{mMag ? `${mMag}kg` : '-'}</td>
+                            <td className="py-4 px-2 font-bold text-rose-600">{mGorda ? `${mGorda}kg` : '-'}</td>
+                            <td className="py-4 px-2 text-sm pl-4 border-l border-stone-100">{i.triceps || '-'}</td>
                             <td className="py-4 px-2 text-sm">{i.biceps || '-'}</td>
                             <td className="py-4 px-2 text-sm">{i.subscapular || '-'}</td>
                             <td className="py-4 px-2 text-sm">{i.suprailiac || '-'}</td>

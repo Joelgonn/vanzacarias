@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Loader2, Save, ChevronLeft, UserCircle, User, Phone } from 'lucide-react';
+import { Loader2, Save, ChevronLeft, UserCircle, User, Phone, ChevronDown, Calendar } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PerfilPaciente() {
@@ -38,11 +38,14 @@ export default function PerfilPaciente() {
     e.preventDefault();
     setSaving(true);
     
+    // Atualiza os dados no banco de dados, agora incluindo sexo e data_nascimento
     const { error } = await supabase
       .from('profiles')
       .update({ 
         full_name: profile.full_name,
-        phone: profile.phone 
+        phone: profile.phone,
+        sexo: profile.sexo, 
+        data_nascimento: profile.data_nascimento 
       })
       .eq('id', profile.id);
     
@@ -90,13 +93,13 @@ export default function PerfilPaciente() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight mb-1">Meu Perfil</h1>
-              <p className="text-stone-500 text-sm md:text-base font-light">Mantenha seus dados atualizados para contato.</p>
+              <p className="text-stone-500 text-sm md:text-base font-light">Mantenha seus dados atualizados para cálculos precisos do sistema.</p>
             </div>
           </div>
 
           <form onSubmit={handleUpdate} className="space-y-6 max-w-xl mx-auto sm:mx-0">
             
-            {/* Input Nome - Premium Mobile Feel com label integrada */}
+            {/* Input Nome - Premium Mobile Feel */}
             <div className="relative group flex flex-col bg-stone-50/50 hover:bg-stone-50 focus-within:bg-white border border-stone-200 focus-within:border-nutri-800 focus-within:ring-4 focus-within:ring-nutri-800/10 rounded-2xl transition-all pt-2.5 pb-2 px-4">
               <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5 ml-8 mb-0.5">
                 Nome Completo
@@ -109,11 +112,12 @@ export default function PerfilPaciente() {
                   onChange={e => setProfile({...profile, full_name: e.target.value})} 
                   className="w-full pl-8 pr-2 py-1 bg-transparent outline-none text-stone-800 font-medium md:text-lg" 
                   placeholder="Seu nome"
+                  required
                 />
               </div>
             </div>
 
-            {/* Input Telefone - Premium Mobile Feel com label integrada */}
+            {/* Input Telefone - Premium Mobile Feel */}
             <div className="relative group flex flex-col bg-stone-50/50 hover:bg-stone-50 focus-within:bg-white border border-stone-200 focus-within:border-nutri-800 focus-within:ring-4 focus-within:ring-nutri-800/10 rounded-2xl transition-all pt-2.5 pb-2 px-4">
               <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5 ml-8 mb-0.5">
                 WhatsApp (Telefone)
@@ -126,12 +130,52 @@ export default function PerfilPaciente() {
                   onChange={e => setProfile({...profile, phone: e.target.value})} 
                   className="w-full pl-8 pr-2 py-1 bg-transparent outline-none text-stone-800 font-medium md:text-lg" 
                   placeholder="(00) 00000-0000" 
+                  required
                 />
+              </div>
+            </div>
+
+            {/* Input Data de Nascimento - Premium Mobile Feel */}
+            <div className="relative group flex flex-col bg-stone-50/50 hover:bg-stone-50 focus-within:bg-white border border-stone-200 focus-within:border-nutri-800 focus-within:ring-4 focus-within:ring-nutri-800/10 rounded-2xl transition-all pt-2.5 pb-2 px-4">
+              <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5 ml-8 mb-0.5">
+                Data de Nascimento
+              </label>
+              <div className="relative flex items-center">
+                <Calendar className="absolute left-0 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} strokeWidth={1.5} />
+                <input 
+                  type="date" 
+                  value={profile?.data_nascimento || ''} 
+                  onChange={e => setProfile({...profile, data_nascimento: e.target.value})} 
+                  className="w-full pl-8 pr-2 py-1 bg-transparent outline-none text-stone-800 font-medium md:text-lg" 
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Input Sexo - Premium Mobile Feel */}
+            <div className="relative group flex flex-col bg-stone-50/50 hover:bg-stone-50 focus-within:bg-white border border-stone-200 focus-within:border-nutri-800 focus-within:ring-4 focus-within:ring-nutri-800/10 rounded-2xl transition-all pt-2.5 pb-2 px-4">
+              <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5 ml-8 mb-0.5">
+                Sexo Biológico
+              </label>
+              <div className="relative flex items-center">
+                <UserCircle className="absolute left-0 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} strokeWidth={1.5} />
+                <select 
+                  value={profile?.sexo || ''} 
+                  onChange={e => setProfile({...profile, sexo: e.target.value})} 
+                  className="w-full pl-8 pr-8 py-1 bg-transparent outline-none text-stone-800 font-medium md:text-lg appearance-none cursor-pointer"
+                  required
+                >
+                  <option value="" disabled>Selecione...</option>
+                  <option value="feminino">Feminino</option>
+                  <option value="masculino">Masculino</option>
+                </select>
+                <ChevronDown className="absolute right-0 text-stone-400 pointer-events-none" size={20} />
               </div>
             </div>
             
             <div className="pt-6">
               <button 
+                type="submit"
                 disabled={saving} 
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-nutri-900 text-white px-10 py-4 rounded-2xl sm:rounded-full font-bold hover:bg-nutri-800 active:scale-[0.98] transition-all shadow-lg hover:shadow-nutri-900/30 transform md:hover:-translate-y-1 disabled:opacity-70 disabled:cursor-not-allowed"
               >
