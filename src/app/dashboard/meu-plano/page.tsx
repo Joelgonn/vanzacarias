@@ -729,7 +729,7 @@ export default function MeuPlano() {
     <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-24 md:pt-32 relative">
       <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
         
-        <nav className="flex items-center justify-between mb-8 mt-4 animate-fade-in-up">
+        <nav className="flex items-center justify-between mb-8 mt-10 animate-fade-in-up">
           <Link href="/dashboard" className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-colors font-bold text-sm bg-white px-5 py-2.5 rounded-full border border-stone-200 shadow-sm hover:shadow-md">
             <ChevronLeft size={18} /> Painel
           </Link>

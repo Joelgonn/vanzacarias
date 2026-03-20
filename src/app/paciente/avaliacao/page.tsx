@@ -51,7 +51,7 @@ export default function AvaliacaoPaciente() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-48 md:pt-60 font-sans text-stone-800">
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-16 md:pt-20 lg:pt-24 font-sans text-stone-800 flex flex-col relative">
       <div className="max-w-2xl mx-auto flex flex-col gap-10">
         
         <div className="flex items-center justify-between animate-fade-in-up relative z-10">

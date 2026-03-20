@@ -591,11 +591,11 @@ export default function PacienteHistoricoAdmin() {
   );
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-28 md:pt-36 lg:pt-40 font-sans text-stone-800">
+    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-16 md:pt-20 lg:pt-24 font-sans text-stone-800">
       <div className="max-w-7xl mx-auto w-full">
         
         {/* NAVEGAÇÃO E HEADER */}
-        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-6 sm:gap-0 animate-fade-in-up">
+        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-2 md:mb-4 gap-4 sm:gap-0 animate-fade-in-up">
           <Link href="/admin/dashboard" className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3.5 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 hover:shadow-md active:scale-95 transition-all duration-300">
             <div className="bg-nutri-50 p-1.5 sm:p-1.5 rounded-xl sm:rounded-full group-hover:bg-nutri-800 transition-colors"><ChevronLeft size={18} className="text-nutri-800 group-hover:text-white" /></div>
             <span className="text-sm font-bold text-stone-600 group-hover:text-nutri-900">Voltar ao Painel</span>
