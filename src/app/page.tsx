@@ -158,7 +158,7 @@ export default function Home() {
               </div>
               <div className="w-px h-16 bg-stone-200"></div>
               <div className="flex flex-col items-center md:items-start">
-                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">+Vidas</span>
+                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">Vidas</span>
                 <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mt-2">Transformadas</span>
               </div>
             </div>

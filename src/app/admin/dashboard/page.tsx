@@ -256,8 +256,12 @@ export default function AdminDashboard() {
   // =========================================================================
   const updateProfile = async (id: string) => {
     const updateData = {
-      ...editForm,
-      meta_peso: editForm.meta_peso ? parseFloat(editForm.meta_peso) : null
+      // Evita strings vazias em colunas DATE/TEXT do PostgreSQL enviando null explicitamente
+      data_nascimento: editForm.data_nascimento?.trim() ? editForm.data_nascimento : null,
+      sexo: editForm.sexo?.trim() ? editForm.sexo : null,
+      tipo_perfil: editForm.tipo_perfil,
+      account_type: editForm.account_type,
+      meta_peso: editForm.meta_peso && String(editForm.meta_peso).trim() !== '' ? parseFloat(String(editForm.meta_peso)) : null
     };
 
     const { error } = await supabase.from('profiles').update(updateData).eq('id', id);
@@ -267,7 +271,8 @@ export default function AdminDashboard() {
       toast.success("Perfil do paciente atualizado com sucesso!");
     } else {
       toast.error("Falha ao atualizar o perfil. Tente novamente.");
-      console.error(error);
+      // Transforma o erro em JSON legível caso seja devolvido um objeto opaco
+      console.error("Erro Supabase:", JSON.stringify(error, null, 2), error);
     }
   };
 
