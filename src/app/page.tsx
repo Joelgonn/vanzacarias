@@ -1,6 +1,39 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, MessageCircle, LogIn, Instagram, Linkedin, Facebook } from 'lucide-react';
+import { 
+  Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, 
+  MessageCircle, LogIn, Instagram, Linkedin, Facebook 
+} from 'lucide-react';
+
+// ==========================================
+// DADOS DA PÁGINA (Melhora a leitura do código)
+// ==========================================
+
+const challenges = [
+  { icon: Sparkles, title: "Falta de Energia", desc: "Acorda cansado? Sente-se exausto antes do fim do dia? A nutrição certa é o seu combustível." },
+  { icon: Scale, title: "Efeito Sanfona", desc: "Luta constante com o peso e dietas frustrantes? Vamos encontrar um caminho sustentável." },
+  { icon: Leaf, title: "Relação com a Comida", desc: "Comer tornou-se uma obrigação ou fonte de culpa? Redescubra o prazer de se alimentar." },
+  { icon: Brain, title: "Excesso de Informação", desc: "Perdido em meio a tantas 'dietas da moda'? Tenha clareza com orientação científica." },
+  { icon: Zap, title: "Condições Específicas", desc: "Planos adaptados para diabetes, SOP, intolerâncias ou outras necessidades metabólicas." },
+];
+
+const steps = [
+  { step: "01", title: "Avaliação Online", desc: "Responda um questionário rápido aqui no site para eu entender seu perfil." },
+  { step: "02", title: "Cadastro & Agendamento", desc: "Crie sua conta no nosso portal e escolha o melhor horário para conversarmos." },
+  { step: "03", title: "Consulta Completa", desc: "Um bate-papo profundo sobre sua rotina, gostos, exames e objetivos." },
+  { step: "04", title: "Acesso ao Portal", desc: "Receba seu plano alimentar e acompanhe sua evolução direto pelo sistema." },
+];
+
+const socialLinks = [
+  { name: "Instagram", url: "https://www.instagram.com/vanusazacarias/", icon: Instagram }, 
+  { name: "LinkedIn", url: "#", icon: Linkedin },   // Substitua o "#" pelo link real do LinkedIn
+  { name: "Facebook", url: "https://www.facebook.com/vanusa.zacarias", icon: Facebook }, 
+  { name: "WhatsApp", url: "https://wa.me/5544999997275", icon: MessageCircle },
+];
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
 
 export default function Home() {
   return (
@@ -66,23 +99,20 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 relative z-10">
-            {[
-              { icon: Sparkles, title: "Falta de Energia", desc: "Acorda cansado? Sente-se exausto antes do fim do dia? A nutrição certa é o seu combustível." },
-              { icon: Scale, title: "Efeito Sanfona", desc: "Luta constante com o peso e dietas frustrantes? Vamos encontrar um caminho sustentável." },
-              { icon: Leaf, title: "Relação com a Comida", desc: "Comer tornou-se uma obrigação ou fonte de culpa? Redescubra o prazer de se alimentar." },
-              { icon: Brain, title: "Excesso de Informação", desc: "Perdido em meio a tantas 'dietas da moda'? Tenha clareza com orientação científica." },
-              { icon: Zap, title: "Condições Específicas", desc: "Planos adaptados para diabetes, SOP, intolerâncias ou outras necessidades metabólicas." },
-            ].map((item, index) => (
-              <div key={index} className="bg-white border border-stone-100 p-8 md:p-10 rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col items-start text-left md:items-start">
-                <div className="w-14 h-14 bg-nutri-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-nutri-800 transition-all duration-300">
-                  <item.icon className="text-nutri-800 group-hover:text-white transition-colors" size={28} strokeWidth={1.5} />
+            {challenges.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <div key={index} className="bg-white border border-stone-100 p-8 md:p-10 rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col items-start text-left md:items-start">
+                  <div className="w-14 h-14 bg-nutri-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-nutri-800 transition-all duration-300">
+                    <Icon className="text-nutri-800 group-hover:text-white transition-colors" size={28} strokeWidth={1.5} />
+                  </div>
+                  <h3 className="text-xl font-bold text-stone-900 mb-3 tracking-tight">{item.title}</h3>
+                  <p className="text-stone-500 leading-relaxed font-light text-sm md:text-base">
+                    {item.desc}
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold text-stone-900 mb-3 tracking-tight">{item.title}</h3>
-                <p className="text-stone-500 leading-relaxed font-light text-sm md:text-base">
-                  {item.desc}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="mt-16 md:mt-20 flex justify-center w-full">
@@ -152,12 +182,7 @@ export default function Home() {
             {/* Linha vertical para Mobile */}
             <div className="md:hidden absolute top-0 bottom-0 left-[50%] w-[2px] bg-stone-100 z-0 transform -translate-x-1/2"></div>
 
-            {[
-              { step: "01", title: "Avaliação Online", desc: "Responda um questionário rápido aqui no site para eu entender seu perfil." },
-              { step: "02", title: "Cadastro & Agendamento", desc: "Crie sua conta no nosso portal e escolha o melhor horário para conversarmos." },
-              { step: "03", title: "Consulta Completa", desc: "Um bate-papo profundo sobre sua rotina, gostos, exames e objetivos." },
-              { step: "04", title: "Acesso ao Portal", desc: "Receba seu plano alimentar e acompanhe sua evolução direto pelo sistema." },
-            ].map((item, index) => (
+            {steps.map((item, index) => (
               <div key={index} className="relative z-10 flex flex-col items-center text-center group bg-white md:bg-transparent py-4 md:py-0">
                 <div className="w-20 h-20 md:w-24 md:h-24 bg-nutri-50 rounded-full flex items-center justify-center border-4 border-white shadow-md mb-5 md:mb-6 group-hover:bg-nutri-800 transition-colors duration-300">
                   <span className="text-xl md:text-2xl font-black text-nutri-800 group-hover:text-white transition-colors tracking-tighter">{item.step}</span>
@@ -190,12 +215,26 @@ export default function Home() {
             <p className="text-nutri-100 mb-6 font-semibold uppercase tracking-[0.2em] text-xs">
               Siga minhas redes e entre em contato
             </p>
+            
+            {/* Lista de Redes Sociais Refatorada */}
             <div className="flex justify-center gap-4 md:gap-8 text-white">
-              <a href="#" className="p-3 bg-nutri-800/30 hover:bg-nutri-800 rounded-full transition-all hover:-translate-y-1 active:scale-95"><Instagram size={24} /></a>
-              <a href="#" className="p-3 bg-nutri-800/30 hover:bg-nutri-800 rounded-full transition-all hover:-translate-y-1 active:scale-95"><Linkedin size={24} /></a>
-              <a href="#" className="p-3 bg-nutri-800/30 hover:bg-nutri-800 rounded-full transition-all hover:-translate-y-1 active:scale-95"><Facebook size={24} /></a>
-              <a href="https://wa.me/5544999997275" target="_blank" rel="noopener noreferrer" className="p-3 bg-nutri-800/30 hover:bg-nutri-800 rounded-full transition-all hover:-translate-y-1 active:scale-95"><MessageCircle size={24} /></a>
+              {socialLinks.map((social) => {
+                const Icon = social.icon;
+                return (
+                  <a 
+                    key={social.name}
+                    href={social.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    aria-label={`Acessar ${social.name} da Vanusa`}
+                    className="p-3 bg-nutri-800/30 hover:bg-nutri-800 rounded-full transition-all hover:-translate-y-1 active:scale-95"
+                  >
+                    <Icon size={24} />
+                  </a>
+                );
+              })}
             </div>
+
           </div>
         </div>
       </section>

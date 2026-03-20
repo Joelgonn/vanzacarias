@@ -17,6 +17,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Scatter 
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
+import { toast } from 'sonner';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -178,7 +179,7 @@ export default function Dashboard() {
     setIsSubscribingPush(true);
     try {
       if (!('Notification' in window)) {
-        alert('Este navegador não suporta notificações.');
+        toast.error('Este navegador não suporta notificações.');
         setIsSubscribingPush(false);
         return;
       }
@@ -189,7 +190,7 @@ export default function Dashboard() {
       }
 
       if (permission !== 'granted') {
-        alert('Você precisa permitir as notificações no seu navegador/celular para ativar os lembretes.');
+        toast.warning('Você precisa permitir as notificações no seu navegador/celular para ativar os lembretes.');
         setIsSubscribingPush(false);
         return;
       }
@@ -221,11 +222,11 @@ export default function Dashboard() {
       if (!response.ok) throw new Error('Falha ao salvar no banco');
 
       setIsPushSubscribed(true);
-      alert('Notificações ativadas! Você receberá lembretes de água.');
+      toast.success('Notificações ativadas! Você receberá lembretes de água.');
 
     } catch (error) {
       console.error('Erro ao assinar push:', error);
-      alert('Não foi possível ativar as notificações.');
+      toast.error('Não foi possível ativar as notificações.');
     } finally {
       setIsSubscribingPush(false);
     }
@@ -333,7 +334,7 @@ export default function Dashboard() {
       if (data.init_point) window.location.href = data.init_point; 
       else throw new Error(data.error);
     } catch (error) {
-      alert("Erro ao iniciar pagamento.");
+      toast.error("Erro ao iniciar pagamento.");
       setProcessingCheckout(false);
     }
   };

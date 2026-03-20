@@ -2,8 +2,12 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 
+// =========================================================================
+// SCHEMA CLÍNICO REAL (QFA)
+// =========================================================================
 const qfaSchema = [
   {
     category: "Leites e Derivados",
@@ -11,7 +15,7 @@ const qfaSchema = [
       { id: "leite", label: "Leite (copo de requeijão)" },
       { id: "iogurte", label: "Iogurte natural (copo de requeijão)" },
       { id: "queijos", label: "Queijos (1/2 fatia)" },
-      { id: "requeijao", label: "Requeijão / Crême de ricota etc (1,5 colher de sopa)" }
+      { id: "requeijao", label: "Requeijão / Creme de ricota etc (1,5 colher de sopa)" }
     ]
   },
   {
@@ -61,7 +65,7 @@ const qfaSchema = [
     category: "Petiscos embutidos Enlatados",
     items: [
       { id: "snacks", label: "Snacks - salgadinhos, bolachas, pizza, amendoim (1 pacote)" },
-      { id: "instantaneos", label: "Macarrão instantâneo / lazanha / Nuggets (1 pacote)" },
+      { id: "instantaneos", label: "Macarrão instantâneo / lasanha / Nuggets (1 pacote)" },
       { id: "embutidos", label: "Embutidos em geral (presunto, mortadela etc) (2 fatias)" },
       { id: "enlatados", label: "Enlatados (milho, ervilha, palmito, azeitona) (2 colheres de sopa)" }
     ]
@@ -91,23 +95,41 @@ const qfaSchema = [
 
 const options = ["0", "1-3", "4-6", "7-9", "10 +"];
 
-export default function QFAForm({ onSuccess }: { onSuccess: () => void }) {
+interface QFAFormProps {
+  onSuccess: () => void;
+}
+
+export default function QFAForm({ onSuccess }: QFAFormProps) {
+  // =========================================================================
+  // ESTADOS
+  // =========================================================================
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
+  // =========================================================================
+  // CÁLCULOS E HANDLERS
+  // =========================================================================
   const handleSelect = (itemId: string, val: string) => {
     setAnswers(prev => ({ ...prev, [itemId]: val }));
   };
 
   const totalItems = qfaSchema.reduce((acc, cat) => acc + cat.items.length, 0);
-  const progress = Math.round((Object.keys(answers).length / totalItems) * 100);
+  const answeredCount = Object.keys(answers).length;
+  const progress = Math.round((answeredCount / totalItems) * 100);
+  const isComplete = progress === 100;
 
   const handleSave = async () => {
     setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session) {
+    const toastId = toast.loading("Salvando suas respostas...");
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error("Sessão expirada. Por favor, faça login novamente.");
+      }
+
       const { error } = await supabase
         .from('qfa_responses')
         .upsert(
@@ -119,72 +141,109 @@ export default function QFAForm({ onSuccess }: { onSuccess: () => void }) {
           { onConflict: 'user_id' }
         );
 
-      if (!error) {
-        onSuccess();
-      } else {
-        // ISSO AQUI VAI TE SALVAR: Vai mostrar o erro no console e na tela!
-        console.error("DETALHES DO ERRO:", error);
-        alert(`Erro do banco de dados: ${error.message}`); 
-      }
-    } else {
-      alert("Sessão expirada. Faça login novamente.");
+      if (error) throw error;
+
+      toast.success("Questionário salvo com sucesso!", { id: toastId });
+      setTimeout(() => onSuccess(), 1000);
+
+    } catch (error: any) {
+      console.error("DETALHES DO ERRO:", error);
+      toast.error(error.message || "Ocorreu um erro ao salvar. Tente novamente.", { id: toastId });
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
+  // =========================================================================
+  // RENDERIZAÇÃO
+  // =========================================================================
   return (
-    <div className="space-y-12 pb-24">
-      {/* Barra de Progresso */}
-      <div className="sticky top-28 z-30 bg-stone-50/95 backdrop-blur-md py-6 border-b border-stone-200">
-        <div className="flex justify-between items-end mb-2">
-          <span className="text-[10px] font-black uppercase text-nutri-800 tracking-widest">SEU PERFIL ALIMENTAR</span>
-          <span className="text-xs font-bold text-stone-500">{progress}% concluído</span>
+    <div className="space-y-12 pb-24 max-w-4xl mx-auto">
+      
+      {/* Barra de Progresso (Sticky Header com Glassmorphism) */}
+      <div className="sticky top-0 md:top-20 z-40 bg-white/80 backdrop-blur-md pt-4 pb-6 md:pt-6 border-b border-stone-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] mb-8 px-4 md:px-0">
+        <div className="flex justify-between items-end mb-3">
+          <span className="text-[10px] font-black uppercase text-nutri-800 tracking-[0.2em] flex items-center gap-2">
+            Seu Perfil Alimentar
+          </span>
+          <span className={`text-xs font-black transition-colors ${isComplete ? 'text-emerald-500 flex items-center gap-1' : 'text-stone-400'}`}>
+            {isComplete && <CheckCircle2 size={14} />} {progress}% concluído
+          </span>
         </div>
-        <div className="w-full h-2 bg-stone-200 rounded-full overflow-hidden">
-          <div className="h-full bg-nutri-800 transition-all duration-500" style={{ width: `${progress}%` }}></div>
+        <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden shadow-inner">
+          <div 
+            className={`h-full transition-all duration-700 ease-[0.22,1,0.36,1] ${isComplete ? 'bg-emerald-500' : 'bg-nutri-800'}`} 
+            style={{ width: `${progress}%` }}
+          ></div>
         </div>
       </div>
 
-      {qfaSchema.map((section, sIdx) => (
-        <div key={sIdx} className="space-y-6">
-          <h3 className="text-sm font-black text-stone-900 uppercase tracking-[0.2em] flex items-center gap-3">
-             <div className="w-1.5 h-4 bg-nutri-800 rounded-full"></div>
-             {section.category}
-          </h3>
+      <div className="px-4 md:px-0 space-y-12">
+        {qfaSchema.map((section, sIdx) => (
+          <div key={sIdx} className="space-y-6 animate-fade-in-up" style={{ animationDelay: `${sIdx * 50}ms` }}>
+            <h3 className="text-sm font-black text-stone-900 uppercase tracking-[0.2em] flex items-center gap-3 ml-2">
+               <div className="w-1.5 h-4 bg-nutri-800 rounded-full shadow-sm"></div>
+               {section.category}
+            </h3>
 
-          <div className="space-y-4">
-            {section.items.map((item) => (
-              <div key={item.id} className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm">
-                <p className="text-stone-700 font-bold mb-4 text-sm md:text-base">{item.label}</p>
-                <div className="flex items-center gap-1 bg-stone-50 p-1.5 rounded-2xl border border-stone-100">
-                  {options.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => handleSelect(item.id, opt)}
-                      className={`flex-1 py-3 text-xs font-black rounded-xl transition-all ${
-                        answers[item.id] === opt 
-                        ? 'bg-nutri-800 text-white shadow-lg' 
-                        : 'text-stone-400 hover:bg-white hover:text-stone-600'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <div className="space-y-4">
+              {section.items.map((item) => {
+                const hasAnswer = !!answers[item.id];
+
+                return (
+                  <div 
+                    key={item.id} 
+                    className={`bg-white p-5 md:p-6 rounded-3xl border transition-all duration-300 flex flex-col md:flex-row md:items-center justify-between gap-5
+                      ${hasAnswer ? 'border-nutri-200/50 shadow-sm' : 'border-stone-200 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:border-stone-300'}
+                    `}
+                  >
+                    <p className={`font-bold text-sm md:text-base transition-colors w-full md:w-1/2 ${hasAnswer ? 'text-stone-900' : 'text-stone-600'}`}>
+                      {item.label}
+                    </p>
+                    
+                    <div className="flex items-center gap-1 bg-stone-50 p-1.5 rounded-2xl border border-stone-100 shadow-inner w-full md:w-auto overflow-x-auto scrollbar-hide">
+                      {options.map((opt) => {
+                        const isSelected = answers[item.id] === opt;
+                        const notSelectedFaded = hasAnswer && !isSelected ? 'opacity-40 hover:opacity-100' : '';
+
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => handleSelect(item.id, opt)}
+                            className={`flex-1 md:flex-none min-w-[50px] py-3 text-xs font-black rounded-xl transition-all duration-300 active:scale-90 whitespace-nowrap px-2 ${notSelectedFaded} ${
+                              isSelected 
+                              ? 'bg-nutri-900 text-white shadow-md scale-105' 
+                              : 'text-stone-400 hover:bg-white hover:text-stone-700 hover:shadow-sm'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
-      <button
-        onClick={handleSave}
-        disabled={loading || progress < 100}
-        className="w-full bg-nutri-900 text-white py-6 rounded-[2rem] font-black uppercase tracking-[0.3em] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
-      >
-        {loading ? <Loader2 className="animate-spin" /> : "FINALIZAR E SALVAR"}
-      </button>
+        <div className="pt-8 border-t border-stone-100">
+          <button
+            onClick={handleSave}
+            disabled={loading || !isComplete}
+            className="w-full bg-nutri-900 text-white py-5 rounded-[2rem] font-black uppercase tracking-[0.2em] shadow-xl shadow-nutri-900/20 hover:bg-nutri-800 transition-all duration-300 disabled:opacity-50 disabled:bg-stone-300 disabled:text-stone-500 disabled:shadow-none active:scale-[0.98] flex items-center justify-center gap-3"
+          >
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+            {loading ? "SALVANDO..." : "FINALIZAR E SALVAR AVALIAÇÃO"}
+          </button>
+          {!isComplete && (
+            <p className="text-center text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-4">
+              Faltam responder {totalItems - answeredCount} itens para habilitar o salvamento.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, ChevronLeft, TrendingUp, User, Ruler, Layers, 
-  Syringe, CalendarCheck, BookOpen, Send, Trash2, 
-  AlertCircle, CheckCircle2, AlertTriangle, Activity, Target,
-  Clock, Zap, ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
-  Coffee, Check, Brain, Flame, MessageCircle, FileText, ClipboardList, 
+  Syringe, CalendarCheck, BookOpen, Trash2, AlertCircle, 
+  CheckCircle2, AlertTriangle, Activity, Target, Clock, Zap, 
+  ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
+  Coffee, Check, Brain, Flame, MessageCircle, ClipboardList, 
   Stethoscope, ListChecks, Save 
 } from 'lucide-react';
 import Link from 'next/link';
@@ -16,17 +16,99 @@ import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Scatter 
 } from 'recharts';
+import { toast } from 'sonner';
+
+// =========================================================================
+// INTERFACES E TIPAGENS
+// =========================================================================
+interface PatientProfile {
+  id: string;
+  full_name: string;
+  phone?: string;
+  data_nascimento?: string;
+  sexo?: string;
+  tipo_perfil?: string;
+  meta_peso?: number | null;
+  altura?: number | null;
+}
+
+interface CheckinData {
+  id: string;
+  created_at: string;
+  peso: number;
+  altura: number;
+  imc: number;
+  adesao_ao_plano: number;
+  humor_semanal: number;
+  comentarios: string;
+}
+
+interface AntroData {
+  id: string;
+  measurement_date: string;
+  weight?: string | number;
+  height?: string | number;
+  waist?: string | number;
+  hip?: string | number;
+  arm?: string | number;
+  calf?: string | number;
+  neck?: string | number;
+}
+
+interface SkinfoldsData {
+  id: string;
+  measurement_date: string;
+  triceps?: string | number;
+  biceps?: string | number;
+  subscapular?: string | number;
+  suprailiac?: string | number;
+  abdominal?: string | number;
+  thigh?: string | number;
+  calf?: string | number;
+}
+
+interface BioData {
+  id: string;
+  exam_date: string;
+  [key: string]: any; // Permite acesso dinâmico para os cálculos
+}
+
+interface DailyLog {
+  id: string;
+  date: string;
+  water_ml: number;
+  mood: string;
+  meals_checked: string[];
+}
+
+interface ClinicalNote {
+  id: string;
+  created_at: string;
+  content: string;
+}
+
+interface Alert {
+  id: string;
+  type: 'success' | 'warning' | 'danger';
+  text: string;
+  icon: React.ReactNode;
+  waLink?: string;
+  waText?: string;
+}
 
 export default function PacienteHistoricoAdmin() {
-  const [history, setHistory] = useState<any[]>([]); 
-  const [profile, setProfile] = useState<any>(null);
+  // =========================================================================
+  // ESTADOS
+  // =========================================================================
+  const [history, setHistory] = useState<CheckinData[]>([]); 
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [loading, setLoading] = useState(true);
   
-  const [antroData, setAntroData] = useState<any[]>([]);
-  const [skinfoldsData, setSkinfoldsData] = useState<any[]>([]);
-  const [bioData, setBioData] = useState<any[]>([]);
-  const [dailyLogs, setDailyLogs] = useState<any[]>([]);
-  const [notes, setNotes] = useState<any[]>([]);
+  const [antroData, setAntroData] = useState<AntroData[]>([]);
+  const [skinfoldsData, setSkinfoldsData] = useState<SkinfoldsData[]>([]);
+  const [bioData, setBioData] = useState<BioData[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
+  const [notes, setNotes] = useState<ClinicalNote[]>([]);
   
   const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
@@ -39,39 +121,56 @@ export default function PacienteHistoricoAdmin() {
   const supabase = createClient();
   const pacienteId = params.id as string;
 
+  // =========================================================================
+  // BUSCA DE DADOS
+  // =========================================================================
   async function fetchData() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session || session.user.email !== 'vankadosh@gmail.com') {
-      router.push('/login');
-      return;
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || session.user.email !== 'vankadosh@gmail.com') {
+        router.push('/login');
+        return;
+      }
+
+      const { data: profileData, error: profileErr } = await supabase.from('profiles').select('*').eq('id', pacienteId).single();
+      if (profileErr) throw profileErr;
+
+      const { data: checkinData } = await supabase.from('checkins').select('*').eq('user_id', pacienteId).order('created_at', { ascending: true });
+      
+      const processedHistory = checkinData?.map(item => ({
+        ...item,
+        imc: item.altura ? (item.peso / (item.altura * item.altura)) : 0
+      })) as CheckinData[] || [];
+
+      const { data: antro } = await supabase.from('anthropometry').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
+      const { data: skin } = await supabase.from('skinfolds').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
+      const { data: bio } = await supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false });
+      const { data: notesData } = await supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false });
+      const { data: dailyData } = await supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false });
+
+      setProfile(profileData as PatientProfile);
+      setHistory(processedHistory);
+      setAntroData(antro || []);
+      setSkinfoldsData(skin || []);
+      setBioData(bio || []);
+      setNotes(notesData || []);
+      setDailyLogs(dailyData || []);
+    } catch (error) {
+      console.error("Erro ao buscar histórico:", error);
+      toast.error("Ocorreu um erro ao carregar os dados clínicos deste paciente.");
+    } finally {
+      setLoading(false);
     }
-
-    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', pacienteId).single();
-    const { data: checkinData } = await supabase.from('checkins').select('*').eq('user_id', pacienteId).order('created_at', { ascending: true });
-
-    const processedHistory = checkinData?.map(item => ({
-      ...item,
-      imc: item.altura ? (item.peso / (item.altura * item.altura)) : 0
-    })) || [];
-
-    const { data: antro } = await supabase.from('anthropometry').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
-    const { data: skin } = await supabase.from('skinfolds').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
-    const { data: bio } = await supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false });
-    const { data: notesData } = await supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false });
-    const { data: dailyData } = await supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false });
-
-    setProfile(profileData);
-    setHistory(processedHistory);
-    setAntroData(antro || []);
-    setSkinfoldsData(skin || []);
-    setBioData(bio || []);
-    setNotes(notesData || []);
-    setDailyLogs(dailyData || []);
-    setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, [supabase, router, pacienteId]);
+  useEffect(() => { 
+    if (pacienteId) fetchData(); 
+  }, [supabase, router, pacienteId]);
 
+  // =========================================================================
+  // AÇÕES DO PRONTUÁRIO
+  // =========================================================================
   const handleSaveNote = async () => {
     if (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p) return;
     setSavingNote(true);
@@ -82,23 +181,29 @@ export default function PacienteHistoricoAdmin() {
     if (!error) {
       setSoapNote({ s: '', o: '', a: '', p: '' });
       fetchData();
+      toast.success("Prontuário (S.O.A.P) salvo com sucesso!");
     } else {
-      alert("Erro ao salvar prontuário.");
+      toast.error("Erro ao salvar o prontuário. Tente novamente.");
     }
     setSavingNote(false);
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (!confirm("Deseja excluir esta anotação do prontuário?")) return;
-    await supabase.from('clinical_notes').delete().eq('id', id);
-    fetchData();
+    if (!confirm("Tem certeza que deseja excluir permanentemente esta anotação do prontuário?")) return;
+    
+    const { error } = await supabase.from('clinical_notes').delete().eq('id', id);
+    if (!error) {
+      fetchData();
+      toast.success("Anotação excluída com sucesso.");
+    } else {
+      toast.error("Erro ao excluir a anotação.");
+    }
   };
 
   // =========================================================================
-  // CÁLCULO DE COMPOSIÇÃO CORPORAL (JACKSON & POLLOCK 7 DOBRAS)
-  // CORRIGIDO: Idade e Sexo estritos. Se faltar Idade, retorna NULL.
+  // FUNÇÕES DE CÁLCULO E INTERPRETAÇÃO
   // =========================================================================
-  const calculateAge = (dob: string | null): number | null => {
+  const calculateAge = (dob: string | null | undefined): number | null => {
     if (!dob) return null;
     const birthDate = new Date(dob);
     const today = new Date();
@@ -110,17 +215,15 @@ export default function PacienteHistoricoAdmin() {
     return age;
   };
 
-  const calculateBodyComposition = (sum7: number, age: number | null, gender: string, weight: number) => {
+  const calculateBodyComposition = (sum7: number, age: number | null, gender: string | undefined, weight: number) => {
     if (!sum7 || sum7 === 0 || !weight || age === null) return null; 
     
     let bd = 0;
     const isMale = gender?.toLowerCase() === 'masculino' || gender?.toLowerCase() === 'homem';
     
     if (isMale) {
-      // Fórmula Homens (Jackson & Pollock, 1978)
       bd = 1.112 - (0.00043499 * sum7) + (0.00000055 * (sum7 * sum7)) - (0.00028826 * age);
     } else {
-      // Fórmula Mulheres (Jackson, Pollock & Ward, 1980)
       bd = 1.097 - (0.00046971 * sum7) + (0.00000056 * (sum7 * sum7)) - (0.00012828 * age);
     }
 
@@ -142,7 +245,7 @@ export default function PacienteHistoricoAdmin() {
 
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
-      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-100', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' };
+      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100', icon: null };
     }
 
     let status = 'normal';
@@ -209,19 +312,31 @@ export default function PacienteHistoricoAdmin() {
     }
 
     const configs = {
-      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <CheckCircle2 size={14} className="text-emerald-500" />, stroke: '#10b981' },
-      warning: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: <AlertTriangle size={14} className="text-amber-500" />, stroke: '#f59e0b' },
-      danger: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: <AlertCircle size={14} className="text-red-500" />, stroke: '#ef4444' },
-      neutral: { color: 'text-stone-500', bg: 'bg-stone-50', border: 'border-stone-100', icon: null, stroke: '#d6d3d1' }
+      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
+      warning: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: <AlertTriangle size={16} className="text-amber-500" /> },
+      danger: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: <AlertCircle size={16} className="text-red-500" /> },
+      neutral: { color: 'text-stone-500', bg: 'bg-stone-50', border: 'border-stone-100', icon: null }
     };
 
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
+  const getMoodIcon = (mood: string) => {
+    if (mood === 'feliz') return <div className="bg-green-100 text-green-600 p-2.5 rounded-full shadow-sm"><Smile size={20} strokeWidth={2.5} /></div>;
+    if (mood === 'neutro') return <div className="bg-amber-100 text-amber-600 p-2.5 rounded-full shadow-sm"><Meh size={20} strokeWidth={2.5} /></div>;
+    if (mood === 'dificil') return <div className="bg-rose-100 text-rose-600 p-2.5 rounded-full shadow-sm"><Frown size={20} strokeWidth={2.5} /></div>;
+    return <div className="bg-stone-100 text-stone-400 p-2.5 rounded-full shadow-sm"><Meh size={20} strokeWidth={2.5} /></div>;
+  };
+
+  // =========================================================================
+  // MEMOIZAÇÕES PRINCIPAIS (ALERTS E GRÁFICOS)
+  // =========================================================================
+  const patientAge = useMemo(() => calculateAge(profile?.data_nascimento), [profile]);
+
   const activeAlerts = useMemo(() => {
-    const alerts: { id: string, type: 'success' | 'warning' | 'danger', text: string, icon: any, waLink?: string, waText?: string }[] = [];
+    const alerts: Alert[] = [];
     
-    let lastCheckin: any = null;
+    let lastCheckin: CheckinData | null = null;
     let daysSinceLastCheckin = 0;
     
     const phone = profile?.phone?.replace(/\D/g, '');
@@ -235,7 +350,7 @@ export default function PacienteHistoricoAdmin() {
       if (daysSinceLastCheckin > 14) {
         alerts.push({ 
           id: 'a1', type: 'danger', 
-          text: `Risco de Evasão: Sem check-in há ${daysSinceLastCheckin} dias.`, 
+          text: `Risco de Evasão: Paciente sem check-in há ${daysSinceLastCheckin} dias.`, 
           icon: <Clock size={16}/>,
           waText: 'Cobrar Retorno',
           waLink: waBase ? `${waBase}${encodeURIComponent(`Olá ${firstName}, notei que faz um tempinho que você não preenche seu check-in semanal. Está tudo bem? Precisando de ajuda com o plano, me avise!`)}` : undefined
@@ -243,10 +358,10 @@ export default function PacienteHistoricoAdmin() {
       } else if (daysSinceLastCheckin > 7) {
         alerts.push({ 
           id: 'a2', type: 'warning', 
-          text: `Atraso no relato semanal. Lembrete recomendado.`, 
+          text: `Atraso no relato semanal detectado. Lembrete recomendado.`, 
           icon: <Clock size={16}/>,
-          waText: 'Lembrar',
-          waLink: waBase ? `${waBase}${encodeURIComponent(`Oie ${firstName}, passando pra lembrar de enviar seu check-in dessa semana lá no App, tá bom? Beijos!`)}` : undefined
+          waText: 'Lembrar Check-in',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Oie ${firstName}, passando pra lembrar de enviar seu check-in dessa semana lá no App, tá bom? Qualquer dúvida me chama!`)}` : undefined
         });
       }
       
@@ -256,9 +371,9 @@ export default function PacienteHistoricoAdmin() {
         if (allGood) {
           alerts.push({ 
             id: 'a3', type: 'success', 
-            text: `Fase de Cruzeiro: Alta consistência na adesão há 3 semanas.`, 
-            icon: <Flame size={16} className="text-orange-500"/>,
-            waText: 'Elogiar',
+            text: `Fase de Cruzeiro: Alta consistência na adesão há 3 semanas seguidas.`, 
+            icon: <Flame size={16} />,
+            waText: 'Elogiar Adesão',
             waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}! Analisando seu histórico vi que sua adesão nas últimas 3 semanas foi impecável. Parabéns pelo foco, você tá arrasando! 👏🏻🔥`)}` : undefined
           });
         }
@@ -276,17 +391,17 @@ export default function PacienteHistoricoAdmin() {
       if (hasRecentDifficultMood && lastCheckin && lastCheckin.adesao_ao_plano <= 3) {
         alerts.push({ 
           id: 'ia1', type: 'danger', 
-          text: 'Comportamental: Dias relatados como "difíceis" combinados com baixa adesão.', 
+          text: 'Comportamental: Dias reportados como "difíceis" no diário combinados com baixa adesão.', 
           icon: <Brain size={16}/>,
-          waText: 'Acolher',
-          waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}, vi pelo seu diário que os últimos dias foram um pouco difíceis. Quer conversar sobre isso? Podemos adaptar o plano se necessário.`)}` : undefined
+          waText: 'Acolher Paciente',
+          waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}, vi pelo seu diário que os últimos dias foram um pouco difíceis. Quer conversar sobre isso? Podemos adaptar o plano se necessário, estou aqui pra te ajudar.`)}` : undefined
         });
       }
 
       if (avgWater > 0 && avgWater < 1200) {
         alerts.push({ 
           id: 'ia2', type: 'warning', 
-          text: `Desidratação Crônica: Média hídrica recente é de apenas ${Math.round(avgWater)}ml.`, 
+          text: `Desidratação: Média hídrica nos últimos dias é de apenas ${Math.round(avgWater)}ml.`, 
           icon: <Droplets size={16}/>,
           waText: 'Avisar H2O',
           waLink: waBase ? `${waBase}${encodeURIComponent(`Oi ${firstName}, vi no app que sua ingestão de água caiu bastante esses dias. Lembra da sua garrafinha! O metabolismo precisa de água pra funcionar bem. 💧`)}` : undefined
@@ -306,7 +421,9 @@ export default function PacienteHistoricoAdmin() {
 
       Object.keys(examMap).forEach(key => {
         let value = latestBio[key];
-        if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
+        if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) {
+          value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
+        }
         if(value !== null && value !== undefined) {
           const analysis = interpretBiochemical(key, parseFloat(value));
           if(analysis.status === 'danger') dangerExams.push(examMap[key]);
@@ -316,7 +433,7 @@ export default function PacienteHistoricoAdmin() {
       if (dangerExams.length > 0) {
         alerts.push({ 
           id: 'b1', type: 'danger', 
-          text: `Atenção Clínica Crítica: ${dangerExams.join(', ')} em níveis de risco elevado.`, 
+          text: `Atenção Clínica: Parâmetros em risco elevado (${dangerExams.join(', ')}).`, 
           icon: <Activity size={16}/> 
         });
       }
@@ -328,16 +445,14 @@ export default function PacienteHistoricoAdmin() {
       if (w1 >= w2 && avgWater > 0 && avgWater < 1500) {
         alerts.push({ 
           id: 'ia3', type: 'warning', 
-          text: `Fator de Estagnação: O ganho/manutenção de peso recente pode estar agravado pelo baixo consumo hídrico.`, 
+          text: `Fator de Estagnação: O platô de peso recente pode estar agravado pelo baixo consumo hídrico.`, 
           icon: <TrendingUp size={16}/> 
         });
       }
     }
 
     return alerts;
-  }, [history, antroData, bioData, dailyLogs, profile]);
-
-  const patientAge = useMemo(() => calculateAge(profile?.data_nascimento), [profile]);
+  }, [history, bioData, dailyLogs, profile]);
 
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
@@ -350,9 +465,8 @@ export default function PacienteHistoricoAdmin() {
 
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-    // Captura a altura baseada no histórico caso falte na linha do tempo atual (A altura em adultos é constante)
     let defaultHeightRaw = antroData.find(a => a.height)?.height || history.find(h => h.altura)?.altura || profile?.altura || null;
-    const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw) : null;
+    const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw.toString()) : null;
 
     return sortedDates.map(dateStr => {
       const checkin = history.find(h => formatD(h.created_at) === dateStr);
@@ -361,13 +475,13 @@ export default function PacienteHistoricoAdmin() {
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
       const currentWeightRaw = checkin?.peso || antro?.weight;
-      const currentWeight = currentWeightRaw ? parseFloat(currentWeightRaw) : null;
+      const currentWeight = currentWeightRaw ? parseFloat(currentWeightRaw.toString()) : null;
 
       const currentHeightRaw = checkin?.altura || antro?.height;
-      const currentHeight = currentHeightRaw ? parseFloat(currentHeightRaw) : defaultHeight;
+      const currentHeight = currentHeightRaw ? parseFloat(currentHeightRaw.toString()) : defaultHeight;
 
       let imc: number | null = null;
-      if (currentWeight && currentHeight) {
+      if (currentWeight && currentHeight && currentHeight > 0) {
         imc = parseFloat((currentWeight / (currentHeight * currentHeight)).toFixed(1));
       }
 
@@ -377,7 +491,7 @@ export default function PacienteHistoricoAdmin() {
       let leanMass: number | null = null;
       
       if (skin) {
-        const s1 = parseFloat(skin.triceps||0) + parseFloat(skin.biceps||0) + parseFloat(skin.subscapular||0) + parseFloat(skin.suprailiac||0) + parseFloat(skin.abdominal||0) + parseFloat(skin.thigh||0) + parseFloat(skin.calf||0);
+        const s1 = parseFloat(skin.triceps?.toString()||"0") + parseFloat(skin.biceps?.toString()||"0") + parseFloat(skin.subscapular?.toString()||"0") + parseFloat(skin.suprailiac?.toString()||"0") + parseFloat(skin.abdominal?.toString()||"0") + parseFloat(skin.thigh?.toString()||"0") + parseFloat(skin.calf?.toString()||"0");
         if (s1 > 0) {
           sumFolds = parseFloat(s1.toFixed(1));
           if (currentWeight && patientAge !== null) {
@@ -422,33 +536,41 @@ export default function PacienteHistoricoAdmin() {
       const y = p.peso;
       sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x;
     });
-    const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    
+    const divisor = (n * sumX2 - sumX * sumX);
+    if (divisor === 0) return "Estagnado";
+
+    const m = (n * sumXY - sumX * sumY) / divisor;
     const b = (sumY - m * sumX) / n;
     
-    if (m >= 0) return "Estagnado/Subindo"; 
+    if (m >= 0) return "Estagnado ou Subindo"; 
     const targetX = (profile.meta_peso - b) / m;
     const targetDate = new Date(targetX * (1000 * 3600 * 24));
     
-    if (targetDate.getTime() - new Date().getTime() > 365 * 24*60*60*1000) return "+ de 1 ano";
+    if (targetDate.getTime() - new Date().getTime() > 365 * 24 * 60 * 60 * 1000) return "+ de 1 ano";
     return targetDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
   }, [history, profile?.meta_peso]);
 
+  // =========================================================================
+  // SUB-COMPONENTES
+  // =========================================================================
   const ExamBadge = ({ label, value, unit, type }: { label: string, value: any, unit: string, type: string }) => {
     const analysis = interpretBiochemical(type, value ? parseFloat(value) : null);
     if (value === null || value === undefined || isNaN(value)) return null;
 
     return (
-      <div className={`relative overflow-hidden group flex items-center justify-between p-3 rounded-xl border ${analysis.border} ${analysis.bg} transition-all`}>
+      <div className={`relative overflow-hidden group flex items-center justify-between p-4 rounded-2xl border ${analysis.border} ${analysis.bg} transition-all duration-300 hover:shadow-md`}>
         <div className="relative z-10 flex flex-col">
-          <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider mb-0.5">{label}</span>
-          <span className={`font-black text-lg ${analysis.color}`}>
-            {value} <span className="text-xs font-semibold opacity-60">{unit}</span>
+          <span className="text-[10px] uppercase font-black text-stone-400 tracking-widest mb-1">{label}</span>
+          <span className={`font-black text-xl tracking-tight ${analysis.color}`}>
+            {value} <span className="text-xs font-bold opacity-60 ml-0.5">{unit}</span>
           </span>
         </div>
-        <div className="relative z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-sm">
+        <div className="relative z-10 flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-white/50">
           {analysis.icon}
         </div>
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-medium px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 shadow-xl text-center">
+        {/* Tooltip on Hover */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-bold px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-20 shadow-xl text-center transform translate-y-1 group-hover:translate-y-0">
           {analysis.text}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
         </div>
@@ -456,33 +578,32 @@ export default function PacienteHistoricoAdmin() {
     );
   };
 
-  const getMoodIcon = (mood: string) => {
-    if (mood === 'feliz') return <div className="bg-green-100 text-green-600 p-2 rounded-full"><Smile size={20} /></div>;
-    if (mood === 'neutro') return <div className="bg-amber-100 text-amber-600 p-2 rounded-full"><Meh size={20} /></div>;
-    if (mood === 'dificil') return <div className="bg-rose-100 text-rose-600 p-2 rounded-full"><Frown size={20} /></div>;
-    return <div className="bg-stone-100 text-stone-400 p-2 rounded-full"><Meh size={20} /></div>;
-  };
-
+  // =========================================================================
+  // RENDERIZAÇÃO
+  // =========================================================================
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50">
-      <Loader2 className="animate-spin text-nutri-800" size={48} />
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="animate-spin text-nutri-800" size={48} />
+        <p className="text-stone-500 font-medium animate-pulse">Carregando prontuário...</p>
+      </div>
     </div>
   );
 
   return (
     <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-28 md:pt-36 lg:pt-40 font-sans text-stone-800">
-      <div className="max-w-6xl mx-auto w-full">
+      <div className="max-w-7xl mx-auto w-full">
         
-        {/* NAVEGAÇÃO */}
+        {/* NAVEGAÇÃO E HEADER */}
         <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-6 sm:gap-0 animate-fade-in-up">
-          <Link href="/admin/dashboard" className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 active:scale-[0.98] transition-all duration-300">
-            <div className="bg-nutri-50 p-1.5 sm:p-1 rounded-xl sm:rounded-full group-hover:bg-nutri-800 transition-colors"><ChevronLeft size={18} className="text-nutri-800 group-hover:text-white" /></div>
-            <span className="text-sm font-semibold text-stone-600 group-hover:text-nutri-900">Voltar ao Painel Admin</span>
+          <Link href="/admin/dashboard" className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3.5 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 hover:shadow-md active:scale-95 transition-all duration-300">
+            <div className="bg-nutri-50 p-1.5 sm:p-1.5 rounded-xl sm:rounded-full group-hover:bg-nutri-800 transition-colors"><ChevronLeft size={18} className="text-nutri-800 group-hover:text-white" /></div>
+            <span className="text-sm font-bold text-stone-600 group-hover:text-nutri-900">Voltar ao Painel</span>
           </Link>
           <div className="text-center sm:text-right w-full sm:w-auto">
-            <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest">Prontuário e Evolução</p>
-            <h1 className="text-xl md:text-2xl font-bold text-nutri-900 flex items-center gap-2 justify-center sm:justify-end tracking-tight">
-              <User size={20} /> {profile?.full_name}
+            <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest mb-1">Prontuário Clínico Eletrônico</p>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-nutri-900 flex items-center gap-2 justify-center sm:justify-end tracking-tight">
+              <User size={24} className="text-nutri-800" /> {profile?.full_name}
             </h1>
           </div>
         </nav>
@@ -491,27 +612,39 @@ export default function PacienteHistoricoAdmin() {
           
           {/* COLUNA 1: DADOS + RADAR CLÍNICO */}
           <div className="lg:col-span-1 flex flex-col gap-6 md:gap-8">
-            <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col justify-between h-full">
+            <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col justify-between h-full hover:shadow-md transition-shadow">
               <div>
-                <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900">Dados do Paciente</h2>
-                <div className="space-y-6 md:space-y-5">
-                  <div>
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Idade e Sexo</p>
-                    <p className="font-bold text-stone-700 text-lg">
-                      {patientAge !== null ? `${patientAge} anos` : <span className="text-red-500 text-sm flex items-center gap-1"><AlertCircle size={14}/> Faltando no Perfil</span>} 
-                      {profile?.sexo ? ` • ${profile.sexo}` : ' • Sexo não def.'}
+                <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900 flex items-center gap-2">
+                  <BookOpen size={20} className="text-nutri-800" /> Resumo do Paciente
+                </h2>
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Idade e Biotipo</p>
+                    <p className="font-extrabold text-stone-700 text-lg flex items-center gap-2">
+                      {patientAge !== null ? `${patientAge} anos` : <span className="text-red-500 text-sm flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg"><AlertCircle size={14}/> Faltando no Perfil</span>} 
+                      <span className="text-stone-300">|</span>
+                      <span className="capitalize">{profile?.sexo || 'Sexo não def.'}</span>
                     </p>
                   </div>
-                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Perfil Definido</p><p className="font-bold text-nutri-900 uppercase bg-nutri-50 inline-block px-3 py-1 rounded-lg text-sm">{profile?.tipo_perfil || 'Não definido'}</p></div>
-                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Meta de Peso</p><p className="font-bold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p></div>
-                  <div><p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Último Peso Registrado</p><p className="font-bold text-stone-700 text-lg">{timelineData.length > 0 && timelineData[timelineData.length - 1].peso ? `${timelineData[timelineData.length - 1].peso} kg` : '---'}</p></div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Perfil Definido</p>
+                    <div><span className="font-bold text-nutri-900 uppercase bg-nutri-50 px-3 py-1.5 rounded-lg text-sm tracking-wider border border-nutri-100">{profile?.tipo_perfil || 'Não definido'}</span></div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Meta de Peso</p>
+                    <p className="font-extrabold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'Não definida'}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Último Peso Registrado</p>
+                    <p className="font-extrabold text-stone-700 text-lg">{timelineData.length > 0 && timelineData[timelineData.length - 1].peso ? `${timelineData[timelineData.length - 1].peso} kg` : 'Sem registros'}</p>
+                  </div>
                   
-                  {projectionDate && projectionDate !== "Estagnado/Subindo" && (
-                    <div className="bg-nutri-50 p-4 rounded-xl border border-nutri-100 mt-6 flex items-start gap-3">
-                      <Target className="text-nutri-600 mt-0.5 shrink-0" size={18} />
+                  {projectionDate && projectionDate !== "Estagnado ou Subindo" && (
+                    <div className="bg-gradient-to-br from-nutri-50 to-white p-5 rounded-2xl border border-nutri-200 mt-6 flex items-start gap-4 shadow-sm">
+                      <div className="bg-nutri-100 p-2 rounded-xl"><Target className="text-nutri-700" size={20} /></div>
                       <div>
-                        <p className="text-[10px] font-bold text-nutri-600 uppercase tracking-widest">Previsão da Meta (GPS)</p>
-                        <p className="text-base font-black text-nutri-900">{projectionDate}</p>
+                        <p className="text-[10px] font-black text-nutri-700 uppercase tracking-widest mb-1">GPS da Meta de Peso</p>
+                        <p className="text-lg font-black text-nutri-900 leading-tight">Previsão: {projectionDate}</p>
                       </div>
                     </div>
                   )}
@@ -520,284 +653,342 @@ export default function PacienteHistoricoAdmin() {
             </section>
 
             {/* RADAR CLÍNICO */}
-            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex-1">
-              <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl transition-opacity"></div>
-              <h2 className="text-sm font-black text-stone-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 relative z-10">
-                <Zap size={16} className="text-amber-400" /> Radar Clínico (IA)
-              </h2>
+            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex-1 border border-stone-800">
+              <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl transition-opacity group-hover:opacity-10 duration-700"></div>
               
-              <div className="space-y-3 relative z-10">
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <h2 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                  <Zap size={18} className="text-amber-400 fill-amber-400/20" /> Radar Clínico AI
+                </h2>
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse delay-75"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse delay-150"></span>
+                </div>
+              </div>
+              
+              <div className="space-y-4 relative z-10">
                 {activeAlerts.length > 0 ? (
                   activeAlerts.map(alert => (
-                    <div key={alert.id} className={`flex flex-col gap-3 p-4 rounded-2xl border ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100'}`}>
+                    <div key={alert.id} className={`flex flex-col gap-3 p-4 rounded-2xl border backdrop-blur-sm ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/30 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100'}`}>
                       <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 ${alert.type === 'danger' ? 'text-red-400' : alert.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        <div className={`mt-0.5 p-1 rounded-lg ${alert.type === 'danger' ? 'bg-red-500/20 text-red-400' : alert.type === 'warning' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                           {alert.icon}
                         </div>
-                        <p className="text-[13px] leading-snug font-medium flex-1">{alert.text}</p>
+                        <p className="text-sm font-medium leading-relaxed flex-1 tracking-wide">{alert.text}</p>
                       </div>
                       
-                      {/* BOTÃO MÁGICO DO WHATSAPP */}
                       {alert.waLink && (
                         <a 
                           href={alert.waLink} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className={`mt-1 self-end flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                            alert.type === 'danger' ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200' : 
-                            alert.type === 'warning' ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-200' : 
-                            'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200'
+                          className={`mt-2 self-start flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 ${
+                            alert.type === 'danger' ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30' : 
+                            alert.type === 'warning' ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 border border-amber-500/30' : 
+                            'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30'
                           }`}
                         >
-                          <MessageCircle size={12} /> {alert.waText}
+                          <MessageCircle size={14} /> {alert.waText}
                         </a>
                       )}
                     </div>
                   ))
                 ) : (
-                  <div className="flex items-center gap-3 p-4 rounded-2xl bg-stone-800/50 border border-stone-800 text-stone-300">
-                    <CheckCircle2 size={16} className="text-stone-500 mt-0.5 shrink-0" />
-                    <p className="text-[13px] leading-snug font-medium">Sem alertas urgentes. Paciente estável dentro dos dados fornecidos.</p>
+                  <div className="flex items-start gap-3 p-5 rounded-2xl bg-stone-800/50 border border-stone-700/50 text-stone-300">
+                    <CheckCircle2 size={20} className="text-emerald-500 mt-0.5 shrink-0" />
+                    <p className="text-sm font-medium leading-relaxed">Sem alertas urgentes. O quadro evolutivo do paciente está estável de acordo com os dados fornecidos.</p>
                   </div>
                 )}
               </div>
             </section>
           </div>
 
-          {/* COLUNA 2: GRÁFICO PREMIUM MULTI-LENTES */}
-          <section className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 flex flex-col">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-              <h2 className="text-lg md:text-xl font-bold flex items-center gap-2 text-stone-900">
-                <TrendingUp className="text-nutri-800" size={24} /> Diagnóstico Evolutivo
+          {/* COLUNA 2: GRÁFICO MULTI-LENTES */}
+          <section className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
+              <h2 className="text-lg md:text-xl font-bold flex items-center gap-3 text-stone-900 tracking-tight">
+                <div className="bg-nutri-50 p-2 rounded-xl border border-nutri-100">
+                  <TrendingUp className="text-nutri-800" size={20} />
+                </div>
+                Diagnóstico Evolutivo
               </h2>
 
-              <div className="flex bg-stone-100 p-1.5 rounded-2xl w-full sm:w-auto">
+              <div className="flex bg-stone-50 p-1.5 rounded-2xl w-full md:w-auto border border-stone-100 shadow-inner">
                 <button 
                   onClick={() => setActiveLens('medidas')} 
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeLens === 'medidas' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'medidas' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
                 >
                   <Scale size={14} /> Medidas
                 </button>
                 <button 
                   onClick={() => setActiveLens('composicao')} 
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeLens === 'composicao' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'composicao' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
                 >
-                  <Layers size={14} /> Dobras
+                  <Layers size={14} /> Composição
                 </button>
                 <button 
                   onClick={() => setActiveLens('metabolico')} 
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeLens === 'metabolico' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'metabolico' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
                 >
-                  <Activity size={14} /> Metabolismo
+                  <Activity size={14} /> Metabólico
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 min-h-[300px] w-full -ml-3 sm:ml-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={timelineData} margin={{ top: 20, right: -10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorAreaWaist" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
-                  
-                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} />
-                  
-                  <RechartsTooltip 
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-xl border border-stone-800">
-                            <p className="text-xs font-bold text-stone-400 mb-2 border-b border-stone-700 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
-                            
-                            {activeLens === 'medidas' && (
-                              <>
-                                {data.peso && <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>}
-                                {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
-                              </>
-                            )}
+            <div className="flex-1 min-h-[350px] w-full -ml-3 sm:ml-0">
+              {timelineData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-stone-400 border-2 border-dashed border-stone-100 rounded-3xl bg-stone-50/50">
+                  <TrendingUp size={40} className="mb-4 opacity-50" />
+                  <p className="font-medium text-sm">Insira dados de peso ou check-ins para visualizar o gráfico evolutivo.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={timelineData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorAreaWaist" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
+                    <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} dy={10} />
+                    
+                    <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} dx={-10} />
+                    <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} dx={10} />
+                    
+                    <RechartsTooltip 
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-stone-900/95 backdrop-blur-md text-white p-5 rounded-2xl shadow-2xl border border-stone-800 pointer-events-none">
+                              <p className="text-xs font-black uppercase tracking-widest text-stone-400 mb-3 border-b border-stone-700/50 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
+                              
+                              <div className="space-y-2">
+                                {activeLens === 'medidas' && (
+                                  <>
+                                    {data.peso && <p className="font-medium text-sm flex justify-between gap-6">Peso: <span className="font-black text-emerald-400">{data.peso} kg</span></p>}
+                                    {data.cintura && <p className="font-medium text-sm flex justify-between gap-6">Cintura: <span className="font-black text-indigo-400">{data.cintura} cm</span></p>}
+                                  </>
+                                )}
 
-                            {activeLens === 'composicao' && (
-                              <>
-                                {data.peso && <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>}
-                                {data.somatorio_dobras && <p className="font-black text-pink-400 flex justify-between gap-4">7 Dobras: <span>{data.somatorio_dobras} mm</span></p>}
-                                {data.bf && <p className="font-black text-amber-400 flex justify-between gap-4">% Gordura: <span>{data.bf}%</span></p>}
-                              </>
-                            )}
+                                {activeLens === 'composicao' && (
+                                  <>
+                                    {data.peso && <p className="font-medium text-sm flex justify-between gap-6">Peso Atual: <span className="font-black text-emerald-400">{data.peso} kg</span></p>}
+                                    {data.somatorio_dobras && <p className="font-medium text-sm flex justify-between gap-6">Somatório Dobras: <span className="font-black text-pink-400">{data.somatorio_dobras} mm</span></p>}
+                                    {data.bf && <p className="font-medium text-sm flex justify-between gap-6">% Gordura: <span className="font-black text-amber-400">{data.bf}%</span></p>}
+                                  </>
+                                )}
 
-                            {activeLens === 'metabolico' && (
-                              <>
-                                {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
-                                {data.homair && <p className="font-black text-amber-400 flex justify-between gap-4">HOMA-IR: <span>{data.homair}</span></p>}
-                              </>
-                            )}
+                                {activeLens === 'metabolico' && (
+                                  <>
+                                    {data.cintura && <p className="font-medium text-sm flex justify-between gap-6">Cintura: <span className="font-black text-indigo-400">{data.cintura} cm</span></p>}
+                                    {data.homair && <p className="font-medium text-sm flex justify-between gap-6">Índice HOMA-IR: <span className="font-black text-amber-400">{data.homair}</span></p>}
+                                  </>
+                                )}
+                              </div>
 
-                            <div className="mt-2 pt-2 border-t border-stone-700 space-y-1">
-                              {data.adesao && <p className="text-xs text-stone-300">Adesão: <span className="font-bold text-white">{data.adesao}/5</span></p>}
-                              {data.hasExam && <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1"><Syringe size={12}/> Exame Realizado</p>}
+                              {(data.adesao || data.hasExam) && (
+                                <div className="mt-4 pt-3 border-t border-stone-700/50 space-y-2">
+                                  {data.adesao && <p className="text-xs text-stone-300 flex justify-between">Adesão Dieta: <span className="font-black text-white">{data.adesao}/5</span></p>}
+                                  {data.hasExam && <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1.5"><Syringe size={14}/> Exame de Sangue Relatado</p>}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  
-                  {activeLens === 'medidas' && (
-                    <>
-                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="5 5" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1" }} connectNulls />
-                    </>
-                  )}
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    
+                    {activeLens === 'medidas' && (
+                      <>
+                        {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="4 4" label={{ position: 'top', value: 'META DE PESO', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold' }} />}
+                        <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls />
+                        <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 5, fill: "#6366f1", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 7 }} connectNulls />
+                      </>
+                    )}
 
-                  {activeLens === 'composicao' && (
-                    <>
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 4, fill: "#ec4899" }} connectNulls />
-                      {/* Adicionando a linha de % de Gordura se houver dados */}
-                      {timelineData.some(d => d.bf) && (
-                         <Line type="monotone" yAxisId="right" dataKey="bf" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 4, fill: "#f59e0b" }} connectNulls />
-                      )}
-                    </>
-                  )}
+                    {activeLens === 'composicao' && (
+                      <>
+                        <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls />
+                        <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 5, fill: "#ec4899", strokeWidth: 2, stroke: "#fff" }} connectNulls />
+                        {timelineData.some(d => d.bf) && (
+                          <Line type="monotone" yAxisId="right" dataKey="bf" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 5, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} connectNulls />
+                        )}
+                      </>
+                    )}
 
-                  {activeLens === 'metabolico' && (
-                    <>
-                      <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'RISCO HOMA-IR', fill: '#ef4444', fontSize: 10 }} />
-                      <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={4} dot={{ r: 5, fill: "#f59e0b" }} connectNulls />
-                    </>
-                  )}
-                  
-                  <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
-                    const { cx, cy, payload } = props;
-                    if (!payload.hasExam) return <g></g>;
-                    return (
-                      <g transform={`translate(${cx - 8},${cy - 25})`}>
-                        <circle cx="8" cy="8" r="12" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" />
-                        <Syringe x="1" y="1" size={14} color="#d97706" />
-                      </g>
-                    );
-                  }} />
+                    {activeLens === 'metabolico' && (
+                      <>
+                        <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="4 4" label={{ position: 'insideTopLeft', value: 'ALERTA HOMA-IR', fill: '#ef4444', fontSize: 9, fontWeight: 'bold' }} />
+                        <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={4} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls />
+                        <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={4} dot={{ r: 6, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 8 }} connectNulls />
+                      </>
+                    )}
+                    
+                    <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      if (!payload.hasExam) return <g></g>;
+                      return (
+                        <g transform={`translate(${cx - 10},${cy - 28})`} className="cursor-pointer">
+                          <circle cx="10" cy="10" r="14" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" />
+                          <Syringe x="3" y="3" size={14} color="#d97706" />
+                        </g>
+                      );
+                    }} />
 
-                </ComposedChart>
-              </ResponsiveContainer>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </section>
         </div>
 
-        {/* --- ABAS DE TABELAS E PRONTUÁRIO --- */}
-        <section className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-4 pt-4 gap-1 scrollbar-hide">
-            <button onClick={() => setActiveTab('prontuario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'prontuario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><BookOpen size={18} /> Prontuário</button>
-            <button onClick={() => setActiveTab('diario')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'diario' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Coffee size={18} /> Diário do Paciente</button>
-            <button onClick={() => setActiveTab('checkins')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'checkins' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><CalendarCheck size={18} /> Check-ins</button>
-            <button onClick={() => setActiveTab('antropometria')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'antropometria' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Ruler size={18} /> Antropometria</button>
-            <button onClick={() => setActiveTab('dobras')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'dobras' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Layers size={18} /> Dobras e BF%</button>
-            <button onClick={() => setActiveTab('bioquimicos')} className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'bioquimicos' ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/30 rounded-t-2xl'}`}><Activity size={18} /> Bioquímicos</button>
+        {/* =========================================================================
+            SESSÃO INFERIOR: ABAS E TABELAS CLÍNICAS
+            ========================================================================= */}
+        <section className="bg-white rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+          
+          <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-2 md:px-6 pt-4 gap-2 scrollbar-hide">
+            {[
+              { id: 'prontuario', label: 'Prontuário (S.O.A.P)', icon: <BookOpen size={16} /> },
+              { id: 'diario', label: 'Diário no App', icon: <Coffee size={16} /> },
+              { id: 'checkins', label: 'Check-ins Semanais', icon: <CalendarCheck size={16} /> },
+              { id: 'antropometria', label: 'Antropometria', icon: <Ruler size={16} /> },
+              { id: 'dobras', label: 'Dobras & BF%', icon: <Layers size={16} /> },
+              { id: 'bioquimicos', label: 'Exames de Sangue', icon: <Activity size={16} /> }
+            ].map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)} 
+                className={`flex items-center gap-2 px-6 py-4 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap active:scale-95 ${activeTab === tab.id ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/50 rounded-t-2xl'}`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
           </div>
 
-          <div className="p-6 md:p-8">
+          <div className="p-6 md:p-8 lg:p-10 min-h-[400px]">
             
+            {/* PRONTUÁRIO S.O.A.P */}
             {activeTab === 'prontuario' && (
               <div className="animate-fade-in max-w-4xl mx-auto">
-                <h2 className="text-lg md:text-xl font-bold mb-8 text-stone-900 flex items-center gap-2">
-                  <Stethoscope className="text-nutri-800" /> Prontuário Clínico (Método S.O.A.P)
+                <h2 className="text-xl md:text-2xl font-bold mb-8 text-stone-900 flex items-center gap-3">
+                  <Stethoscope className="text-nutri-800" size={28} /> Prontuário Clínico
                 </h2>
                 
-                {/* FORMS SOAP */}
-                <div className="mb-12 bg-stone-50 p-6 rounded-[2rem] border border-stone-200 shadow-inner">
+                <div className="mb-12 bg-white p-6 md:p-8 rounded-[2rem] border border-stone-200 shadow-sm focus-within:ring-4 focus-within:ring-nutri-800/5 transition-all">
                   <div className="space-y-6">
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><MessageCircle size={14}/> S - Subjetivo</label>
-                      <textarea value={soapNote.s} onChange={e => setSoapNote({...soapNote, s: e.target.value})} placeholder="Queixas, relatos e informações dadas pelo paciente..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><MessageCircle size={14} className="text-stone-300"/> S - Subjetivo (Relato do Paciente)</label>
+                      <textarea value={soapNote.s} onChange={e => setSoapNote({...soapNote, s: e.target.value})} placeholder="Queixas, sintomas relatados, facilidades e dificuldades percebidas..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
                     </div>
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><ClipboardList size={14}/> O - Objetivo</label>
-                      <textarea value={soapNote.o} onChange={e => setSoapNote({...soapNote, o: e.target.value})} placeholder="Sinais clínicos, resultados de exames e medidas físicas observadas..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><ClipboardList size={14} className="text-stone-300"/> O - Objetivo (Dados Físicos/Exames)</label>
+                      <textarea value={soapNote.o} onChange={e => setSoapNote({...soapNote, o: e.target.value})} placeholder="Sinais clínicos observados, resultados de laboratório, peso atual, medidas..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
                     </div>
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><Brain size={14}/> A - Avaliação</label>
-                      <textarea value={soapNote.a} onChange={e => setSoapNote({...soapNote, a: e.target.value})} placeholder="Seu diagnóstico nutricional e análise do quadro..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><Brain size={14} className="text-stone-300"/> A - Avaliação (Diagnóstico Nutricional)</label>
+                      <textarea value={soapNote.a} onChange={e => setSoapNote({...soapNote, a: e.target.value})} placeholder="Interpretação do quadro geral, diagnóstico nutricional, evolução..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
                     </div>
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-500 uppercase tracking-widest mb-2"><ListChecks size={14}/> P - Plano</label>
-                      <textarea value={soapNote.p} onChange={e => setSoapNote({...soapNote, p: e.target.value})} placeholder="Conduta dietética, suplementação prescrita e próximos passos..." className="w-full p-4 rounded-xl border border-stone-200 focus:ring-2 focus:ring-nutri-800 outline-none h-20 resize-none text-sm bg-white" />
+                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><ListChecks size={14} className="text-stone-300"/> P - Plano (Conduta Dietética)</label>
+                      <textarea value={soapNote.p} onChange={e => setSoapNote({...soapNote, p: e.target.value})} placeholder="Conduta, prescrição de dieta/suplementos, metas para a próxima consulta..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
                     </div>
                   </div>
-                  <div className="flex justify-end mt-6">
-                    <button onClick={handleSaveNote} disabled={savingNote || (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p)} className="bg-nutri-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-nutri-800 active:scale-95 transition-all disabled:opacity-50">
+                  <div className="flex justify-end mt-8 pt-6 border-t border-stone-100">
+                    <button onClick={handleSaveNote} disabled={savingNote || (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p)} className="bg-nutri-900 text-white px-8 py-3.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-nutri-800 active:scale-95 transition-all shadow-lg shadow-nutri-900/20 disabled:opacity-50 disabled:shadow-none">
                       {savingNote ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Prontuário
                     </button>
                   </div>
                 </div>
 
-                {/* HISTÓRICO DE NOTAS */}
-                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
-                  {notes.map((note) => {
-                    // Simples formatador visual se a nota já foi salva com ** ou se é velha
-                    const formattedContent = note.content.includes('**S') ? (
-                      <div dangerouslySetInnerHTML={{ __html: note.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-nutri-900 block mt-2 mb-0.5">$1</strong>').replace(/\n/g, '<br/>') }} />
-                    ) : (
-                      <p className="whitespace-pre-wrap">{note.content}</p>
-                    );
+                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-6 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
+                  {notes.length === 0 ? (
+                    <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-3xl border-2 border-dashed border-stone-200">Nenhuma anotação médica registrada ainda.</div>
+                  ) : (
+                    notes.map((note) => {
+                      const formattedContent = note.content.includes('**S') ? (
+                        <div dangerouslySetInnerHTML={{ __html: note.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-nutri-900 block mt-4 mb-1 text-xs uppercase tracking-widest border-b border-stone-100 pb-1">$1</strong>').replace(/\n/g, '<br/>') }} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{note.content}</p>
+                      );
 
-                    return (
-                      <div key={note.id} className="relative flex items-start group">
-                        <div className="absolute left-0 flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-nutri-800 shadow-sm z-10"><div className="w-2 h-2 bg-nutri-800 rounded-full"></div></div>
-                        <div className="ml-14 flex-1 bg-white p-6 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-all">
-                          <div className="flex justify-between items-center mb-3 border-b border-stone-100 pb-3">
-                            <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}</span>
-                            <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                          </div>
-                          <div className="text-stone-600 leading-relaxed text-sm">
-                            {formattedContent}
+                      return (
+                        <div key={note.id} className="relative flex items-start group">
+                          <div className="absolute left-0 flex items-center justify-center w-12 h-12 rounded-full bg-stone-50 border-[3px] border-white shadow-sm z-10 text-nutri-800"><BookOpen size={18} /></div>
+                          <div className="ml-16 flex-1 bg-white p-6 md:p-8 rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-all">
+                            <div className="flex justify-between items-center mb-4 border-b border-stone-100 pb-4">
+                              <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}</span>
+                              <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-red-500 bg-stone-50 hover:bg-red-50 p-2 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                            </div>
+                            <div className="text-stone-700 leading-relaxed text-sm font-medium">
+                              {formattedContent}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                  {notes.length === 0 && <div className="text-center py-10 text-stone-400 italic bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">Nenhum prontuário registrado ainda.</div>}
+                      )
+                    })
+                  )}
                 </div>
               </div>
             )}
 
+            {/* DIÁRIO */}
             {activeTab === 'diario' && (
               <div className="animate-fade-in">
-                {/* Diário UI */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                  <div><h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2"><Coffee className="text-nutri-800" /> Rotina Diária</h2><p className="text-sm text-stone-500 mt-1">Acompanhe o que o paciente registra no aplicativo dia a dia.</p></div>
+                  <div>
+                    <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2"><Coffee className="text-nutri-800" /> Diário de Rotina</h2>
+                    <p className="text-sm text-stone-500 mt-1 font-medium">Histórico diário de ingestão de água, humor e refeições relatadas pelo app.</p>
+                  </div>
                 </div>
                 {dailyLogs.length === 0 ? (
-                  <div className="text-center py-12 text-stone-400 italic bg-stone-50/50 rounded-[2rem] border border-dashed border-stone-200 flex flex-col items-center justify-center"><Coffee size={40} className="mb-4 text-stone-300" /><p>O paciente ainda não começou a registrar sua rotina diária no app.</p></div>
+                  <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center justify-center">
+                    <Coffee size={48} className="mb-4 text-stone-300" />
+                    <p>O paciente ainda não possui registros no diário.</p>
+                  </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {dailyLogs.map((log) => {
                       const mealCount = Array.isArray(log.meals_checked) ? log.meals_checked.length : 0;
                       return (
-                        <div key={log.id} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                          <div className="flex justify-between items-start mb-6 border-b border-stone-50 pb-4">
-                            <div><p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p><h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3></div>
+                        <div key={log.id} className="bg-white p-6 rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-all relative group">
+                          <div className="flex justify-between items-center mb-6 border-b border-stone-100 pb-4">
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p>
+                              <h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
+                            </div>
                             <div title={`Humor: ${log.mood || 'Não informado'}`}>{getMoodIcon(log.mood)}</div>
                           </div>
                           <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col justify-center items-center text-center"><Droplets size={18} className="text-blue-500 mb-2" /><p className="text-xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p><p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Água</p></div>
-                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-center items-center text-center relative"><Check size={18} className="text-green-500 mb-2" /><p className="text-xl font-black text-stone-900">{mealCount}</p><p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Refeições</p></div>
+                            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50 flex flex-col justify-center items-center text-center">
+                              <Droplets size={20} className="text-blue-500 mb-2" />
+                              <p className="text-2xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p>
+                              <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-1">Água Ingerida</p>
+                            </div>
+                            <div className="bg-stone-50/50 p-4 rounded-2xl border border-stone-200/50 flex flex-col justify-center items-center text-center">
+                              <Check size={20} className="text-emerald-500 mb-2" />
+                              <p className="text-2xl font-black text-stone-900">{mealCount}</p>
+                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mt-1">Refeições Feitas</p>
+                            </div>
                           </div>
                           {mealCount > 0 && (
-                            <div className="mt-4 pt-4 border-t border-stone-100"><p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Refeições Marcadas:</p><ul className="flex flex-wrap gap-1.5">{log.meals_checked.map((meal: string, idx: number) => (<li key={idx} className="bg-stone-100 text-stone-600 text-[10px] px-2 py-1 rounded-md font-medium">{meal}</li>))}</ul></div>
+                            <div className="mt-5 pt-5 border-t border-stone-100">
+                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3">Checklist do dia:</p>
+                              <ul className="flex flex-wrap gap-2">
+                                {log.meals_checked.map((meal: string, idx: number) => (
+                                  <li key={idx} className="bg-stone-100 text-stone-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-stone-200/50">{meal}</li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                         </div>
                       )
@@ -807,28 +998,36 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
+            {/* CHECK-INS */}
             {activeTab === 'checkins' && (
               <div className="animate-fade-in">
-                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Relatos Dominicais</h2>
-                <div className="overflow-x-auto -mx-6 px-6 scrollbar-hide">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead>
-                      <tr className="border-b-2 border-stone-100">
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Data</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Peso</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Adesão</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Humor</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-bold tracking-widest">Relato</th>
+                <h2 className="text-xl font-bold mb-6 text-stone-900 flex items-center gap-2"><CalendarCheck className="text-nutri-800" /> Relatos Semanais</h2>
+                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
+                  <table className="w-full text-left border-collapse min-w-[800px] bg-white">
+                    <thead className="bg-stone-50/80">
+                      <tr>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data do Relato</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Peso Registrado</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Nota Adesão</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Humor da Semana</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Comentários e Queixas</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-stone-50">
+                    <tbody className="divide-y divide-stone-100">
+                      {history.length === 0 && (
+                        <tr><td colSpan={5} className="text-center py-10 text-stone-400 font-medium italic">Nenhum check-in registrado.</td></tr>
+                      )}
                       {history.slice().reverse().map((item) => (
                         <tr key={item.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-4 px-2 font-bold text-stone-700 text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR')}</td>
-                          <td className="py-4 px-2 font-medium text-sm">{item.peso} kg</td>
-                          <td className="py-4 px-2 text-sm"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${item.adesao_ao_plano >= 4 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{item.adesao_ao_plano}/5</span></td>
-                          <td className="py-4 px-2 font-bold text-sm text-stone-500">{item.humor_semanal}/5</td>
-                          <td className="py-4 px-2 text-xs text-stone-600 leading-relaxed">{item.comentarios || '-'}</td>
+                          <td className="py-5 px-6 font-bold text-stone-800 text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR', {day: '2-digit', month: 'long', year: 'numeric'})}</td>
+                          <td className="py-5 px-6 font-extrabold text-sm text-nutri-800">{item.peso} kg</td>
+                          <td className="py-5 px-6 text-sm">
+                            <span className={`px-3 py-1.5 rounded-xl text-xs font-black tracking-widest border ${item.adesao_ao_plano >= 4 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{item.adesao_ao_plano} / 5</span>
+                          </td>
+                          <td className="py-5 px-6 font-bold text-sm text-stone-500 flex items-center gap-2">
+                            {item.humor_semanal} / 5
+                          </td>
+                          <td className="py-5 px-6 text-sm text-stone-600 font-medium leading-relaxed max-w-xs truncate" title={item.comentarios}>{item.comentarios || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -837,116 +1036,121 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
+            {/* ANTROPOMETRIA */}
             {activeTab === 'antropometria' && (
-              <div className="animate-fade-in overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
-                <h2 className="text-lg md:text-xl font-bold mb-6 text-stone-900">Medidas de Circunferência</h2>
-                <table className="w-full text-left min-w-[900px]">
-                  <thead>
-                    <tr className="border-b-2 border-stone-100">
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Peso</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Altura</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Cintura</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Quadril</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Braço</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Panturrilha</th>
-                      <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Pescoço</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-50">
-                    {antroData.map(i => (
-                      <tr key={i.id} className="hover:bg-stone-50/50">
-                        <td className="py-4 px-2 font-bold text-sm">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                        <td className="py-4 px-2 text-sm">{i.weight ? `${i.weight}kg` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.height ? `${i.height}m` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.waist ? `${i.waist}cm` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.hip ? `${i.hip}cm` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.arm ? `${i.arm}cm` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.calf ? `${i.calf}cm` : '-'}</td>
-                        <td className="py-4 px-2 text-sm">{i.neck ? `${i.neck}cm` : '-'}</td>
+              <div className="animate-fade-in">
+                <h2 className="text-xl font-bold mb-6 text-stone-900 flex items-center gap-2"><Ruler className="text-nutri-800" /> Circunferências e Medidas Físicas</h2>
+                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
+                  <table className="w-full text-left min-w-[1000px] bg-white">
+                    <thead className="bg-stone-50/80">
+                      <tr>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Peso</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Altura</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Cintura</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Quadril</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Braço</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Panturrilha</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Pescoço</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {antroData.length === 0 && (
+                        <tr><td colSpan={8} className="text-center py-10 text-stone-400 font-medium italic">Nenhuma medida cadastrada.</td></tr>
+                      )}
+                      {antroData.map(i => (
+                        <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
+                          <td className="py-5 px-6 font-bold text-sm text-stone-800">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-5 px-6 font-extrabold text-sm text-nutri-800">{i.weight ? `${i.weight} kg` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.height ? `${i.height} m` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.waist ? `${i.waist} cm` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.hip ? `${i.hip} cm` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.arm ? `${i.arm} cm` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.calf ? `${i.calf} cm` : '-'}</td>
+                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.neck ? `${i.neck} cm` : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
-            {/* ABA DE DOBRAS COM QUADRANTE DE OURO (IMC, % GORDURA, M. MAGRA E M. GORDA) */}
+            {/* DOBRAS E COMPOSIÇÃO */}
             {activeTab === 'dobras' && (
               <div className="animate-fade-in">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2">
-                    <Layers className="text-nutri-800" /> Dobras Cutâneas & Composição
-                  </h2>
-                </div>
-
-                {/* CARD DE COMPOSIÇÃO CORPORAL ATUAL */}
+                
                 {skinfoldsData.length > 0 && timelineData.length > 0 && (
-                  <div className="bg-nutri-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col lg:flex-row items-center justify-between gap-6 shadow-xl shadow-nutri-900/20">
-                    <div className="text-center lg:text-left w-full lg:w-auto">
-                      <h3 className="text-[10px] font-black text-nutri-300 uppercase tracking-[0.2em] mb-2">Composição Atual (Jackson & Pollock)</h3>
-                      <p className="text-sm text-nutri-100/80">
+                  <div className="bg-nutri-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col lg:flex-row items-center justify-between gap-8 shadow-2xl shadow-nutri-900/20 overflow-hidden relative">
+                    <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-10 rounded-full blur-3xl"></div>
+                    
+                    <div className="text-center lg:text-left w-full lg:w-auto relative z-10">
+                      <h3 className="text-[10px] font-black text-nutri-300 uppercase tracking-[0.2em] mb-2 flex items-center justify-center lg:justify-start gap-2"><Layers size={14}/> Composição Atual (Jackson & Pollock)</h3>
+                      <p className="text-sm font-medium text-nutri-100/90 leading-relaxed max-w-sm">
                         {patientAge !== null 
-                          ? `Fórmula de 7 dobras. Calculada p/ ${patientAge} anos (${profile?.sexo || 'Não def.'}).`
-                          : <span className="text-red-300 flex items-center gap-1 font-bold justify-center lg:justify-start"><AlertCircle size={14}/> Preencha a data de nascimento no perfil para calcular.</span>
+                          ? `Protocolo de 7 dobras. Calculado automaticamente para a idade biológica de ${patientAge} anos (${profile?.sexo || 'Indefinido'}).`
+                          : <span className="text-red-300 flex items-center gap-1.5 font-bold justify-center lg:justify-start bg-red-900/50 p-2 rounded-xl border border-red-500/30"><AlertCircle size={14}/> Preencha a data de nascimento no perfil do paciente para calcular a gordura.</span>
                         }
                       </p>
                     </div>
                     
                     {(() => {
                       const latestSkin = skinfoldsData[0];
-                      const s1 = parseFloat(latestSkin.triceps||0) + parseFloat(latestSkin.biceps||0) + parseFloat(latestSkin.subscapular||0) + parseFloat(latestSkin.suprailiac||0) + parseFloat(latestSkin.abdominal||0) + parseFloat(latestSkin.thigh||0) + parseFloat(latestSkin.calf||0);
+                      const s1 = parseFloat(latestSkin.triceps?.toString()||"0") + parseFloat(latestSkin.biceps?.toString()||"0") + parseFloat(latestSkin.subscapular?.toString()||"0") + parseFloat(latestSkin.suprailiac?.toString()||"0") + parseFloat(latestSkin.abdominal?.toString()||"0") + parseFloat(latestSkin.thigh?.toString()||"0") + parseFloat(latestSkin.calf?.toString()||"0");
                       const tPoint = timelineData.slice().reverse().find(t => t.somatorio_dobras === parseFloat(s1.toFixed(1)));
                       
                       if (tPoint && tPoint.bf && patientAge !== null) {
                         return (
-                          <div className="flex flex-wrap gap-3 w-full lg:w-auto mt-4 lg:mt-0 justify-center lg:justify-end">
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
+                          <div className="flex flex-wrap gap-4 w-full lg:w-auto mt-4 lg:mt-0 justify-center lg:justify-end relative z-10">
+                            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl flex-1 min-w-[110px] text-center border border-white/20 shadow-inner">
                               <p className="text-2xl font-black text-cyan-400">{tPoint.imc || '-'}</p>
-                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">IMC</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-cyan-100/70">IMC</p>
                             </div>
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
+                            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl flex-1 min-w-[110px] text-center border border-white/20 shadow-inner">
                               <p className="text-2xl font-black text-amber-400">{tPoint.bf}%</p>
-                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">Gordura</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-amber-100/70">Gordura</p>
                             </div>
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
-                              <p className="text-2xl font-black text-emerald-400">{tPoint.leanMass}kg</p>
-                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">M. Magra</p>
+                            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl flex-1 min-w-[110px] text-center border border-white/20 shadow-inner">
+                              <p className="text-2xl font-black text-emerald-400">{tPoint.leanMass} kg</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-emerald-100/70">M. Magra</p>
                             </div>
-                            <div className="bg-white/10 p-4 rounded-2xl flex-1 min-w-[100px] max-w-[140px] text-center border border-white/20">
-                              <p className="text-2xl font-black text-rose-400">{tPoint.fatMass}kg</p>
-                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">M. Gorda</p>
+                            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl flex-1 min-w-[110px] text-center border border-white/20 shadow-inner">
+                              <p className="text-2xl font-black text-rose-400">{tPoint.fatMass} kg</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-rose-100/70">M. Gorda</p>
                             </div>
                           </div>
                         )
                       }
-                      return <p className="text-sm font-medium italic opacity-70">Necessário peso atualizado.</p>;
+                      return <p className="text-sm font-bold text-amber-300 italic bg-amber-900/40 p-3 rounded-xl border border-amber-500/30">Necessário atualizar o peso no mesmo dia para ver os cálculos.</p>;
                     })()}
                   </div>
                 )}
 
-                <div className="overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
-                  <table className="w-full text-left min-w-[1000px]">
-                    <thead>
-                      <tr className="border-b-2 border-stone-100">
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Data</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Somatório</th>
-                        <th className="py-4 px-2 text-[10px] text-cyan-600 uppercase font-black">IMC</th>
-                        <th className="py-4 px-2 text-[10px] text-amber-500 uppercase font-black">% Gord.</th>
-                        <th className="py-4 px-2 text-[10px] text-emerald-500 uppercase font-black">M. Magra</th>
-                        <th className="py-4 px-2 text-[10px] text-rose-500 uppercase font-black">M. Gorda</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black pl-4 border-l border-stone-100">Tric.</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Bic.</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Sub.</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Sup.</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Abd.</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Coxa</th>
-                        <th className="py-4 px-2 text-[10px] text-stone-400 uppercase font-black">Pant.</th>
+                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
+                  <table className="w-full text-left min-w-[1100px] bg-white">
+                    <thead className="bg-stone-50/80">
+                      <tr>
+                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data</th>
+                        <th className="py-5 px-6 text-[10px] text-stone-800 uppercase font-black tracking-widest border-b border-stone-200">Somatório</th>
+                        <th className="py-5 px-4 text-[10px] text-cyan-600 uppercase font-black tracking-widest border-b border-stone-200">IMC</th>
+                        <th className="py-5 px-4 text-[10px] text-amber-500 uppercase font-black tracking-widest border-b border-stone-200">% Gordura</th>
+                        <th className="py-5 px-4 text-[10px] text-emerald-600 uppercase font-black tracking-widest border-b border-stone-200">M. Magra</th>
+                        <th className="py-5 px-4 text-[10px] text-rose-500 uppercase font-black tracking-widest border-b border-stone-200">M. Gorda</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest pl-6 border-l border-stone-200 border-b">Tric.</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Bic.</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Sub.</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Supra.</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Abd.</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Coxa</th>
+                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Pant.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-stone-50">
+                    <tbody className="divide-y divide-stone-100">
+                      {skinfoldsData.length === 0 && (
+                        <tr><td colSpan={13} className="text-center py-10 text-stone-400 font-medium italic">Nenhum protocolo de dobras cadastrado.</td></tr>
+                      )}
                       {skinfoldsData.map(i => {
-                         const sum = parseFloat(i.triceps||0) + parseFloat(i.biceps||0) + parseFloat(i.subscapular||0) + parseFloat(i.suprailiac||0) + parseFloat(i.abdominal||0) + parseFloat(i.thigh||0) + parseFloat(i.calf||0);
+                         const sum = parseFloat(i.triceps?.toString()||"0") + parseFloat(i.biceps?.toString()||"0") + parseFloat(i.subscapular?.toString()||"0") + parseFloat(i.suprailiac?.toString()||"0") + parseFloat(i.abdominal?.toString()||"0") + parseFloat(i.thigh?.toString()||"0") + parseFloat(i.calf?.toString()||"0");
                          
                          const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
                          const tPoint = timelineData.find(t => t.date === formatD(i.measurement_date) && t.somatorio_dobras === parseFloat(sum.toFixed(1)));
@@ -957,20 +1161,20 @@ export default function PacienteHistoricoAdmin() {
                          const mGorda = tPoint?.fatMass;
 
                          return (
-                          <tr key={i.id} className="hover:bg-stone-50/50">
-                            <td className="py-4 px-2 font-bold text-sm text-stone-700">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                            <td className="py-4 px-2 font-black text-nutri-700">{sum > 0 ? sum.toFixed(1) : '-'}</td>
-                            <td className="py-4 px-2 font-bold text-cyan-600">{imc ? imc : '-'}</td>
-                            <td className="py-4 px-2 font-bold text-amber-600">{bf ? `${bf}%` : '-'}</td>
-                            <td className="py-4 px-2 font-bold text-emerald-600">{mMag ? `${mMag}kg` : '-'}</td>
-                            <td className="py-4 px-2 font-bold text-rose-600">{mGorda ? `${mGorda}kg` : '-'}</td>
-                            <td className="py-4 px-2 text-sm pl-4 border-l border-stone-100">{i.triceps || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.biceps || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.subscapular || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.suprailiac || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.abdominal || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.thigh || '-'}</td>
-                            <td className="py-4 px-2 text-sm">{i.calf || '-'}</td>
+                          <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
+                            <td className="py-4 px-6 font-bold text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                            <td className="py-4 px-6 font-black text-nutri-900 text-sm bg-stone-50/50">{sum > 0 ? sum.toFixed(1) : '-'}</td>
+                            <td className="py-4 px-4 font-extrabold text-cyan-600 text-sm">{imc ? imc : '-'}</td>
+                            <td className="py-4 px-4 font-extrabold text-amber-500 text-sm">{bf ? `${bf}%` : '-'}</td>
+                            <td className="py-4 px-4 font-extrabold text-emerald-600 text-sm">{mMag ? `${mMag} kg` : '-'}</td>
+                            <td className="py-4 px-4 font-extrabold text-rose-500 text-sm">{mGorda ? `${mGorda} kg` : '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500 pl-6 border-l border-stone-100">{i.triceps || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.biceps || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.subscapular || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.suprailiac || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.abdominal || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.thigh || '-'}</td>
+                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.calf || '-'}</td>
                           </tr>
                          )
                       })}
@@ -980,65 +1184,67 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
+            {/* BIOQUÍMICOS */}
             {activeTab === 'bioquimicos' && (
               <div className="animate-fade-in space-y-12">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2">
-                    <Activity className="text-nutri-800" /> Histórico Inteligente de Laboratório
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                    <Activity className="text-nutri-800" /> Resultados Laboratoriais
                   </h2>
-                  <div className="hidden sm:flex gap-4 text-[10px] font-bold uppercase text-stone-500">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ideal</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Atenção</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Risco</span>
+                  <div className="flex gap-4 text-[10px] font-black uppercase text-stone-500 bg-stone-50 px-4 py-2 rounded-xl border border-stone-200">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm"></span> Ideal</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm"></span> Atenção</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm"></span> Risco Clínico</span>
                   </div>
                 </div>
 
                 {bioData.length === 0 ? (
-                  <div className="text-center py-10 text-stone-400 italic bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">
-                    Nenhum exame cadastrado.
+                  <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-[2.5rem] border-2 border-dashed border-stone-200">
+                    <Syringe size={48} className="mx-auto mb-4 text-stone-300" />
+                    Nenhum exame de sangue ou biomarcador cadastrado para este paciente.
                   </div>
                 ) : (
                   bioData.map((item) => {
                     const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose) * parseFloat(item.insulin)) / 405).toFixed(2) : null;
 
                     return (
-                      <div key={item.id} className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-                        <div className="bg-stone-50/80 px-6 py-4 border-b border-stone-200 flex items-center justify-between">
-                          <span className="font-bold text-nutri-900 text-sm">Realizado em: {new Date(item.exam_date).toLocaleDateString('pt-BR')}</span>
+                      <div key={item.id} className="bg-white rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                        <div className="bg-stone-50 px-6 md:px-8 py-5 border-b border-stone-200 flex items-center justify-between">
+                          <span className="font-extrabold text-nutri-900 text-sm uppercase tracking-wider">Data do Exame: {new Date(item.exam_date).toLocaleDateString('pt-BR')}</span>
                         </div>
                         
-                        <div className="p-6 space-y-8">
+                        <div className="p-6 md:p-8 space-y-10">
                           
                           {(item.glucose || item.insulin || item.hba1c) && (
-                            <div className="border-b border-stone-100 pb-8">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Perfil Glicêmico</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <ExamBadge label="Glicose" value={item.glucose} unit="mg/dL" type="glucose" />
-                                <ExamBadge label="Insulina" value={item.insulin} unit="µUI/mL" type="insulin" />
-                                <ExamBadge label="HbA1c" value={item.hba1c} unit="%" type="hba1c" />
-                                <ExamBadge label="HOMA-IR" value={homaIr} unit="índice" type="homair" />
+                            <div className="border-b border-stone-100 pb-10">
+                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Eixo Glicêmico</h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                                <ExamBadge label="Glicose Jejum" value={item.glucose} unit="mg/dL" type="glucose" />
+                                <ExamBadge label="Insulina Basal" value={item.insulin} unit="µUI/mL" type="insulin" />
+                                <ExamBadge label="Hemoglobina G." value={item.hba1c} unit="%" type="hba1c" />
+                                <ExamBadge label="Índice HOMA-IR" value={homaIr} unit="" type="homair" />
                               </div>
                             </div>
                           )}
 
                           {(item.total_cholesterol || item.hdl || item.ldl || item.triglycerides) && (
-                            <div className="border-b border-stone-100 pb-8">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Perfil Lipídico</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="border-b border-stone-100 pb-10">
+                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Perfil Lipídico</h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                                 <ExamBadge label="Colesterol Total" value={item.total_cholesterol} unit="mg/dL" type="total_cholesterol" />
-                                <ExamBadge label="HDL (Bom)" value={item.hdl} unit="mg/dL" type="hdl" />
-                                <ExamBadge label="LDL (Ruim)" value={item.ldl} unit="mg/dL" type="ldl" />
+                                <ExamBadge label="Colesterol HDL" value={item.hdl} unit="mg/dL" type="hdl" />
+                                <ExamBadge label="Colesterol LDL" value={item.ldl} unit="mg/dL" type="ldl" />
                                 <ExamBadge label="Triglicerídeos" value={item.triglycerides} unit="mg/dL" type="triglycerides" />
                               </div>
                             </div>
                           )}
 
                           {(item.ferritin || item.pcr || item.tgp || item.creatinine || item.urea) && (
-                            <div className="border-b border-stone-100 pb-8">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Inflamação & Órgãos</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                                <ExamBadge label="Ferritina" value={item.ferritin} unit="ng/mL" type="ferritin" />
-                                <ExamBadge label="PCR" value={item.pcr} unit="mg/dL" type="pcr" />
+                            <div className="border-b border-stone-100 pb-10">
+                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Fígado, Rins & Inflamação</h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+                                <ExamBadge label="Ferritina Sérica" value={item.ferritin} unit="ng/mL" type="ferritin" />
+                                <ExamBadge label="Prot. C Reativa" value={item.pcr} unit="mg/dL" type="pcr" />
                                 <ExamBadge label="TGP (Fígado)" value={item.tgp} unit="U/L" type="tgp" />
                                 <ExamBadge label="Creatinina" value={item.creatinine} unit="mg/dL" type="creatinine" />
                                 <ExamBadge label="Ureia" value={item.urea} unit="mg/dL" type="urea" />
@@ -1048,11 +1254,11 @@ export default function PacienteHistoricoAdmin() {
 
                           {(item.vitamin_d || item.vitamin_b12 || item.tsh || item.iron) && (
                             <div>
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest flex items-center gap-1"><ChevronRight size={14}/> Vitaminas & Hormonal</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <ExamBadge label="Vitamina D" value={item.vitamin_d} unit="ng/mL" type="vitamin_d" />
+                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Vitaminas & Hormônios</h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                                <ExamBadge label="Vitamina D (25 OH)" value={item.vitamin_d} unit="ng/mL" type="vitamin_d" />
                                 <ExamBadge label="Vitamina B12" value={item.vitamin_b12} unit="pg/mL" type="vitamin_b12" />
-                                <ExamBadge label="TSH" value={item.tsh} unit="µUI/mL" type="tsh" />
+                                <ExamBadge label="Hormônio TSH" value={item.tsh} unit="µUI/mL" type="tsh" />
                                 <ExamBadge label="Ferro Sérico" value={item.iron} unit="µg/dL" type="iron" />
                               </div>
                             </div>

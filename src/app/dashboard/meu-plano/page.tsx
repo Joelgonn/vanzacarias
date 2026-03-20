@@ -10,6 +10,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { jsPDF } from 'jspdf';
+import { toast } from 'sonner';
 
 // =========================================================================
 // ÍCONE CUSTOMIZADO DO WHATSAPP
@@ -307,7 +308,7 @@ export default function MeuPlano() {
       if (data.init_point) window.location.href = data.init_point; 
       else throw new Error(data.error);
     } catch (error) {
-      alert("Erro ao processar pagamento.");
+      toast.error("Erro ao processar pagamento.");
       setProcessingCheckout(null);
     }
   };
@@ -435,9 +436,11 @@ export default function MeuPlano() {
       const text = generateShareText();
       await navigator.clipboard.writeText(text);
       setIsCopied(true);
+      toast.success("Lista copiada com sucesso!");
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error('Falha ao copiar:', err);
+      toast.error("Falha ao copiar lista.");
     }
   };
 
