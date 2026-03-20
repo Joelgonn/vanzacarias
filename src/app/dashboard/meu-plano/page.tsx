@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, FileText, Download, ChevronLeft, Lock, Star, 
   Clock, Utensils, ChevronRight, Info, Filter, ShoppingCart, 
-  X, CalendarDays, Copy, CheckCheck, ArrowLeftRight
+  X, CalendarDays, Copy, CheckCheck, ArrowLeftRight,
+  Droplets, CheckCircle2, Circle, Flame, Plus, Minus, Search
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,7 +23,7 @@ const WhatsAppIcon = ({ size = 24, className = "" }) => (
 );
 
 // =========================================================================
-// TIPAGEM PARA A TABELA DE SUBSTITUIÇÕES (Evita erro de build do TS)
+// TIPAGEM PARA A TABELA DE SUBSTITUIÇÕES
 // =========================================================================
 interface MacrosItem {
   carbo: number;
@@ -34,7 +35,7 @@ interface MacrosItem {
 interface SubstituicaoItem {
   nome: string;
   medida: string;
-  macros?: MacrosItem; // "?" avisa o TS que pode não ter macro (ex: alface)
+  macros?: MacrosItem; 
 }
 
 interface SubstituicaoGrupo {
@@ -49,89 +50,110 @@ interface SubstituicaoGrupo {
 }
 
 // =========================================================================
-// TABELA PADRÃO DE SUBSTITUIÇÕES (COM MACROS)
+// BANCO DE ALIMENTOS E CONSTANTES (VERSÃO ELITE - EXPANDIDA)
 // =========================================================================
 const SUBSTITUICOES_PADRAO: SubstituicaoGrupo[] = [
-  {
-    categoria: "Carboidratos (~25g de carboidrato)",
-    referencia: { descricao: "Equivalente a ~100g de arroz cozido", carbo: 25 },
+  { 
+    categoria: "Proteínas e Laticínios", 
+    referencia: { descricao: "Referência: ~25g de proteína (100g de frango)", proteina: 25 },
     itens: [
-      { nome: "Arroz branco cozido", medida: "100g", macros: { carbo: 28, proteina: 2.5, gordura: 0.3, kcal: 130 } },
+      { nome: "Ovo mexido (2 un)", medida: "2 unidades", macros: { carbo: 1, proteina: 12, gordura: 11, kcal: 156 } },
+      { nome: "Ovo cozido (2 un)", medida: "2 unidades", macros: { carbo: 1, proteina: 12, gordura: 10, kcal: 140 } },
+      { nome: "Frango grelhado", medida: "100g", macros: { carbo: 0, proteina: 31, gordura: 3, kcal: 165 } },
+      { nome: "Frango desfiado", medida: "3 colheres sopa", macros: { carbo: 0, proteina: 20, gordura: 2, kcal: 105 } },
+      { nome: "Carne moída magra", medida: "100g", macros: { carbo: 0, proteina: 21, gordura: 5, kcal: 133 } },
+      { nome: "Filé de peixe", medida: "100g", macros: { carbo: 0, proteina: 20, gordura: 2, kcal: 110 } },
+      { nome: "Whey Protein", medida: "1 scoop 30g", macros: { carbo: 3, proteina: 24, gordura: 1.5, kcal: 120 } },
+      { nome: "Leite Integral", medida: "1 copo 200ml", macros: { carbo: 10, proteina: 6, gordura: 6, kcal: 120 } },
+      { nome: "Leite Desnatado", medida: "1 copo 200ml", macros: { carbo: 10, proteina: 6, gordura: 0, kcal: 70 } },
+      { nome: "Iogurte Natural", medida: "1 pote 170g", macros: { carbo: 9, proteina: 7, gordura: 0, kcal: 70 } },
+      { nome: "Queijo branco/Minas", medida: "1 fatia 30g", macros: { carbo: 1, proteina: 5, gordura: 4, kcal: 66 } },
+      { nome: "Queijo Mussarela", medida: "2 fatias 30g", macros: { carbo: 1, proteina: 7, gordura: 7, kcal: 96 } }
+    ] 
+  },
+  { 
+    categoria: "Carboidratos", 
+    referencia: { descricao: "Referência: ~25g de carboidrato (100g de arroz cozido)", carbo: 25 },
+    itens: [
+      { nome: "Arroz branco cozido", medida: "100g", macros: { carbo: 28, proteina: 2.5, gordura: 0.2, kcal: 130 } },
+      { nome: "Arroz integral cozido", medida: "100g", macros: { carbo: 24, proteina: 2.5, gordura: 1, kcal: 112 } },
+      { nome: "Mandioca/Macaxeira cozida", medida: "100g", macros: { carbo: 30, proteina: 1, gordura: 0, kcal: 125 } },
+      { nome: "Tapioca", medida: "3 colheres sopa 50g", macros: { carbo: 30, proteina: 0, gordura: 0, kcal: 120 } },
+      { nome: "Pão francês", medida: "1 un", macros: { carbo: 28, proteina: 4, gordura: 0, kcal: 135 } },
+      { nome: "Pão de forma int.", medida: "2 fatias", macros: { carbo: 20, proteina: 5, gordura: 1.5, kcal: 115 } },
+      { nome: "Batata doce cozida", medida: "100g", macros: { carbo: 20, proteina: 1, gordura: 0.1, kcal: 86 } },
       { nome: "Batata inglesa cozida", medida: "150g", macros: { carbo: 26, proteina: 2, gordura: 0.1, kcal: 110 } },
-      { nome: "Batata doce cozida", medida: "100g", macros: { carbo: 24, proteina: 1, gordura: 0.1, kcal: 100 } },
-      { nome: "Macarrão cozido", medida: "120g", macros: { carbo: 30, proteina: 5, gordura: 1, kcal: 160 } },
-      { nome: "Aveia em flocos", medida: "30g (3 colheres)", macros: { carbo: 20, proteina: 5, gordura: 3, kcal: 120 } },
-      { nome: "Pão francês", medida: "1 unidade (50g)", macros: { carbo: 28, proteina: 8, gordura: 2, kcal: 140 } },
+      { nome: "Aveia em flocos", medida: "30g", macros: { carbo: 17, proteina: 4.5, gordura: 2.5, kcal: 118 } },
+      { nome: "Granola s/ açúcar", medida: "3 colheres sopa", macros: { carbo: 20, proteina: 4, gordura: 5, kcal: 140 } },
+      { nome: "Macarrão cozido", medida: "100g", macros: { carbo: 31, proteina: 5, gordura: 1, kcal: 157 } },
       { nome: "Cuscuz de milho", medida: "100g", macros: { carbo: 25, proteina: 2, gordura: 1, kcal: 120 } }
-    ]
+    ] 
   },
-  {
-    categoria: "Proteínas (~25g de proteína)",
-    referencia: { descricao: "Equivalente a ~100g de frango", proteina: 25 },
+  { 
+    categoria: "Leguminosas", 
+    referencia: { descricao: "Referência: Fibras e carboidratos de baixo índice glicêmico" },
     itens: [
-      { nome: "Peito de frango grelhado", medida: "100g", macros: { carbo: 0, proteina: 31, gordura: 3, kcal: 165 } },
-      { nome: "Carne bovina magra", medida: "100g", macros: { carbo: 0, proteina: 26, gordura: 10, kcal: 200 } },
-      { nome: "Tilápia grelhada", medida: "120g", macros: { carbo: 0, proteina: 26, gordura: 2, kcal: 140 } },
-      { nome: "Lombo suíno magro", medida: "100g", macros: { carbo: 0, proteina: 27, gordura: 8, kcal: 190 } },
-      { nome: "Ovos inteiros", medida: "4 unidades", macros: { carbo: 2, proteina: 24, gordura: 20, kcal: 280 } },
-      { nome: "Atum em água", medida: "120g", macros: { carbo: 0, proteina: 28, gordura: 1, kcal: 130 } }
-    ]
+      { nome: "Feijão caldo", medida: "1 concha", macros: { carbo: 14, proteina: 7, gordura: 0.5, kcal: 106 } },
+      { nome: "Feijão em grãos", medida: "1 escumadeira", macros: { carbo: 20, proteina: 9, gordura: 1, kcal: 140 } },
+      { nome: "Lentilha", medida: "1 escumadeira", macros: { carbo: 20, proteina: 9, gordura: 0.5, kcal: 115 } },
+      { nome: "Grão de bico", medida: "3 colheres sopa", macros: { carbo: 22, proteina: 7, gordura: 2, kcal: 130 } },
+      { nome: "Ervilha fresca", medida: "3 colheres sopa", macros: { carbo: 10, proteina: 5, gordura: 0.5, kcal: 70 } }
+    ] 
   },
-  {
-    categoria: "Gorduras (~10g de gordura)",
-    referencia: { descricao: "Equivalente a 1 colher de azeite", gordura: 10 },
+  { 
+    categoria: "Vegetais e Saladas", 
+    referencia: { descricao: "Consumo livre (ricos em fibras e baixo em calorias)" },
     itens: [
-      { nome: "Azeite de oliva", medida: "1 colher de sopa (10ml)", macros: { carbo: 0, proteina: 0, gordura: 10, kcal: 90 } },
-      { nome: "Castanhas", medida: "15g", macros: { carbo: 3, proteina: 3, gordura: 10, kcal: 110 } },
-      { nome: "Pasta de amendoim", medida: "15g", macros: { carbo: 3, proteina: 4, gordura: 8, kcal: 95 } },
-      { nome: "Abacate", medida: "70g", macros: { carbo: 6, proteina: 1, gordura: 10, kcal: 120 } },
-      { nome: "Chia", medida: "15g", macros: { carbo: 5, proteina: 3, gordura: 9, kcal: 100 } }
-    ]
+      { nome: "Salada de Folhas", medida: "à vontade", macros: { carbo: 2, proteina: 1, gordura: 0, kcal: 15 } },
+      { nome: "Tomate e Pepino", medida: "1 porção", macros: { carbo: 5, proteina: 1, gordura: 0, kcal: 25 } },
+      { nome: "Brócolis cozido", medida: "3 ramos", macros: { carbo: 4, proteina: 2, gordura: 0, kcal: 25 } },
+      { nome: "Cenoura ralada", medida: "2 colheres sopa", macros: { carbo: 4, proteina: 0.5, gordura: 0, kcal: 20 } },
+      { nome: "Abóbora cozida", medida: "100g", macros: { carbo: 9, proteina: 1, gordura: 0, kcal: 40 } },
+      { nome: "Abobrinha/Chuchu", medida: "1 pires", macros: { carbo: 6, proteina: 1, gordura: 0, kcal: 30 } },
+      { nome: "Beterraba", medida: "2 fatias", macros: { carbo: 8, proteina: 1, gordura: 0, kcal: 35 } }
+    ] 
   },
-  {
-    categoria: "Frutas (~15g de carboidrato)",
-    referencia: { descricao: "Porção média de fruta", carbo: 15 },
+  { 
+    categoria: "Frutas", 
+    referencia: { descricao: "Referência: ~15g de carboidrato (porção média)" },
     itens: [
-      { nome: "Maçã", medida: "1 unidade média", macros: { carbo: 15, proteina: 0, gordura: 0, kcal: 70 } },
-      { nome: "Banana", medida: "1 unidade média", macros: { carbo: 23, proteina: 1, gordura: 0, kcal: 90 } },
-      { nome: "Mamão", medida: "100g", macros: { carbo: 11, proteina: 0, gordura: 0, kcal: 45 } },
-      { nome: "Morangos", medida: "150g", macros: { carbo: 12, proteina: 1, gordura: 0, kcal: 50 } },
-      { nome: "Abacaxi", medida: "2 fatias", macros: { carbo: 16, proteina: 0, gordura: 0, kcal: 65 } },
-      { nome: "Laranja", medida: "1 unidade média", macros: { carbo: 15, proteina: 1, gordura: 0, kcal: 70 } }
-    ]
+      { nome: "Banana prata", medida: "1 un média", macros: { carbo: 23, proteina: 1, gordura: 0, kcal: 90 } },
+      { nome: "Maçã", medida: "1 un média", macros: { carbo: 15, proteina: 0.3, gordura: 0, kcal: 70 } },
+      { nome: "Laranja", medida: "1 un média", macros: { carbo: 15, proteina: 1, gordura: 0, kcal: 60 } },
+      { nome: "Melancia", medida: "1 fatia grande 200g", macros: { carbo: 14, proteina: 1, gordura: 0, kcal: 60 } },
+      { nome: "Mamão", medida: "1 fatia média", macros: { carbo: 11, proteina: 0.5, gordura: 0, kcal: 45 } },
+      { nome: "Uva sem semente", medida: "1 cacho peq.", macros: { carbo: 17, proteina: 0.5, gordura: 0, kcal: 70 } },
+      { nome: "Abacaxi", medida: "1 fatia grossa", macros: { carbo: 13, proteina: 0.5, gordura: 0, kcal: 50 } },
+      { nome: "Morangos", medida: "10 un", macros: { carbo: 7, proteina: 0.6, gordura: 0.3, kcal: 32 } },
+      { nome: "Abacate", medida: "2 colheres sopa", macros: { carbo: 5, proteina: 1, gordura: 10, kcal: 110 } }
+    ] 
   },
-  {
-    categoria: "Legumes e Verduras (baixo impacto calórico)",
-    referencia: { descricao: "Consumo livre (ricos em fibras)" },
+  { 
+    categoria: "Gorduras/Extras", 
+    referencia: { descricao: "Atenção às calorias (alimentos densos)" },
     itens: [
-      { nome: "Alface", medida: "à vontade" },
-      { nome: "Tomate", medida: "à vontade" },
-      { nome: "Brócolis", medida: "à vontade" },
-      { nome: "Cenoura", medida: "à vontade" },
-      { nome: "Abobrinha", medida: "à vontade" }
-    ]
+      { nome: "Azeite de oliva", medida: "1 col. sopa", macros: { carbo: 0, proteina: 0, gordura: 12, kcal: 108 } },
+      { nome: "Pasta de amendoim", medida: "1 col. sopa", macros: { carbo: 3, proteina: 4, gordura: 8, kcal: 90 } },
+      { nome: "Manteiga", medida: "1 colher chá 10g", macros: { carbo: 0, proteina: 0, gordura: 8, kcal: 70 } },
+      { nome: "Requeijão light", medida: "1 col. sopa", macros: { carbo: 1, proteina: 3, gordura: 4, kcal: 50 } },
+      { nome: "Castanhas", medida: "Mix 30g", macros: { carbo: 9, proteina: 4, gordura: 15, kcal: 170 } },
+      { nome: "Chia/Linhaça", medida: "1 col. sopa", macros: { carbo: 4, proteina: 2, gordura: 4, kcal: 55 } },
+      { nome: "Chocolate 70% Cacau", medida: "2 quadradinhos", macros: { carbo: 9, proteina: 2, gordura: 9, kcal: 120 } }
+    ] 
   }
 ];
 
 // =========================================================================
-// RENDERIZADOR DE TEXTO INTELIGENTE (TOOLTIPS NO CARDÁPIO)
+// RENDERIZADOR DE TEXTO INTELIGENTE (SUBSTITUIÇÃO CONTEXTUAL CLICÁVEL)
 // =========================================================================
-const renderDescriptionWithTooltips = (text: string) => {
+const renderDescriptionWithTooltips = (text: string, onWordClick: (categoria: string) => void) => {
   const rules = [
-    { match: /\b(batata doce)\b/gi, tooltip: "Batata Doce | 100g = 100 kcal | C: 24g | P: 1g | G: 0.1g" },
-    { match: /\b(arroz branco|arroz integral|arroz parboilizado|arroz)\b/gi, tooltip: "Arroz | 100g = 130 kcal | C: 28g | P: 2.5g | G: 0.3g" },
-    { match: /\b(batata inglesa)\b/gi, tooltip: "Batata Inglesa | 150g = 110 kcal | C: 26g | P: 2g | G: 0.1g" },
-    { match: /\b(macarr[ãa]o)\b/gi, tooltip: "Macarrão | 120g = 160 kcal | C: 30g | P: 5g | G: 1g" },
-    { match: /\b(aveia)\b/gi, tooltip: "Aveia | 30g = 120 kcal | C: 20g | P: 5g | G: 3g" },
-    { match: /\b(p[ãa]o franc[êe]s)\b/gi, tooltip: "Pão Francês | 50g = 140 kcal | C: 28g | P: 8g | G: 2g" },
-    { match: /\b(cuscuz)\b/gi, tooltip: "Cuscuz | 100g = 120 kcal | C: 25g | P: 2g | G: 1g" },
-    { match: /\b(peito de frango|frango)\b/gi, tooltip: "Frango | 100g = 165 kcal | C: 0g | P: 31g | G: 3g" },
-    { match: /\b(til[áa]pia|peixe)\b/gi, tooltip: "Peixe/Tilápia | 120g = 140 kcal | C: 0g | P: 26g | G: 2g" },
-    { match: /\b(ovos?)\b/gi, tooltip: "Ovos | 4 un. = 280 kcal | C: 2g | P: 24g | G: 20g" },
-    { match: /\b(azeite)\b/gi, tooltip: "Azeite | 1 col. (10ml) = 90 kcal | C: 0g | P: 0g | G: 10g" },
-    { match: /\b(abacate)\b/gi, tooltip: "Abacate | 70g = 120 kcal | C: 6g | P: 1g | G: 10g" },
-    { match: /\b(banana)\b/gi, tooltip: "Banana | 1 un. = 90 kcal | C: 23g | P: 1g | G: 0g" },
-    { match: /\b(ma[çc][ãa])\b/gi, tooltip: "Maçã | 1 un. = 70 kcal | C: 15g | P: 0g | G: 0g" }
+    { match: /\b(batata doce|arroz branco|arroz integral|arroz|batata inglesa|macarr[ãa]o|aveia|p[ãa]o franc[êe]s|p[ãa]o|cuscuz|tapioca|mandioca|macaxeira|granola)\b/gi, category: "Carboidratos" },
+    { match: /\b(peito de frango|frango|carne bovina|carne|til[áa]pia|peixe|lombo|ovos?|atum|whey|leite|iogurte|queijo)\b/gi, category: "Proteínas e Laticínios" },
+    { match: /\b(feij[ãa]o|lentilha|gr[ãa]o de bico|ervilha)\b/gi, category: "Leguminosas" },
+    { match: /\b(azeite|castanhas?|pasta de amendoim|amendoim|abacate|chia|linha[çc]a|manteiga|requeij[ãa]o|chocolate|cacau)\b/gi, category: "Gorduras/Extras" },
+    { match: /\b(ma[çc][ãa]|banana|mam[ãa]o|morangos?|abacaxi|laranja|melancia|uvas?|frutas?)\b/gi, category: "Frutas" },
+    { match: /\b(alface|tomate|br[óo]colis|cenoura|ab[óo]bora|abobrinha|chuchu|beterraba|legumes|verduras|salada)\b/gi, category: "Vegetais e Saladas" }
   ];
 
   let elements: React.ReactNode[] = [text];
@@ -142,15 +164,16 @@ const renderDescriptionWithTooltips = (text: string) => {
       if (typeof chunk === 'string') {
         const parts = chunk.split(rule.match);
         parts.forEach(part => {
-          if (part.match(rule.match)) {
+          if (part && part.match(rule.match)) {
             newElements.push(
-              <span 
+              <button 
                 key={Math.random()} 
-                title={rule.tooltip} 
-                className="border-b border-dashed border-orange-400 text-orange-700 cursor-help transition-colors hover:bg-orange-100 rounded-sm px-[1px]"
+                onClick={() => onWordClick(rule.category)}
+                className="border-b-2 border-dashed border-orange-400 text-orange-700 font-bold cursor-pointer transition-colors hover:bg-orange-100 rounded-sm px-[2px] active:scale-95"
+                title={`Clique para ver as opções de ${rule.category}`}
               >
                 {part}
-              </span>
+              </button>
             );
           } else if (part) {
             newElements.push(part);
@@ -227,6 +250,13 @@ export default function MeuPlano() {
   const [isCopied, setIsCopied] = useState(false);
 
   const [isSubstitutionsModalOpen, setIsSubstitutionsModalOpen] = useState(false);
+  
+  // ESTADO DA SUBSTITUIÇÃO CONTEXTUAL (Modal específico do item clicado)
+  const [contextualCategory, setContextualCategory] = useState<string | null>(null);
+
+  // Estados integrados do Diário de Rotina (Check-ins e Água)
+  const [completedMeals, setCompletedMeals] = useState<string[]>([]);
+  const [waterCount, setWaterCount] = useState<number>(0);
 
   const supabase = createClient();
   const router = useRouter();
@@ -275,6 +305,20 @@ export default function MeuPlano() {
           if (profileData?.meal_plan_pdf_url) {
             setPlanoPDF(profileData.meal_plan_pdf_url);
           }
+
+          // Busca logs do diário de hoje (Para renderizar o Check-in das Refeições e Água)
+          const today = new Date().toISOString().split('T')[0];
+          const { data: logs } = await supabase
+            .from('daily_logs')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('date', today)
+            .maybeSingle();
+
+          if (logs) {
+            setCompletedMeals(logs.meals_checked || []);
+            setWaterCount(logs.water_ml ? logs.water_ml / 250 : 0); // Copos de 250ml
+          }
         }
       } catch (err: any) {
         console.error("Erro no fetchData:", err);
@@ -287,6 +331,9 @@ export default function MeuPlano() {
     fetchData();
   }, [supabase]);
 
+  // =========================================================================
+  // FUNÇÕES DE AÇÕES (PAGAMENTO, CHECK-IN, ÁGUA)
+  // =========================================================================
   const handleUpgradeClick = async (planType: string) => {
     setProcessingCheckout(planType);
     try {
@@ -312,6 +359,62 @@ export default function MeuPlano() {
       setProcessingCheckout(null);
     }
   };
+
+  const toggleMealCompletion = async (mealName: string) => {
+    const isCompleted = completedMeals.includes(mealName);
+    const newList = isCompleted 
+      ? completedMeals.filter(m => m !== mealName)
+      : [...completedMeals, mealName];
+    
+    setCompletedMeals(newList);
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { error } = await supabase.from('daily_logs').upsert({
+      user_id: session?.user.id,
+      date: today,
+      meals_checked: newList,
+      water_ml: waterCount * 250
+    }, { onConflict: 'user_id, date' });
+
+    if (error) {
+      toast.error("Erro ao sincronizar check-in.");
+    } else if (!isCompleted) {
+      toast.success(`${mealName} concluído! 👏`);
+    }
+  };
+
+  const updateWater = async (increment: number) => {
+    const newValue = Math.max(0, waterCount + increment);
+    setWaterCount(newValue);
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    const today = new Date().toISOString().split('T')[0];
+    
+    await supabase.from('daily_logs').upsert({
+      user_id: session?.user.id,
+      date: today,
+      water_ml: newValue * 250,
+      meals_checked: completedMeals
+    }, { onConflict: 'user_id, date' });
+  };
+
+  // =========================================================================
+  // MEMOS PARA O PLANO E ESTATÍSTICAS
+  // =========================================================================
+  const dayStats = useMemo(() => {
+    if (!mealPlanJSON) return { kcal: 0, p: 0, c: 0, g: 0 };
+    return mealPlanJSON.reduce((acc, meal) => {
+      const opt = meal.options[0]; 
+      return {
+        kcal: acc.kcal + (opt?.kcal || 0),
+        p: acc.p + (opt?.proteina || 0),
+        c: acc.c + (opt?.carbo || 0),
+        g: acc.g + (opt?.gordura || 0)
+      };
+    }, { kcal: 0, p: 0, c: 0, g: 0 });
+  }, [mealPlanJSON]);
 
   const filterTabs = useMemo(() => {
     if (!mealPlanJSON) return [];
@@ -380,7 +483,7 @@ export default function MeuPlano() {
   }, [mealPlanJSON, marketMultiplier]);
 
   // =========================================================================
-  // GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD
+  // GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD DA LISTA DE MERCADO
   // =========================================================================
   const generateShareText = () => {
     let periodText = 'Diário';
@@ -605,9 +708,13 @@ export default function MeuPlano() {
     doc.save(`Plano_Alimentar_${profile?.full_name?.split(' ')[0] || 'Paciente'}.pdf`);
   };
 
+  // =========================================================================
+  // ESTADO DE CARREGAMENTO
+  // =========================================================================
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50">
+    <div className="min-h-screen flex items-center justify-center bg-stone-50 flex-col gap-4">
       <Loader2 className="animate-spin text-nutri-800" size={48} />
+      <p className="text-stone-400 font-bold animate-pulse text-xs uppercase tracking-widest">Preparando seu cardápio...</p>
     </div>
   );
 
@@ -616,15 +723,20 @@ export default function MeuPlano() {
     ? planoPDF 
     : (planoPDF?.publicUrl || planoPDF?.file_url || planoPDF?.meal_plan_pdf_url || '#');
 
+  const selectedContextualGroup = SUBSTITUICOES_PADRAO.find(g => g.categoria === contextualCategory);
+
   return (
     <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-24 md:pt-32 relative">
       <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
         
-        <nav className="flex items-center justify-between mb-12 animate-fade-in-up mt-4">
-          <Link href="/dashboard" className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-colors font-bold text-sm bg-white px-5 py-2.5 rounded-full border border-stone-200 shadow-sm">
+        <nav className="flex items-center justify-between mb-8 mt-4 animate-fade-in-up">
+          <Link href="/dashboard" className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-colors font-bold text-sm bg-white px-5 py-2.5 rounded-full border border-stone-200 shadow-sm hover:shadow-md">
             <ChevronLeft size={18} /> Painel
           </Link>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Meu Plano Alimentar</span>
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-stone-100 shadow-inner">
+             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Meu Plano Alimentar</span>
+          </div>
         </nav>
 
         {!canAccess ? (
@@ -633,7 +745,7 @@ export default function MeuPlano() {
               <Lock className="text-stone-300" size={32} />
             </div>
             <h1 className="text-2xl font-bold text-stone-900 mb-4">Acesso Bloqueado</h1>
-            <p className="text-stone-500 text-sm mb-10 leading-relaxed">Seu cardápio personalizado já está disponível! Escolha uma opção para desbloquear agora mesmo.</p>
+            <p className="text-stone-500 text-sm mb-10 leading-relaxed">Seu cardápio personalizado já está disponível! Escolha uma opção para desbloquear agora mesmo e acessar as quantidades e a lista de mercado.</p>
             
             <div className="grid grid-cols-1 gap-4">
               <button onClick={() => handleUpgradeClick('premium')} disabled={!!processingCheckout} className="w-full bg-nutri-900 text-white p-5 rounded-2xl font-bold flex flex-col items-center gap-1 hover:bg-nutri-800 transition-all shadow-xl shadow-nutri-900/20">
@@ -648,36 +760,82 @@ export default function MeuPlano() {
         ) : (
           <div className="space-y-6 pb-20">
             <div className="mb-6">
-              <h1 className="text-3xl md:text-5xl font-black text-stone-900 tracking-tight">O que comer hoje?</h1>
-              <p className="text-stone-500 text-sm mt-1 font-medium">Siga as orientações da Nutri Vanusa para melhores resultados.</p>
+              <h1 className="text-3xl md:text-5xl font-black text-stone-900 tracking-tight">Foco no Plano!</h1>
+              <p className="text-stone-500 text-sm mt-1 font-medium">Paciente: {profile?.full_name}</p>
             </div>
 
             {hasAnyPlan && filterTabs.length > 0 && (
-              <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-2 pt-2 animate-fade-in-up">
-                <button
-                  onClick={() => setSelectedDayFilter('Todos')}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${
-                    selectedDayFilter === 'Todos' 
-                      ? 'bg-nutri-900 text-white shadow-md' 
-                      : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  <Filter size={16} /> Visão Geral
-                </button>
-                {filterTabs.map(day => (
+              <>
+                {/* 
+                  ============================================================
+                  CARD DE VISÃO GERAL DE METAS (MACROS DIÁRIOS E ÁGUA)
+                  ============================================================ 
+                */}
+                <section className="bg-white rounded-[2.5rem] p-6 border border-stone-100 shadow-sm animate-fade-in-up">
+                  <div className="grid grid-cols-4 gap-2 mb-6 text-center">
+                    <div className="bg-orange-50 p-3 rounded-2xl border border-orange-100">
+                      <p className="text-[10px] font-black text-orange-400 uppercase">Kcal</p>
+                      <p className="text-lg font-black text-orange-700">~{dayStats.kcal}</p>
+                    </div>
+                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
+                      <p className="text-[10px] font-black text-stone-400 uppercase">Prot</p>
+                      <p className="text-lg font-black text-stone-700">{dayStats.p}g</p>
+                    </div>
+                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
+                      <p className="text-[10px] font-black text-stone-400 uppercase">Carb</p>
+                      <p className="text-lg font-black text-stone-700">{dayStats.c}g</p>
+                    </div>
+                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
+                      <p className="text-[10px] font-black text-stone-400 uppercase">Gord</p>
+                      <p className="text-lg font-black text-stone-700">{dayStats.g}g</p>
+                    </div>
+                  </div>
+
+                  {/* CONTADOR DE ÁGUA INTEGRADO */}
+                  <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100/50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-blue-500 p-2.5 rounded-xl text-white shadow-md">
+                        <Droplets size={20} fill="currentColor" />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-blue-900 leading-tight text-base">{waterCount * 250} <span className="text-xs">ml</span></h3>
+                        <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Meta: {profile?.meta_agua || 2500}ml</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updateWater(-1)} className="w-8 h-8 rounded-lg bg-white border border-blue-200 text-blue-500 flex items-center justify-center font-bold hover:bg-blue-50 transition-colors shadow-sm"><Minus size={16} /></button>
+                      <button onClick={() => updateWater(1)} className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold hover:bg-blue-700 transition-colors shadow-md active:scale-95"><Plus size={16} /></button>
+                    </div>
+                  </div>
+                </section>
+
+                {/* FILTROS DE DIAS */}
+                <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-2 pt-2 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
                   <button
-                    key={day}
-                    onClick={() => setSelectedDayFilter(day)}
-                    className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${
-                      selectedDayFilter === day 
+                    onClick={() => setSelectedDayFilter('Todos')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${
+                      selectedDayFilter === 'Todos' 
                         ? 'bg-nutri-900 text-white shadow-md' 
                         : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
                     }`}
                   >
-                    {day}
+                    <Filter size={16} /> Visão Geral
                   </button>
-                ))}
-              </div>
+                  {filterTabs.map(day => (
+                    <button
+                      key={day}
+                      onClick={() => setSelectedDayFilter(day)}
+                      className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${
+                        selectedDayFilter === day 
+                          ? 'bg-nutri-900 text-white shadow-md' 
+                          : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {!hasAnyPlan ? (
@@ -690,8 +848,8 @@ export default function MeuPlano() {
               </div>
             ) : (
               <>
-                {/* BOTÕES DE AÇÕES (PDF, MERCADO, SUBSTITUIÇÕES) */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 animate-fade-in-up">
+                {/* BOTÕES DE AÇÕES (PDF, MERCADO, TODAS AS SUBSTITUIÇÕES) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
                   
                   {/* BOTÃO PDF INTELIGENTE */}
                   <button 
@@ -735,7 +893,7 @@ export default function MeuPlano() {
                     </button>
                   )}
 
-                  {/* BOTÃO SUBSTITUIÇÕES */}
+                  {/* BOTÃO TODAS AS SUBSTITUIÇÕES */}
                   {mealPlanJSON && mealPlanJSON.length > 0 && (
                     <button 
                       onClick={() => setIsSubstitutionsModalOpen(true)}
@@ -746,72 +904,82 @@ export default function MeuPlano() {
                           <ArrowLeftRight size={20} />
                         </div>
                         <div className="bg-white text-orange-600 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
-                          <ChevronRight size={16} />
+                          <Search size={16} />
                         </div>
                       </div>
-                      <p className="font-bold text-lg mt-4 mb-0.5">Substituições</p>
-                      <p className="text-xs text-orange-100 font-medium">Trocas inteligentes</p>
+                      <p className="font-bold text-lg mt-4 mb-0.5">Todas as Trocas</p>
+                      <p className="text-xs text-orange-100 font-medium">Lista geral completa</p>
                     </button>
                   )}
                 </div>
 
-                {/* LISTAGEM DAS REFEIÇÕES INTERATIVAS */}
+                {/* LISTAGEM DAS REFEIÇÕES COM CHECK-IN E SUBSTITUIÇÃO CONTEXTUAL */}
                 {filteredMeals && filteredMeals.length > 0 && (
                   <div className="space-y-6">
-                    {filteredMeals.map((refeicao: any, idx: number) => (
-                      <div key={refeicao.id} className="bg-white rounded-[2rem] shadow-sm border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: `${idx * 0.1}s` }}>
-                        <div className="p-6 md:p-8">
-                          <div className="flex justify-between items-start mb-6">
-                            <div className="flex items-center gap-3">
-                              <div className="bg-nutri-50 p-2.5 rounded-2xl text-nutri-800">
-                                <Clock size={20} />
-                              </div>
-                              <div>
-                                <span className="text-[10px] font-black uppercase text-nutri-800 tracking-widest">{refeicao.time}</span>
-                                <h3 className="text-xl font-bold text-stone-900">{refeicao.name}</h3>
+                    {filteredMeals.map((refeicao: any, idx: number) => {
+                      const isCompleted = completedMeals.includes(refeicao.name);
+
+                      return (
+                        <div key={refeicao.id || idx} className={`bg-white rounded-[2.5rem] shadow-sm border transition-all duration-500 overflow-hidden animate-fade-in-up ${isCompleted ? 'border-emerald-200 bg-emerald-50/30' : 'border-stone-100'}`} style={{ animationDelay: `${idx * 0.1}s` }}>
+                          <div className="p-6 md:p-8">
+                            <div className="flex justify-between items-start mb-6">
+                              <div className="flex items-center gap-4">
+                                <button 
+                                  onClick={() => toggleMealCompletion(refeicao.name)}
+                                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 rotate-[360deg]' : 'bg-stone-100 text-stone-300 hover:bg-stone-200'}`}
+                                >
+                                  {isCompleted ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                                </button>
+                                <div>
+                                  <span className="text-[10px] font-black uppercase text-nutri-800 tracking-widest">{refeicao.time}</span>
+                                  <h3 className={`text-xl font-bold ${isCompleted ? 'text-emerald-900 line-through opacity-70' : 'text-stone-900'}`}>{refeicao.name}</h3>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="space-y-4">
-                            {refeicao.options.map((opcao: any, oIdx: number) => (
-                              <div key={opcao.id} className="bg-stone-50 p-5 rounded-2xl border border-stone-100 relative group">
-                                <div className="flex items-center gap-3 mb-3 flex-wrap">
-                                  <span className={`text-[10px] border px-2 py-0.5 rounded font-black uppercase tracking-widest shadow-sm ${
-                                    opcao.day?.toLowerCase() === 'todos os dias' 
-                                      ? 'bg-nutri-50 border-nutri-100 text-nutri-800' 
-                                      : 'bg-white border-stone-200 text-stone-800'
-                                  }`}>
-                                    {opcao.day || 'Opção'}
-                                  </span>
-                                  
-                                  <div className="flex gap-1.5 flex-wrap ml-auto">
-                                    {opcao.kcal > 0 && (
-                                      <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">
-                                        ~{opcao.kcal} kcal
+                            {!isCompleted && (
+                              <div className="space-y-4">
+                                {refeicao.options.map((opcao: any, oIdx: number) => (
+                                  <div key={opcao.id || oIdx} className="bg-stone-50 p-5 rounded-2xl border border-stone-100 relative group">
+                                    <div className="flex items-center gap-3 mb-3 flex-wrap">
+                                      <span className={`text-[10px] border px-2 py-0.5 rounded font-black uppercase tracking-widest shadow-sm ${
+                                        opcao.day?.toLowerCase() === 'todos os dias' 
+                                          ? 'bg-nutri-50 border-nutri-100 text-nutri-800' 
+                                          : 'bg-white border-stone-200 text-stone-800'
+                                      }`}>
+                                        {opcao.day || 'Opção'}
                                       </span>
-                                    )}
-                                    {opcao.carbo !== undefined && (
-                                      <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Carboidratos">C: {opcao.carbo}g</span>
-                                    )}
-                                    {opcao.proteina !== undefined && (
-                                      <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Proteínas">P: {opcao.proteina}g</span>
-                                    )}
-                                    {opcao.gordura !== undefined && (
-                                      <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Gorduras">G: {opcao.gordura}g</span>
-                                    )}
+                                      
+                                      <div className="flex gap-1.5 flex-wrap ml-auto">
+                                        {opcao.kcal > 0 && (
+                                          <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">
+                                            ~{opcao.kcal} kcal
+                                          </span>
+                                        )}
+                                        {opcao.carbo !== undefined && (
+                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Carboidratos">C: {opcao.carbo}g</span>
+                                        )}
+                                        {opcao.proteina !== undefined && (
+                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Proteínas">P: {opcao.proteina}g</span>
+                                        )}
+                                        {opcao.gordura !== undefined && (
+                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Gorduras">G: {opcao.gordura}g</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    <p className="text-stone-700 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">
+                                      {/* AQUI ESTÁ A MÁGICA: Passamos o setContextualCategory para abrir o modal de troca */}
+                                      {renderDescriptionWithTooltips(opcao.description, setContextualCategory)}
+                                    </p>
                                   </div>
-                                </div>
-                                
-                                <p className="text-stone-700 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">
-                                  {renderDescriptionWithTooltips(opcao.description)}
-                                </p>
+                                ))}
                               </div>
-                            ))}
+                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 
@@ -824,13 +992,13 @@ export default function MeuPlano() {
                    </div>
                 )}
 
-                <div className="bg-stone-900 p-6 rounded-[2rem] text-white flex gap-4 items-start shadow-xl mt-8">
+                <div className="bg-stone-900 p-6 rounded-[2rem] text-white flex gap-4 items-start shadow-xl mt-8 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
                   <div className="bg-white/10 p-2 rounded-xl shrink-0">
                     <Info size={20} className="text-stone-300" />
                   </div>
                   <div>
                     <p className="font-bold text-sm mb-1">Dica de Sucesso</p>
-                    <p className="text-xs text-stone-400 leading-relaxed">Você pode escolher qualquer uma das opções. Se tiver dúvida no preparo de algum alimento, passe o mouse (ou toque) nas <span className="border-b border-dashed border-orange-400 text-orange-400">palavras sublinhadas</span> no cardápio para ver as equivalências!</p>
+                    <p className="text-xs text-stone-400 leading-relaxed">Marque as refeições ao concluí-las! Se quiser trocar um alimento, **toque na palavra sublinhada** (laranja) para abrir a lista específica de substituições dele.</p>
                   </div>
                 </div>
               </>
@@ -839,12 +1007,14 @@ export default function MeuPlano() {
         )}
       </div>
 
+      {/* =========================================================================
+          MODAIS 
+          ========================================================================= */}
+
       {/* MODAL DA LISTA DE MERCADO */}
       {isMarketModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4 md:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh]">
-            
-            {/* Header Modal */}
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 md:p-8 animate-fade-in">
+          <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[90vh]">
             <div className="p-6 bg-emerald-700 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2.5 rounded-xl">
@@ -855,19 +1025,11 @@ export default function MeuPlano() {
                   <p className="text-xs text-emerald-100 font-medium opacity-90">Opção 1 de cada refeição</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsMarketModalOpen(false)} 
-                className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setIsMarketModalOpen(false)} className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
-            {/* Filtro de Período */}
             <div className="bg-stone-50 border-b border-stone-200 p-4">
-              <label className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-2">
-                <CalendarDays size={14} /> Período de Compras
-              </label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-2"><CalendarDays size={14} /> Período de Compras</label>
               <div className="flex bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
                 {[
                   { label: 'Diário', val: 1 },
@@ -875,27 +1037,16 @@ export default function MeuPlano() {
                   { label: '15 Dias', val: 15 },
                   { label: 'Mês', val: 30 }
                 ].map(tab => (
-                  <button 
-                    key={tab.val}
-                    onClick={() => setMarketMultiplier(tab.val)}
-                    className={`flex-1 py-3 text-xs font-bold transition-all ${
-                      marketMultiplier === tab.val 
-                        ? 'bg-emerald-700 text-white' 
-                        : 'text-stone-500 hover:bg-stone-50'
-                    }`}
-                  >
+                  <button key={tab.val} onClick={() => setMarketMultiplier(tab.val)} className={`flex-1 py-3 text-xs font-bold transition-all ${marketMultiplier === tab.val ? 'bg-emerald-700 text-white' : 'text-stone-500 hover:bg-stone-50'}`}>
                     {tab.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Conteúdo da Lista */}
             <div className="p-6 overflow-y-auto bg-white flex-1 space-y-6">
               {marketList.measured.length === 0 && marketList.others.length === 0 ? (
-                <div className="text-center py-10 text-stone-400">
-                  <p>Não foi possível calcular a lista de mercado.</p>
-                </div>
+                <div className="text-center py-10 text-stone-400"><p>Não foi possível calcular a lista de mercado.</p></div>
               ) : (
                 <>
                   {marketList.measured.length > 0 && (
@@ -905,9 +1056,7 @@ export default function MeuPlano() {
                         {marketList.measured.map((item, i) => (
                           <li key={i} className="flex justify-between items-center text-sm">
                             <span className="font-bold text-stone-700">{item.name}</span>
-                            <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg font-bold">
-                              {Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2))} {item.unit}
-                            </span>
+                            <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg font-bold">{Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2))} {item.unit}</span>
                           </li>
                         ))}
                       </ul>
@@ -919,9 +1068,7 @@ export default function MeuPlano() {
                       <h4 className="text-xs font-black uppercase text-stone-400 tracking-widest mb-3 border-b border-stone-100 pb-2">Outros / Consumo Livre</h4>
                       <ul className="space-y-2">
                         {marketList.others.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-stone-600 font-medium">
-                            <span className="text-emerald-500 mt-0.5">•</span> {item}
-                          </li>
+                          <li key={i} className="flex items-start gap-2 text-sm text-stone-600 font-medium"><span className="text-emerald-500 mt-0.5">•</span> {item}</li>
                         ))}
                       </ul>
                     </div>
@@ -930,79 +1077,45 @@ export default function MeuPlano() {
               )}
             </div>
 
-            {/* Footer com botões de Compartilhamento Premium */}
             {(marketList.measured.length > 0 || marketList.others.length > 0) && (
-              <div className="p-4 border-t border-stone-100 bg-stone-50 flex gap-3">
-                <button 
-                  onClick={handleShareWhatsApp}
-                  className="flex-1 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-[#25D366]/20 active:scale-[0.98]"
-                >
-                  <WhatsAppIcon size={20} />
-                  <span>Enviar para WhatsApp</span>
+              <div className="p-4 border-t border-stone-100 bg-stone-50 flex gap-3 pb-8 sm:pb-4">
+                <button onClick={handleShareWhatsApp} className="flex-1 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-[#25D366]/20 active:scale-[0.98]">
+                  <WhatsAppIcon size={20} /><span>Enviar para WhatsApp</span>
                 </button>
-                
-                <button 
-                  onClick={handleCopyToClipboard}
-                  className={`px-5 rounded-xl font-bold flex items-center justify-center transition-all border ${
-                    isCopied 
-                      ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
-                      : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
-                  }`}
-                  title="Copiar lista"
-                >
+                <button onClick={handleCopyToClipboard} className={`px-5 rounded-xl font-bold flex items-center justify-center transition-all border ${isCopied ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'}`} title="Copiar lista">
                   {isCopied ? <CheckCheck size={20} /> : <Copy size={20} />}
                 </button>
               </div>
             )}
-
           </div>
         </div>
       )}
 
-      {/* MODAL DE SUBSTITUIÇÕES (NOVO FORMATO VISUAL COM MACROS) */}
+      {/* MODAL DA LISTA GERAL DE SUBSTITUIÇÕES */}
       {isSubstitutionsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4 md:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh]">
-            
-            {/* Header Modal Substituições */}
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 md:p-8 animate-fade-in">
+          <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[90vh]">
             <div className="p-6 bg-orange-600 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2.5 rounded-xl">
-                  <ArrowLeftRight size={24} />
-                </div>
+                <div className="bg-white/20 p-2.5 rounded-xl"><ArrowLeftRight size={24} /></div>
                 <div>
                   <h3 className="font-bold text-xl leading-tight">Substituições</h3>
                   <p className="text-xs text-orange-100 font-medium opacity-90">Troque alimentos sem sair da dieta</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsSubstitutionsModalOpen(false)} 
-                className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setIsSubstitutionsModalOpen(false)} className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
-            {/* Alerta de Dica */}
             <div className="bg-orange-50 p-4 border-b border-orange-100">
-              <p className="text-xs text-orange-800 font-medium text-center flex items-center justify-center gap-2">
-                <Info size={14} /> Os alimentos de cada lista possuem quantidades equivalentes.
-              </p>
+              <p className="text-xs text-orange-800 font-medium text-center flex items-center justify-center gap-2"><Info size={14} /> As opções dentro do mesmo bloco se equivalem.</p>
             </div>
 
-            {/* Conteúdo da Lista de Equivalências */}
             <div className="p-6 overflow-y-auto bg-stone-50 flex-1 space-y-6">
               {SUBSTITUICOES_PADRAO.map((grupo, gIndex) => (
                 <div key={gIndex} className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
                   <div className="mb-4 border-b border-stone-100 pb-3">
-                    <h4 className="text-base font-bold text-stone-800">
-                      {grupo.categoria}
-                    </h4>
-                    {grupo.referencia && (
-                      <p className="text-xs text-stone-500 font-medium mt-1">
-                        {grupo.referencia.descricao}
-                      </p>
-                    )}
+                    <h4 className="text-base font-bold text-stone-800 flex items-center gap-2"><Flame size={16} className="text-orange-500" /> {grupo.categoria}</h4>
+                    {grupo.referencia && <p className="text-xs text-stone-500 font-medium mt-1">{grupo.referencia.descricao}</p>}
                   </div>
                   
                   <ul className="space-y-3">
@@ -1012,21 +1125,12 @@ export default function MeuPlano() {
                           <span className="font-bold text-stone-700 text-sm">{item.nome}</span>
                           <span className="text-orange-600 font-bold text-xs mt-0.5">{item.medida}</span>
                         </div>
-                        
                         {item.macros && (
                           <div className="flex flex-wrap gap-1.5 mt-1 sm:mt-0">
-                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">
-                              {item.macros.kcal} kcal
-                            </span>
-                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Carboidratos">
-                              C: {item.macros.carbo}g
-                            </span>
-                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Proteínas">
-                              P: {item.macros.proteina}g
-                            </span>
-                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Gorduras">
-                              G: {item.macros.gordura}g
-                            </span>
+                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">{item.macros.kcal} kcal</span>
+                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold">C: {item.macros.carbo}g</span>
+                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold">P: {item.macros.proteina}g</span>
+                            <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold">G: {item.macros.gordura}g</span>
                           </div>
                         )}
                       </li>
@@ -1035,14 +1139,55 @@ export default function MeuPlano() {
                 </div>
               ))}
             </div>
+            <div className="p-4 border-t border-stone-200 bg-white flex justify-center pb-8 sm:pb-4">
+              <p className="text-xs text-stone-400 font-medium text-center">Dúvidas? Envie uma mensagem no WhatsApp da Nutri.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Footer */}
-            <div className="p-4 border-t border-stone-200 bg-white flex justify-center">
-              <p className="text-xs text-stone-400 font-medium text-center">
-                Dúvidas sobre outros alimentos? Envie uma mensagem no WhatsApp.
-              </p>
+      {/* MODAL DE SUBSTITUIÇÃO CONTEXTUAL (Abre ao clicar no alimento do cardápio) */}
+      {contextualCategory && selectedContextualGroup && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 md:p-8 animate-fade-in">
+          <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] md:max-h-[90vh] animate-slide-up">
+            <div className="p-6 bg-orange-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2.5 rounded-xl"><ArrowLeftRight size={24} /></div>
+                <div>
+                  <h3 className="font-bold text-xl leading-tight">Trocar Alimento</h3>
+                  <p className="text-xs text-orange-100 font-medium opacity-90">Opções para {selectedContextualGroup.categoria}</p>
+                </div>
+              </div>
+              <button onClick={() => setContextualCategory(null)} className="bg-black/10 hover:bg-black/20 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
+            <div className="bg-stone-50 border-b border-stone-200 p-4">
+              <p className="text-xs text-stone-600 font-medium text-center">{selectedContextualGroup.referencia?.descricao || 'Esses itens se equivalem na dieta'}</p>
+            </div>
+
+            <div className="p-6 overflow-y-auto bg-white flex-1 space-y-3">
+              {selectedContextualGroup.itens.map((item, iIndex) => (
+                <div key={iIndex} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-stone-50 rounded-2xl border border-stone-100 hover:border-orange-200 transition-colors cursor-default">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-stone-800 text-sm">{item.nome}</span>
+                    <span className="text-orange-600 font-black text-xs mt-0.5">{item.medida}</span>
+                  </div>
+                  {item.macros && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 sm:mt-0">
+                      <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">{item.macros.kcal} kcal</span>
+                      <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold">C: {item.macros.carbo}</span>
+                      <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold">P: {item.macros.proteina}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="p-6 border-t border-stone-100 bg-stone-50 pb-8 sm:pb-6">
+              <button onClick={() => setContextualCategory(null)} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 transition-colors shadow-lg active:scale-95">
+                Voltar ao Cardápio
+              </button>
+            </div>
           </div>
         </div>
       )}

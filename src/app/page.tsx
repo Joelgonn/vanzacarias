@@ -153,13 +153,13 @@ export default function Home() {
 
             <div className="mt-10 flex items-center justify-center md:justify-start gap-8 bg-white md:bg-transparent p-6 md:p-0 rounded-3xl shadow-sm md:shadow-none border border-stone-100 md:border-transparent">
               <div className="flex flex-col items-center md:items-start">
-                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">+500</span>
-                <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mt-2">Vidas Transformadas</span>
+                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">+Saúde</span>
+                <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mt-2">E Bem Estar</span>
               </div>
               <div className="w-px h-16 bg-stone-200"></div>
               <div className="flex flex-col items-center md:items-start">
-                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">10</span>
-                <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mt-2">Anos de Experiência</span>
+                <span className="text-4xl md:text-5xl font-black text-nutri-800 tracking-tighter">+Vidas</span>
+                <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mt-2">Transformadas</span>
               </div>
             </div>
           </div>

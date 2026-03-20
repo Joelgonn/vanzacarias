@@ -43,73 +43,106 @@ interface DietBuilderProps {
 }
 
 // =========================================================================
-// BANCO DE ALIMENTOS E CONSTANTES
+// BANCO DE ALIMENTOS E CONSTANTES (VERSÃO ELITE - EXPANDIDA)
 // =========================================================================
+
+interface QuickFoodItem {
+  name: string;
+  kcal: number;
+  macros: {
+    c: number; // Carboidratos (g)
+    p: number; // Proteínas (g)
+    g: number; // Gorduras (g)
+  };
+}
+
+interface QuickFoodCategory {
+  category: string;
+  items: QuickFoodItem[];
+}
+
 const quickFoods: QuickFoodCategory[] = [
   { 
-    category: "Proteínas", 
+    category: "Proteínas e Laticínios", 
     items: [
-      { name: "Ovo mexido (2 un)", kcal: 156 },
-      { name: "Ovo cozido (2 un)", kcal: 140 },
-      { name: "Frango grelhado (100g)", kcal: 165 },
-      { name: "Carne moída (100g)", kcal: 133 },
-      { name: "Filé de peixe (100g)", kcal: 110 },
-      { name: "Whey Protein (1 scoop)", kcal: 120 },
-      { name: "Iogurte Natural", kcal: 70 },
-      { name: "Queijo branco (30g)", kcal: 66 }
+      { name: "Ovo mexido (2 un)", kcal: 156, macros: { c: 1, p: 12, g: 11 } },
+      { name: "Ovo cozido (2 un)", kcal: 140, macros: { c: 1, p: 12, g: 10 } },
+      { name: "Frango grelhado (100g)", kcal: 165, macros: { c: 0, p: 31, g: 3 } },
+      { name: "Frango desfiado (3 colheres)", kcal: 105, macros: { c: 0, p: 20, g: 2 } },
+      { name: "Carne moída magra (100g)", kcal: 133, macros: { c: 0, p: 21, g: 5 } },
+      { name: "Filé de peixe (100g)", kcal: 110, macros: { c: 0, p: 20, g: 2 } },
+      { name: "Whey Protein (1 scoop 30g)", kcal: 120, macros: { c: 3, p: 24, g: 1.5 } },
+      { name: "Leite Integral (1 copo 200ml)", kcal: 120, macros: { c: 10, p: 6, g: 6 } },
+      { name: "Leite Desnatado (1 copo 200ml)", kcal: 70, macros: { c: 10, p: 6, g: 0 } },
+      { name: "Iogurte Natural (1 pote 170g)", kcal: 70, macros: { c: 9, p: 7, g: 0 } },
+      { name: "Queijo branco/Minas (1 fatia 30g)", kcal: 66, macros: { c: 1, p: 5, g: 4 } },
+      { name: "Queijo Mussarela (2 fatias 30g)", kcal: 96, macros: { c: 1, p: 7, g: 7 } }
     ] 
   },
   { 
     category: "Carboidratos", 
     items: [
-      { name: "Arroz branco (100g)", kcal: 130 },
-      { name: "Arroz integral (100g)", kcal: 112 },
-      { name: "Pão francês (1 un)", kcal: 135 },
-      { name: "Pão de forma int. (2 fatias)", kcal: 115 },
-      { name: "Batata doce (100g)", kcal: 86 },
-      { name: "Aveia (30g)", kcal: 118 },
-      { name: "Macarrão (100g)", kcal: 157 }
+      { name: "Arroz branco cozido (100g)", kcal: 130, macros: { c: 28, p: 2.5, g: 0.2 } },
+      { name: "Arroz integral cozido (100g)", kcal: 112, macros: { c: 24, p: 2.5, g: 1 } },
+      { name: "Mandioca/Macaxeira cozida (100g)", kcal: 125, macros: { c: 30, p: 1, g: 0 } },
+      { name: "Tapioca (3 colheres sopa 50g)", kcal: 120, macros: { c: 30, p: 0, g: 0 } },
+      { name: "Pão francês (1 un)", kcal: 135, macros: { c: 28, p: 4, g: 0 } },
+      { name: "Pão de forma int. (2 fatias)", kcal: 115, macros: { c: 20, p: 5, g: 1.5 } },
+      { name: "Batata doce cozida (100g)", kcal: 86, macros: { c: 20, p: 1, g: 0.1 } },
+      { name: "Batata inglesa cozida (150g)", kcal: 110, macros: { c: 26, p: 2, g: 0.1 } },
+      { name: "Aveia em flocos (30g)", kcal: 118, macros: { c: 17, p: 4.5, g: 2.5 } },
+      { name: "Granola s/ açúcar (3 colheres)", kcal: 140, macros: { c: 20, p: 4, g: 5 } },
+      { name: "Macarrão cozido (100g)", kcal: 157, macros: { c: 31, p: 5, g: 1 } },
+      { name: "Cuscuz de milho (100g)", kcal: 120, macros: { c: 25, p: 2, g: 1 } }
     ] 
   },
   { 
     category: "Leguminosas", 
     items: [
-      { name: "Feijão caldo (1 concha)", kcal: 106 },
-      { name: "Lentilha (1 escumadeira)", kcal: 115 },
-      { name: "Grão de bico (3 colheres)", kcal: 130 },
-      { name: "Ervilha fresca (3 colheres)", kcal: 70 }
+      { name: "Feijão caldo (1 concha)", kcal: 106, macros: { c: 14, p: 7, g: 0.5 } },
+      { name: "Feijão em grãos (1 escumadeira)", kcal: 140, macros: { c: 20, p: 9, g: 1 } },
+      { name: "Lentilha (1 escumadeira)", kcal: 115, macros: { c: 20, p: 9, g: 0.5 } },
+      { name: "Grão de bico (3 colheres)", kcal: 130, macros: { c: 22, p: 7, g: 2 } },
+      { name: "Ervilha fresca (3 colheres)", kcal: 70, macros: { c: 10, p: 5, g: 0.5 } }
     ] 
   },
   { 
     category: "Vegetais e Saladas", 
     items: [
-      { name: "Salada de Folhas (à vontade)", kcal: 15 },
-      { name: "Tomate e Pepino", kcal: 25 },
-      { name: "Brócolis cozido (3 ramos)", kcal: 25 },
-      { name: "Cenoura ralada (2 colheres)", kcal: 20 },
-      { name: "Abobrinha/Chuchu (1 pires)", kcal: 30 },
-      { name: "Beterraba (2 fatias)", kcal: 35 }
+      { name: "Salada de Folhas (à vontade)", kcal: 15, macros: { c: 2, p: 1, g: 0 } },
+      { name: "Tomate e Pepino (1 porção)", kcal: 25, macros: { c: 5, p: 1, g: 0 } },
+      { name: "Brócolis cozido (3 ramos)", kcal: 25, macros: { c: 4, p: 2, g: 0 } },
+      { name: "Cenoura ralada (2 colheres)", kcal: 20, macros: { c: 4, p: 0.5, g: 0 } },
+      { name: "Abóbora cozida (100g)", kcal: 40, macros: { c: 9, p: 1, g: 0 } },
+      { name: "Abobrinha/Chuchu (1 pires)", kcal: 30, macros: { c: 6, p: 1, g: 0 } },
+      { name: "Beterraba (2 fatias)", kcal: 35, macros: { c: 8, p: 1, g: 0 } }
     ] 
   },
   { 
     category: "Frutas", 
     items: [
-      { name: "Banana (1 un)", kcal: 40 },
-      { name: "Mamão (1 fatia)", kcal: 45 },
-      { name: "Maçã (1 un)", kcal: 52 },
-      { name: "Abacaxi (1 fatia)", kcal: 40 },
-      { name: "Morangos (10 un)", kcal: 32 },
-      { name: "Abacate (2 colheres)", kcal: 110 }
+      { name: "Banana prata (1 un média)", kcal: 90, macros: { c: 23, p: 1, g: 0 } },
+      { name: "Maçã (1 un média)", kcal: 70, macros: { c: 15, p: 0.3, g: 0 } },
+      { name: "Laranja (1 un média)", kcal: 60, macros: { c: 15, p: 1, g: 0 } },
+      { name: "Melancia (1 fatia grande 200g)", kcal: 60, macros: { c: 14, p: 1, g: 0 } },
+      { name: "Mamão (1 fatia média)", kcal: 45, macros: { c: 11, p: 0.5, g: 0 } },
+      { name: "Uva sem semente (1 cacho peq.)", kcal: 70, macros: { c: 17, p: 0.5, g: 0 } },
+      { name: "Abacaxi (1 fatia grossa)", kcal: 50, macros: { c: 13, p: 0.5, g: 0 } },
+      { name: "Morangos (10 un)", kcal: 32, macros: { c: 7, p: 0.6, g: 0.3 } },
+      { name: "Abacate (2 colheres sopa)", kcal: 110, macros: { c: 5, p: 1, g: 10 } }
     ] 
   },
   { 
     category: "Gorduras/Extras", 
     items: [
-      { name: "Azeite (1 colher)", kcal: 108 },
-      { name: "Pasta de amendoim", kcal: 90 },
-      { name: "Castanhas (30g)", kcal: 170 },
-      { name: "Chia/Linhaça", kcal: 55 },
-      { name: "Café s/ açúcar", kcal: 0 }
+      { name: "Azeite de oliva (1 col. sopa)", kcal: 108, macros: { c: 0, p: 0, g: 12 } },
+      { name: "Pasta de amendoim (1 col. sopa)", kcal: 90, macros: { c: 3, p: 4, g: 8 } },
+      { name: "Manteiga (1 colher chá 10g)", kcal: 70, macros: { c: 0, p: 0, g: 8 } },
+      { name: "Requeijão light (1 col. sopa)", kcal: 50, macros: { c: 1, p: 3, g: 4 } },
+      { name: "Castanhas (Mix 30g)", kcal: 170, macros: { c: 9, p: 4, g: 15 } },
+      { name: "Chia/Linhaça (1 col. sopa)", kcal: 55, macros: { c: 4, p: 2, g: 4 } },
+      { name: "Chocolate 70% Cacau (2 quadradinhos)", kcal: 120, macros: { c: 9, p: 2, g: 9 } },
+      { name: "Café s/ açúcar (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } }
     ] 
   }
 ];
