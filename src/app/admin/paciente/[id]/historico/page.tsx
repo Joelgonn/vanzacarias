@@ -115,6 +115,9 @@ export default function PacienteHistoricoAdmin() {
 
   const [activeTab, setActiveTab] = useState<'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos'>('prontuario');
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
+  
+  // Estado para o Radar
+  const [isRadarExpanded, setIsRadarExpanded] = useState(false);
 
   const router = useRouter();
   const params = useParams();
@@ -612,7 +615,8 @@ export default function PacienteHistoricoAdmin() {
           
           {/* COLUNA 1: DADOS + RADAR CLÍNICO */}
           <div className="lg:col-span-1 flex flex-col gap-6 md:gap-8">
-            <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col justify-between h-full hover:shadow-md transition-shadow">
+            {/* CARD 1: RESUMO DO PACIENTE (Ajustado para não esticar) */}
+            <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow">
               <div>
                 <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900 flex items-center gap-2">
                   <BookOpen size={20} className="text-nutri-800" /> Resumo do Paciente
@@ -652,52 +656,72 @@ export default function PacienteHistoricoAdmin() {
               </div>
             </section>
 
-            {/* RADAR CLÍNICO */}
-            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex-1 border border-stone-800">
+            {/* CARD 2: RADAR CLÍNICO INTERATIVO (Ajustado a altura para 320px) */}
+            <section className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex flex-col h-[200px] border border-stone-800 transition-all duration-500">
               <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl transition-opacity group-hover:opacity-10 duration-700"></div>
               
               <div className="flex items-center justify-between mb-6 relative z-10">
-                <h2 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                  <Zap size={18} className="text-amber-400 fill-amber-400/20" /> Radar Clínico AI
-                </h2>
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse delay-75"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse delay-150"></span>
+                <div className="flex flex-col">
+                  <h2 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Zap size={18} className="text-amber-400 fill-amber-400/20" /> Radar Clínico AI
+                  </h2>
+                  <p className="text-[10px] text-stone-500 font-bold mt-1">Monitoramento em tempo real</p>
                 </div>
+                
+                <button 
+                  onClick={() => setIsRadarExpanded(true)}
+                  className="p-2 hover:bg-white/10 rounded-xl transition-colors text-stone-400 hover:text-white"
+                  title="Expandir Radar"
+                >
+                  <Layers size={18} />
+                </button>
               </div>
               
-              <div className="space-y-4 relative z-10">
+              {/* ÁREA DE CONTEÚDO COM SCROLL SUAVE */}
+              <div className="flex-1 overflow-y-auto pr-2 space-y-4 relative z-10 custom-scrollbar">
                 {activeAlerts.length > 0 ? (
                   activeAlerts.map(alert => (
-                    <div key={alert.id} className={`flex flex-col gap-3 p-4 rounded-2xl border backdrop-blur-sm ${alert.type === 'danger' ? 'bg-red-500/10 border-red-500/30 text-red-100' : alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100'}`}>
+                    <div 
+                      key={alert.id} 
+                      className={`group/alert flex flex-col gap-3 p-4 rounded-2xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] cursor-default ${
+                        alert.type === 'danger' ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10 text-red-100' : 
+                        alert.type === 'warning' ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10 text-amber-100' : 
+                        'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10 text-emerald-100'
+                      }`}
+                    >
                       <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 p-1 rounded-lg ${alert.type === 'danger' ? 'bg-red-500/20 text-red-400' : alert.type === 'warning' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                        <div className={`mt-0.5 p-2 rounded-xl transition-transform group-hover/alert:rotate-12 ${
+                          alert.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
+                          alert.type === 'warning' ? 'bg-amber-500/20 text-amber-400' : 
+                          'bg-emerald-500/20 text-emerald-400'
+                        }`}>
                           {alert.icon}
                         </div>
-                        <p className="text-sm font-medium leading-relaxed flex-1 tracking-wide">{alert.text}</p>
+                        <div className="flex-1">
+                           <p className="text-sm font-semibold leading-relaxed tracking-wide mb-2">{alert.text}</p>
+                           
+                           {alert.waLink && (
+                            <a 
+                              href={alert.waLink} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+                                alert.type === 'danger' ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30' : 
+                                alert.type === 'warning' ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 border border-amber-500/30' : 
+                                'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30'
+                              }`}
+                            >
+                              <MessageCircle size={14} /> {alert.waText}
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      
-                      {alert.waLink && (
-                        <a 
-                          href={alert.waLink} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className={`mt-2 self-start flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 ${
-                            alert.type === 'danger' ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30' : 
-                            alert.type === 'warning' ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 border border-amber-500/30' : 
-                            'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30'
-                          }`}
-                        >
-                          <MessageCircle size={14} /> {alert.waText}
-                        </a>
-                      )}
                     </div>
                   ))
                 ) : (
-                  <div className="flex items-start gap-3 p-5 rounded-2xl bg-stone-800/50 border border-stone-700/50 text-stone-300">
-                    <CheckCircle2 size={20} className="text-emerald-500 mt-0.5 shrink-0" />
-                    <p className="text-sm font-medium leading-relaxed">Sem alertas urgentes. O quadro evolutivo do paciente está estável de acordo com os dados fornecidos.</p>
+                  <div className="flex flex-col items-center justify-center h-full text-center p-8 opacity-40">
+                    <CheckCircle2 size={40} className="mb-4 text-emerald-500" />
+                    <p className="text-sm font-medium">Paciente estável. Sem alertas gerados.</p>
                   </div>
                 )}
               </div>
@@ -1274,6 +1298,52 @@ export default function PacienteHistoricoAdmin() {
 
           </div>
         </section>
+
+        {/* MODAL DE RADAR EXPANDIDO */}
+        {isRadarExpanded && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-stone-950/80 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-stone-900 border border-stone-800 w-full max-w-4xl max-h-[85vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col">
+              <div className="p-8 border-b border-stone-800 flex items-center justify-between bg-stone-900/50">
+                <div>
+                  <h2 className="text-2xl font-black text-white flex items-center gap-3">
+                    <Zap className="text-amber-400" size={28} /> Insights do Radar Clínico
+                  </h2>
+                  <p className="text-stone-400 font-medium mt-1">Análise completa baseada nos dados de {profile?.full_name}</p>
+                </div>
+                <button 
+                  onClick={() => setIsRadarExpanded(false)}
+                  className="bg-stone-800 hover:bg-red-500/20 hover:text-red-400 p-3 rounded-2xl text-stone-400 transition-all"
+                >
+                  <AlertCircle size={24} className="rotate-45" />
+                </button>
+              </div>
+              
+              <div className="p-8 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 custom-scrollbar">
+                {activeAlerts.map(alert => (
+                  <div key={alert.id} className={`p-6 rounded-3xl border flex flex-col justify-between ${
+                    alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20' : 
+                    alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 
+                    'bg-emerald-500/10 border-emerald-500/20'
+                  }`}>
+                     <div className="flex items-start gap-4 mb-6">
+                        <div className={`p-3 rounded-2xl ${
+                          alert.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
+                          alert.type === 'warning' ? 'bg-amber-500/20 text-amber-400' : 
+                          'bg-emerald-500/20 text-emerald-400'
+                        }`}> {alert.icon} </div>
+                        <h4 className="text-sm font-bold text-white mt-1 leading-relaxed">{alert.text}</h4>
+                     </div>
+                     {alert.waLink && (
+                        <a href={alert.waLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] text-white bg-white/10 hover:bg-white/20 px-6 py-3.5 rounded-xl transition-all border border-white/10 w-full justify-center mt-auto">
+                          <MessageCircle size={16} /> {alert.waText}
+                        </a>
+                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </main>
