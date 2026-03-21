@@ -95,7 +95,8 @@ export default function ChatAssistant() {
         body: JSON.stringify({
           userId: session?.user?.id,
           message: userMessage,
-          history: messages.slice(-6)
+          // Limitado às últimas 7 mensagens para manter as últimas interações
+          history: messages.slice(-7)
         })
       });
 

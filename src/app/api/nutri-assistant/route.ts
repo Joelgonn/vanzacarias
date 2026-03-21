@@ -112,8 +112,11 @@ export async function POST(req: Request) {
       },
     });
 
-    // Formata o histórico recebido do Frontend para o padrão da biblioteca
-    const rawHistory = (history || []).map((msg: any) => ({
+    // Garante que o histórico processado no backend limite a 7 mensagens por segurança
+    const recentHistory = (history || []).slice(-7);
+
+    // Formata o histórico recebido para o padrão da biblioteca
+    const rawHistory = recentHistory.map((msg: any) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
