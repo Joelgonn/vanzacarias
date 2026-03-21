@@ -9,18 +9,68 @@ export default function ChatAssistant() {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Novo Estado: Controla qual avatar será exibido ('neutra', 'feliz', 'seria')
+  const [avatarMood, setAvatarMood] = useState<'neutra' | 'feliz' | 'seria'>('neutra');
+  
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const avatarUrl = "https://images.unsplash.com/photo-1594824476967-48c8b964273f?q=80&w=150&h=150&auto=format&fit=crop";
+  // Mapeamento dinâmico das imagens que você salvou na pasta /public/avatars/
+  const avatarImages = {
+    neutra: '/avatars/nutri-neutra.png',
+    feliz: '/avatars/nutri-feliz.png',
+    seria: '/avatars/nutri-seria.png'
+  };
   
   // Coloque aqui o número real do WhatsApp da clínica
-  const numeroWhatsApp = "5544999997275"; 
+  const numeroWhatsApp = "5511999999999"; 
 
+  // Função que busca o humor de hoje no banco para decidir o rosto da Nutri
+  const checkTodayMood = async () => {
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      const { data: log } = await supabase
+        .from('daily_logs')
+        .select('mood')
+        .eq('user_id', session.user.id)
+        .eq('date', todayStr)
+        .single();
+
+      if (log?.mood === 'feliz') {
+        setAvatarMood('feliz');
+      } else if (log?.mood === 'dificil') {
+        setAvatarMood('seria');
+      } else {
+        setAvatarMood('neutra');
+      }
+    } catch (error) {
+      console.error("Erro ao buscar humor:", error);
+      setAvatarMood('neutra'); // Fallback de segurança
+    }
+  };
+
+  // Rola o chat para baixo sempre que uma nova mensagem chega
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
+
+  // Sempre que o paciente abrir o chat, verificamos o humor dele naquele momento
+  useEffect(() => {
+    if (isOpen) {
+      checkTodayMood();
+    }
+  }, [isOpen]);
+
+  // Inicializa o avatar correto no botão flutuante mesmo antes de abrir
+  useEffect(() => {
+    checkTodayMood();
+  }, []);
 
   // Função para formatar o texto (Negrito e Quebras de Linha)
   const renderMessage = (text: string) => {
@@ -72,6 +122,13 @@ export default function ChatAssistant() {
     }
   };
 
+  // Definição de classes de animação CSS baseadas no humor
+  const getAvatarAnimation = () => {
+    if (avatarMood === 'feliz') return 'animate-bounce'; // Pulinhos de alegria
+    if (avatarMood === 'seria') return 'hover:animate-pulse'; // Fica fixa, parecendo brava/atenta
+    return 'animate-[pulse_3s_ease-in-out_infinite]'; // Flutuação suave padrão (respirando)
+  };
+
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       {!isOpen && (
@@ -80,11 +137,18 @@ export default function ChatAssistant() {
           className="relative group transition-all hover:scale-110 active:scale-95"
         >
           <span className="absolute top-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full z-10 animate-pulse"></span>
-          <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-stone-800 shadow-2xl bg-white">
-             <img src={avatarUrl} alt="Nutri" className="w-full h-full object-cover" />
+          
+          {/* Avatar Flutuante com Animação Dinâmica */}
+          <div className={`w-16 h-16 rounded-full overflow-hidden border-2 border-stone-800 shadow-2xl bg-nutri-100 flex items-end justify-center ${getAvatarAnimation()}`}>
+             <img 
+               src={avatarImages[avatarMood]} 
+               alt="Nutri Avatar" 
+               className="w-[90%] h-[90%] object-cover object-top drop-shadow-md" 
+             />
           </div>
+          
           <div className="absolute right-20 top-1/2 -translate-y-1/2 bg-white text-stone-900 px-4 py-2 rounded-xl text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-stone-100 pointer-events-none">
-            Dúvidas sobre a dieta? 🍎
+            {avatarMood === 'seria' ? 'Vamos focar hoje? 🧐' : avatarMood === 'feliz' ? 'Você tá arrasando! 🎉' : 'Dúvidas sobre a dieta? 🍎'}
           </div>
         </button>
       )}
@@ -95,14 +159,20 @@ export default function ChatAssistant() {
           {/* Header */}
           <div className="bg-stone-900 p-5 text-white flex justify-between items-center shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 shrink-0">
-                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              <div className={`w-12 h-12 rounded-full overflow-hidden border border-white/20 shrink-0 bg-nutri-800 flex items-end justify-center ${getAvatarAnimation()}`}>
+                <img 
+                  src={avatarImages[avatarMood]} 
+                  alt="Avatar" 
+                  className="w-[90%] h-[90%] object-cover object-top drop-shadow-md" 
+                />
               </div>
               <div className="flex flex-col">
                 <h4 className="font-bold text-sm leading-tight">Nutri Assistente</h4>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-                  <span className="text-[9px] text-stone-300 uppercase tracking-widest font-bold">Online</span>
+                  <span className="text-[9px] text-stone-300 uppercase tracking-widest font-bold">
+                    {avatarMood === 'seria' ? 'De Olho em Você' : 'Online'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -131,11 +201,19 @@ export default function ChatAssistant() {
           {/* Chat Body */}
           <div ref={scrollRef} className="flex-1 p-5 overflow-y-auto space-y-4 bg-stone-50">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center text-center mt-10 space-y-4 px-6">
-                <div className="bg-stone-100 p-4 rounded-full text-stone-800"><Sparkles size={32} /></div>
+              <div className="flex flex-col items-center text-center mt-6 space-y-4 px-6 animate-in slide-in-from-bottom-4 duration-500">
+                <div className={`w-24 h-24 rounded-full overflow-hidden bg-nutri-100 flex items-end justify-center shadow-inner border border-stone-200 ${getAvatarAnimation()}`}>
+                  <img 
+                    src={avatarImages[avatarMood]} 
+                    alt="Nutri Grande" 
+                    className="w-[90%] h-[90%] object-cover object-top drop-shadow-xl" 
+                  />
+                </div>
                 <div>
                   <p className="font-bold text-stone-800 text-sm">Olá!</p>
-                  <p className="text-stone-500 text-xs mt-1 leading-relaxed">Sou sua assistente nutricional. Posso te ajudar com dúvidas rápidas sobre seu cardápio, trocas ou motivação. Como posso ajudar hoje?</p>
+                  <p className="text-stone-500 text-xs mt-1 leading-relaxed">
+                    Sou sua assistente nutricional. Posso te ajudar com dúvidas rápidas sobre seu cardápio, trocas ou motivação. Como posso ajudar hoje?
+                  </p>
                 </div>
               </div>
             )}

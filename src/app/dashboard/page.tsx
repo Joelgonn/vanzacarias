@@ -31,6 +31,15 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+// HELPER PARA DATA LOCAL CORRETA (Alinhado com MeuPlano.tsx para evitar conflito de fuso horário)
+const getLocalTodayString = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [evaluation, setEvaluation] = useState<any>(null);
@@ -58,11 +67,6 @@ export default function Dashboard() {
 
   const router = useRouter();
   const supabase = createClient();
-
-  const getTodayString = () => {
-    const today = new Date();
-    return today.toLocaleDateString('en-CA'); 
-  };
 
   async function loadData() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -121,7 +125,7 @@ export default function Dashboard() {
       .eq('user_id', userId)
       .order('exam_date', { ascending: false });
 
-    const todayStr = getTodayString();
+    const todayStr = getLocalTodayString(); // Usando a função padronizada
     const { data: dailyData } = await supabase
       .from('daily_logs')
       .select('*')
@@ -261,7 +265,7 @@ export default function Dashboard() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    const todayStr = getTodayString();
+    const todayStr = getLocalTodayString();
 
     await supabase
       .from('daily_logs')

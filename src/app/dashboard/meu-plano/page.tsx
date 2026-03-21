@@ -232,6 +232,15 @@ const parseDescription = (desc: string): ParsedIngredient[] => {
   });
 };
 
+// HELPER PARA DATA LOCAL CORRETA (Corrigindo bug do fuso horário UTC)
+const getLocalTodayString = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function MeuPlano() {
   const [planoPDF, setPlanoPDF] = useState<any>(null);
   const [mealPlanJSON, setMealPlanJSON] = useState<any[] | null>(null);
@@ -251,12 +260,14 @@ export default function MeuPlano() {
 
   const [isSubstitutionsModalOpen, setIsSubstitutionsModalOpen] = useState(false);
   
-  // ESTADO DA SUBSTITUIÇÃO CONTEXTUAL (Modal específico do item clicado)
+  // ESTADO DA SUBSTITUIÇÃO CONTEXTUAL
   const [contextualCategory, setContextualCategory] = useState<string | null>(null);
 
-  // Estados integrados do Diário de Rotina (Check-ins e Água)
+  // Estados integrados do Diário de Rotina
   const [completedMeals, setCompletedMeals] = useState<string[]>([]);
   const [waterCount, setWaterCount] = useState<number>(0);
+  // NOVO: Preservar o humor para não sobrescrever os dados do Dashboard
+  const [currentMood, setCurrentMood] = useState<string | null>(null);
 
   const supabase = createClient();
   const router = useRouter();
@@ -306,8 +317,8 @@ export default function MeuPlano() {
             setPlanoPDF(profileData.meal_plan_pdf_url);
           }
 
-          // Busca logs do diário de hoje (Para renderizar o Check-in das Refeições e Água)
-          const today = new Date().toISOString().split('T')[0];
+          // Busca logs do diário de hoje usando Fuso Horário Local
+          const today = getLocalTodayString();
           const { data: logs } = await supabase
             .from('daily_logs')
             .select('*')
@@ -318,6 +329,7 @@ export default function MeuPlano() {
           if (logs) {
             setCompletedMeals(logs.meals_checked || []);
             setWaterCount(logs.water_ml ? logs.water_ml / 250 : 0); // Copos de 250ml
+            setCurrentMood(logs.mood || null); // Salva o humor para não perder na atualização
           }
         }
       } catch (err: any) {
@@ -369,13 +381,14 @@ export default function MeuPlano() {
     setCompletedMeals(newList);
     
     const { data: { session } } = await supabase.auth.getSession();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalTodayString();
     
     const { error } = await supabase.from('daily_logs').upsert({
       user_id: session?.user.id,
       date: today,
       meals_checked: newList,
-      water_ml: waterCount * 250
+      water_ml: waterCount * 250,
+      mood: currentMood // Evita apagar o humor selecionado no Dashboard
     }, { onConflict: 'user_id, date' });
 
     if (error) {
@@ -390,13 +403,14 @@ export default function MeuPlano() {
     setWaterCount(newValue);
     
     const { data: { session } } = await supabase.auth.getSession();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalTodayString();
     
     await supabase.from('daily_logs').upsert({
       user_id: session?.user.id,
       date: today,
       water_ml: newValue * 250,
-      meals_checked: completedMeals
+      meals_checked: completedMeals,
+      mood: currentMood // Evita apagar o humor selecionado no Dashboard
     }, { onConflict: 'user_id, date' });
   };
 
