@@ -17,6 +17,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Scatter 
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
+import ChatAssistant from '@/components/ChatAssistant';
 import { toast } from 'sonner';
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -1049,6 +1050,9 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* MODAL / COMPONENTE DE CHAT FLUTUANTE */}
+      <ChatAssistant />
     </main>
   );
 }

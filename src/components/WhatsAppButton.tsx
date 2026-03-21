@@ -2,6 +2,7 @@
 
 import { MessageCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface WhatsAppButtonProps {
   phoneNumber: string;
@@ -10,6 +11,7 @@ interface WhatsAppButtonProps {
 
 export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     const toggleVisibility = () => setIsVisible(window.scrollY > 150);
@@ -21,6 +23,15 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
       clearTimeout(initialTimer);
     };
   }, []);
+
+  // VERIFICAÇÃO INTELIGENTE:
+  // Se a URL atual for da área logada (dashboard, paciente, etc), o botão não é renderizado.
+  // Isso evita que ele fique por cima da Assistente Nutricional (IA).
+  const isPrivateArea = pathname?.startsWith('/dashboard') || pathname?.startsWith('/paciente') || pathname?.startsWith('/admin');
+  
+  if (isPrivateArea) {
+    return null; // Não renderiza nada na área do paciente/admin
+  }
 
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message || "Olá Vanusa, gostaria de agendar uma consulta!")}`;
 
