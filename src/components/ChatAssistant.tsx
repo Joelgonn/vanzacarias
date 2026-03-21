@@ -67,6 +67,8 @@ export default function ChatAssistant() {
 
   const renderMessage = (text: string) => {
     const formatted = text
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-stone-900">$1</strong>')
       .replace(/\n/g, '<br />');
 

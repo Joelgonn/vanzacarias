@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { GoogleGenerativeAI } from '@google/generative-ai' // <-- IMPORT OFICIAL
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,74 +20,37 @@ export async function POST(req: Request) {
     // 1. BUSCAR DADOS DO BANCO (OS 4 PILARES)
     // ==========================================
     
-    // Pilar 1: Perfil e Cardápio
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name, meta_peso, meal_plan')
-      .eq('id', userId)
-      .single();
-
-    // Pilar 2: Diário de Hoje (Empatia)
-    const todayStr = new Date().toLocaleDateString('en-CA'); // Formato YYYY-MM-DD
-    const { data: dailyLog } = await supabase
-      .from('daily_logs')
-      .select('water_ml, meals_checked, mood')
-      .eq('user_id', userId)
-      .eq('date', todayStr)
-      .single();
-
-    // Pilar 3: Avaliação e Raio-X (Clínico)
-    const { data: evaluation } = await supabase
-      .from('evaluations')
-      .select('answers')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    const { data: qfa } = await supabase
-      .from('qfa_responses')
-      .select('answers')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    // Pilar 4: Antropometria (Resultados e Evolução)
-    const { data: antro } = await supabase
-      .from('anthropometry')
-      .select('weight, waist, measurement_date')
-      .eq('user_id', userId)
-      .order('measurement_date', { ascending: false })
-      .limit(2);
+    // (SEU CÓDIGO SUPABASE PERMANECE EXATAMENTE IGUAL)
+    const { data: profile } = await supabase.from('profiles').select('full_name, meta_peso, meal_plan').eq('id', userId).single();
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const { data: dailyLog } = await supabase.from('daily_logs').select('water_ml, meals_checked, mood').eq('user_id', userId).eq('date', todayStr).single();
+    const { data: evaluation } = await supabase.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
+    const { data: qfa } = await supabase.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
+    const { data: antro } = await supabase.from('anthropometry').select('weight, waist, measurement_date').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2);
 
     // ==========================================
     // 2. PROCESSAR DADOS PARA O PRONTUÁRIO
     // ==========================================
-
+    
+    // (SEU CÓDIGO DE PROCESSAMENTO PERMANECE EXATAMENTE IGUAL)
     const nomePaciente = profile?.full_name?.split(' ')[0] || 'Paciente';
     const objetivoPrincipal = evaluation?.answers?.["0"] || 'Não informado';
     const rotinaSono = evaluation?.answers?.["3"] || '';
     const vontadesDoces = evaluation?.answers?.["7"] || '';
 
-    // Mapear alimentos que o paciente NÃO come (frequência "0" no QFA)
     let alimentosEvitar: string[] = [];
     if (qfa?.answers) {
-      alimentosEvitar = Object.entries(qfa.answers)
-        .filter(([_, frequencia]) => frequencia === "0")
-        .map(([alimento]) => alimento.replace(/_/g, ' '));
+      alimentosEvitar = Object.entries(qfa.answers).filter(([_, frequencia]) => frequencia === "0").map(([alimento]) => alimento.replace(/_/g, ' '));
     }
 
-    // Formatar Cardápio de forma limpa para a IA ler
     let cardapioFormatado = 'Cardápio ainda não elaborado.';
     if (profile?.meal_plan && Array.isArray(profile.meal_plan)) {
       cardapioFormatado = profile.meal_plan.map((meal: any) => {
-        const opcao = meal.options?.[0]; // Pega a primeira opção de cada refeição
+        const opcao = meal.options?.[0];
         return `- ${meal.time} | ${meal.name}: ${opcao?.description || 'Sem descrição'} (${opcao?.kcal || 0} kcal)`;
       }).join('\n');
     }
 
-    // Calcular evolução (se perdeu peso ou cintura)
     let evolucaoTxt = 'Iniciando acompanhamento.';
     if (antro && antro.length === 2) {
       const pesoPerdido = antro[1].weight - antro[0].weight;
@@ -96,7 +60,6 @@ export async function POST(req: Request) {
       if (cinturaPerdida > 0) evolucaoTxt += `Já reduziu ${cinturaPerdida.toFixed(1)}cm de cintura.`;
     }
 
-    // Resumo do dia atual
     const humorHoje = dailyLog?.mood || 'Não registrado';
     const aguaHoje = dailyLog?.water_ml || 0;
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
@@ -104,7 +67,6 @@ export async function POST(req: Request) {
     // ==========================================
     // 3. MONTAR O PRONTUÁRIO DINÂMICO DA IA
     // ==========================================
-
     const contextoInjetado = `
       Você é a Assistente Nutricional da Nutricionista Vanusa. 
       Seu tom é humano, acolhedor, empático (estilo WhatsApp) e direto. NUNCA corte uma frase no meio.
@@ -115,7 +77,7 @@ export async function POST(req: Request) {
       Meta de Peso: ${profile?.meta_peso ? `${profile.meta_peso}kg` : 'Manutenção'}
       Evolução Clínica: ${evolucaoTxt}
       Queixas de Rotina: Sono (${rotinaSono}), Doces/Fome (${vontadesDoces}).
-      Aversões (Não sugerir estes alimentos): ${alimentosEvitar.length > 0 ? alimentosEvitar.join(', ') : 'Nenhuma restrição identificada.'}
+      Aversões: ${alimentosEvitar.length > 0 ? alimentosEvitar.join(', ') : 'Nenhuma restrição.'}
 
       CARDÁPIO ATUAL DO PACIENTE:
       ${cardapioFormatado}
@@ -123,26 +85,40 @@ export async function POST(req: Request) {
       STATUS DO DIA DE HOJE (${todayStr}):
       Humor reportado hoje: ${humorHoje}
       Água bebida hoje: ${aguaHoje}ml
-      Refeições marcadas como feitas: ${refeicoesFeitas}
+      Refeições feitas: ${refeicoesFeitas}
 
       REGRAS DE CONDUTA:
-      1. Se o paciente perguntar sobre trocas ou lanches, baseie-se no CARDÁPIO ATUAL dele, sugerindo equivalentes do mesmo grupo alimentar. NÃO sugira nada que esteja na lista de Aversões.
-      2. Se o humor de hoje for "difícil", seja empática, motive-o, lembre do objetivo dele.
-      3. Se a água de hoje estiver baixa (menos de 1500ml), lembre-o gentilmente de beber água.
-      4. Use formatação Markdown (negrito) para destacar alimentos e quantidades.
-      5. Respostas sempre curtas, focadas em resolver a dúvida ou acolher o desabafo.
+      1. Se o paciente perguntar sobre trocas, baseie-se no CARDÁPIO ATUAL. NÃO sugira Aversões.
+      2. Se o humor for "difícil", seja empática e motive-o.
+      3. Se a água de hoje estiver baixa (<1500ml), lembre-o gentilmente.
+      4. Use Markdown (negrito) para destacar alimentos.
+      5. Seja concisa no dia a dia, mas dê respostas completas ao detalhar cardápio.
     `;
 
     // ==========================================
-    // 4. CHAMADA GOOGLE GEMINI
+    // 4. CHAMADA GOOGLE GEMINI (USANDO A BIBLIOTECA OFICIAL)
     // ==========================================
-    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+    
+    // Inicializa a IA
+    const genAI = new GoogleGenerativeAI(geminiKey);
 
+    // Configura o modelo, já passando as instruções de sistema (System Prompt)
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction: contextoInjetado,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+      },
+    });
+
+    // Formata o histórico recebido do Frontend para o padrão da biblioteca
     const rawHistory = (history || []).map((msg: any) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
 
+    // Mantemos a sua lógica excelente de validação de turnos alternados
     let validHistory: any[] = [];
     let expectedRole = 'user';
     for (const msg of rawHistory) {
@@ -155,38 +131,18 @@ export async function POST(req: Request) {
       validHistory.pop();
     }
 
-    const response = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: contextoInjetado }]
-        },
-        contents: [
-          ...validHistory, 
-          { role: 'user', parts: [{ text: message }] }
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 800,
-        },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ]
-      })
-    })
+    // Inicia o chat já com o histórico
+    const chat = model.startChat({
+      history: validHistory,
+    });
 
-    const data = await response.json()
+    // Envia a mensagem atual e aguarda a resposta
+    const result = await chat.sendMessage(message);
+    const reply = result.response.text();
 
-    if (data.error) {
-      console.error('Erro Gemini Detalhado:', JSON.stringify(data.error, null, 2))
-      return NextResponse.json({ reply: "Tive um soluço técnico aqui. Pode repetir?" }, { status: 200 })
+    if (!reply) {
+      return NextResponse.json({ reply: "Pode repetir de outra forma? Não consegui processar." }, { status: 200 })
     }
-
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Pode repetir de outra forma? Não consegui processar."
 
     // SALVAR NO BANCO
     if (userId) {
@@ -197,6 +153,7 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error('Erro na rota:', error)
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+    // Tratamento de erro mais amigável
+    return NextResponse.json({ reply: 'Tive um pequeno soluço técnico aqui. Pode me mandar a mensagem de novo?' }, { status: 200 })
   }
 }
