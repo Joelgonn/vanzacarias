@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai' // <-- IMPORT OFICIAL
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { buildContext } from '@/lib/contextBuilder'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,7 +10,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { userId, message, history } = await req.json()
+    const { userId, message, history, image } = await req.json()
 
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) {
@@ -17,22 +18,49 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 1. BUSCAR DADOS DO BANCO (OS 4 PILARES)
+    // 1. BUSCAR DADOS (INALTERADO)
     // ==========================================
-    
-    // (SEU CÓDIGO SUPABASE PERMANECE EXATAMENTE IGUAL)
-    const { data: profile } = await supabase.from('profiles').select('full_name, meta_peso, meal_plan').eq('id', userId).single();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, meta_peso, meal_plan')
+      .eq('id', userId)
+      .single();
+
     const todayStr = new Date().toLocaleDateString('en-CA');
-    const { data: dailyLog } = await supabase.from('daily_logs').select('water_ml, meals_checked, mood').eq('user_id', userId).eq('date', todayStr).single();
-    const { data: evaluation } = await supabase.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
-    const { data: qfa } = await supabase.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
-    const { data: antro } = await supabase.from('anthropometry').select('weight, waist, measurement_date').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2);
+
+    const { data: dailyLog } = await supabase
+      .from('daily_logs')
+      .select('water_ml, meals_checked, mood')
+      .eq('user_id', userId)
+      .eq('date', todayStr)
+      .single();
+
+    const { data: evaluation } = await supabase
+      .from('evaluations')
+      .select('answers')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const { data: qfa } = await supabase
+      .from('qfa_responses')
+      .select('answers')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const { data: antro } = await supabase
+      .from('anthropometry')
+      .select('weight, waist, measurement_date')
+      .eq('user_id', userId)
+      .order('measurement_date', { ascending: false })
+      .limit(2);
 
     // ==========================================
-    // 2. PROCESSAR DADOS PARA O PRONTUÁRIO
+    // 2. PROCESSAMENTO (INALTERADO)
     // ==========================================
-    
-    // (SEU CÓDIGO DE PROCESSAMENTO PERMANECE EXATAMENTE IGUAL)
     const nomePaciente = profile?.full_name?.split(' ')[0] || 'Paciente';
     const objetivoPrincipal = evaluation?.answers?.["0"] || 'Não informado';
     const rotinaSono = evaluation?.answers?.["3"] || '';
@@ -40,7 +68,9 @@ export async function POST(req: Request) {
 
     let alimentosEvitar: string[] = [];
     if (qfa?.answers) {
-      alimentosEvitar = Object.entries(qfa.answers).filter(([_, frequencia]) => frequencia === "0").map(([alimento]) => alimento.replace(/_/g, ' '));
+      alimentosEvitar = Object.entries(qfa.answers)
+        .filter(([_, frequencia]) => frequencia === "0")
+        .map(([alimento]) => alimento.replace(/_/g, ' '));
     }
 
     let cardapioFormatado = 'Cardápio ainda não elaborado.';
@@ -65,98 +95,74 @@ export async function POST(req: Request) {
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
 
     // ==========================================
-    // 3. MONTAR O PRONTUÁRIO DINÂMICO DA IA
+    // 3. CONTEXTO INTELIGENTE
     // ==========================================
-    const contextoInjetado = `
-      Você é a Assistente Nutricional da Nutricionista Vanusa. 
-      Seu tom é humano, acolhedor, empático (estilo WhatsApp) e direto. NUNCA corte uma frase no meio.
-      
-      DADOS DO PACIENTE:
-      Nome: ${nomePaciente}
-      Objetivo: ${objetivoPrincipal}
-      Meta de Peso: ${profile?.meta_peso ? `${profile.meta_peso}kg` : 'Manutenção'}
-      Evolução Clínica: ${evolucaoTxt}
-      Queixas de Rotina: Sono (${rotinaSono}), Doces/Fome (${vontadesDoces}).
-      Aversões: ${alimentosEvitar.length > 0 ? alimentosEvitar.join(', ') : 'Nenhuma restrição.'}
+    const contextoInjetado = buildContext(message, {
+      nomePaciente,
+      objetivoPrincipal,
+      metaPeso: profile?.meta_peso ? `${profile.meta_peso}kg` : 'Manutenção',
+      rotinaSono,
+      vontadesDoces,
+      alimentosEvitar,
+      cardapioFormatado,
+      evolucaoTxt,
+      humorHoje,
+      aguaHoje,
+      refeicoesFeitas,
+      todayStr
+    });
 
-      CARDÁPIO ATUAL DO PACIENTE:
-      ${cardapioFormatado}
-
-      STATUS DO DIA DE HOJE (${todayStr}):
-      Humor reportado hoje: ${humorHoje}
-      Água bebida hoje: ${aguaHoje}ml
-      Refeições feitas: ${refeicoesFeitas}
-
-      REGRAS DE CONDUTA:
-      1. Se o paciente perguntar sobre trocas, baseie-se no CARDÁPIO ATUAL. NÃO sugira Aversões.
-      2. Se o humor for "difícil", seja empática e motive-o.
-      3. Se a água de hoje estiver baixa (<1500ml), lembre-o gentilmente.
-      4. Use Markdown (negrito) para destacar alimentos.
-      5. Seja concisa no dia a dia, mas dê respostas completas ao detalhar cardápio.
-    `;
-
-    // ==========================================
-    // 4. CHAMADA GOOGLE GEMINI (USANDO A BIBLIOTECA OFICIAL)
-    // ==========================================
-    
-    // Inicializa a IA
     const genAI = new GoogleGenerativeAI(geminiKey);
 
-    // Configura o modelo, já passando as instruções de sistema (System Prompt)
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       systemInstruction: contextoInjetado,
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      },
     });
 
-    // Garante que o histórico processado no backend limite a 7 mensagens por segurança
-    const recentHistory = (history || []).slice(-7);
-
-    // Formata o histórico recebido para o padrão da biblioteca
-    const rawHistory = recentHistory.map((msg: any) => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }]
-    }));
-
-    // Mantemos a sua lógica excelente de validação de turnos alternados
-    let validHistory: any[] = [];
-    let expectedRole = 'user';
-    for (const msg of rawHistory) {
-      if (msg.role === expectedRole) {
-        validHistory.push(msg);
-        expectedRole = expectedRole === 'user' ? 'model' : 'user';
-      }
-    }
-    if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
-      validHistory.pop();
-    }
-
-    // Inicia o chat já com o histórico
     const chat = model.startChat({
-      history: validHistory,
+      history: (history || []).slice(-7).map((msg: any) => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }]
+      }))
     });
 
-    // Envia a mensagem atual e aguarda a resposta
-    const result = await chat.sendMessage(message);
+    // ==========================================
+    // 🔥 ENVIO COM OU SEM IMAGEM
+    // ==========================================
+    let result;
+
+    if (image) {
+      result = await chat.sendMessage([
+        { text: message || "Analise esse prato para mim" },
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: image // base64
+          }
+        }
+      ]);
+    } else {
+      result = await chat.sendMessage(message);
+    }
+
     const reply = result.response.text();
 
     if (!reply) {
-      return NextResponse.json({ reply: "Pode repetir de outra forma? Não consegui processar." }, { status: 200 })
+      return NextResponse.json({ reply: "Pode repetir?" }, { status: 200 })
     }
 
-    // SALVAR NO BANCO
     if (userId) {
-      await supabase.from('ai_messages').insert({ user_id: userId, question: message, answer: reply })
+      await supabase.from('ai_messages').insert({
+        user_id: userId,
+        question: message,
+        answer: reply
+      })
     }
 
     return NextResponse.json({ reply })
 
   } catch (error) {
-    console.error('Erro na rota:', error)
-    // Tratamento de erro mais amigável
-    return NextResponse.json({ reply: 'Tive um pequeno soluço técnico aqui. Pode me mandar a mensagem de novo?' }, { status: 200 })
+    console.error(error)
+    return NextResponse.json({ reply: 'Erro, tenta de novo.' }, { status: 200 })
   }
 }

@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2 } from 'lucide-react';
+import { X, Send, Loader2, ImagePlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function ChatAssistant() {
+  // ===============================
+  // ESTADOS DO CHAT E UI
+  // ===============================
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [input, setInput] = useState('');
@@ -12,6 +15,12 @@ export default function ChatAssistant() {
   
   const [avatarMood, setAvatarMood] = useState<'neutra' | 'feliz' | 'seria'>('neutra');
   
+  // ===============================
+  // ESTADOS DE IMAGEM (NOVA LÓGICA)
+  // ===============================
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const avatarImages = {
@@ -22,6 +31,9 @@ export default function ChatAssistant() {
   
   const numeroWhatsApp = "5511999999999"; 
 
+  // ===============================
+  // HUMOR DA NUTRI
+  // ===============================
   const checkTodayMood = async () => {
     try {
       const supabase = createClient();
@@ -65,6 +77,51 @@ export default function ChatAssistant() {
     checkTodayMood();
   }, []);
 
+  // ===============================
+  // LÓGICA DE COMPRESSÃO DE IMAGEM
+  // ===============================
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+
+          const MAX_WIDTH = 800;
+          const scale = MAX_WIDTH / img.width;
+
+          canvas.width = MAX_WIDTH;
+          canvas.height = img.height * scale;
+
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Qualidade 0.7 = ótimo equilíbrio para economizar payload
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+
+          // Remove prefixo base64 para mandar só o raw data
+          const base64Data = compressedBase64.split(',')[1];
+
+          resolve(base64Data);
+        };
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const compressed = await compressImage(file);
+    setSelectedImage(compressed);
+  };
+
   const renderMessage = (text: string) => {
     const formatted = text
       .replace(/</g, "&lt;")
@@ -75,15 +132,20 @@ export default function ChatAssistant() {
     return <div dangerouslySetInnerHTML={{ __html: formatted }} />;
   };
 
+  // ===============================
+  // ENVIO DA MENSAGEM (TEXTO E IMAGEM)
+  // ===============================
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedImage) || isLoading) return;
 
-    const userMessage = input.trim();
+    // Se mandar só a imagem sem texto, assume "Analise esse prato"
+    const userMessage = input.trim() || "Analise esse prato";
+    
     setInput('');
+    setIsLoading(true);
     
     const updatedMessages = [...messages, { role: 'user' as const, content: userMessage }];
     setMessages(updatedMessages);
-    setIsLoading(true);
 
     try {
       const supabase = createClient();
@@ -95,8 +157,9 @@ export default function ChatAssistant() {
         body: JSON.stringify({
           userId: session?.user?.id,
           message: userMessage,
-          // Limitado às últimas 7 mensagens para manter as últimas interações
-          history: messages.slice(-7)
+          // 🔥 Limitado exatamente a 6 (3 perguntas, 3 respostas) para salvar tokens
+          history: messages.slice(-6),
+          image: selectedImage // 🔥 Envia a imagem pro backend
         })
       });
 
@@ -114,6 +177,7 @@ export default function ChatAssistant() {
       }]);
     } finally {
       setIsLoading(false);
+      setSelectedImage(null); // Limpa a foto depois de enviar
     }
   };
 
@@ -125,7 +189,9 @@ export default function ChatAssistant() {
 
   return (
     <>
-      {/* BOTÃO FLUTUANTE (Fechado) */}
+      {/* ========================================= */}
+      {/* BOTÃO FLUTUANTE FECHADO (INTACTO)         */}
+      {/* ========================================= */}
       {!isOpen && (
         <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
           <button 
@@ -149,12 +215,14 @@ export default function ChatAssistant() {
         </div>
       )}
 
-      {/* JANELA DO CHAT (Aberta) */}
+      {/* ========================================= */}
+      {/* JANELA DO CHAT ABERTA                     */}
+      {/* ========================================= */}
       {isOpen && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex justify-center sm:block pointer-events-none">
           <div className="w-full max-w-[400px] sm:w-[380px] h-[75vh] max-h-[550px] bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-stone-100 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300 origin-bottom sm:origin-bottom-right pointer-events-auto">
             
-            {/* Header com a nova identidade "Nutri Van" */}
+            {/* Header com a identidade "Nutri Van" */}
             <div className="bg-stone-900 p-4 sm:p-5 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-white/20 shrink-0 bg-nutri-800 flex items-end justify-center ${getAvatarAnimation()}`}>
@@ -211,7 +279,7 @@ export default function ChatAssistant() {
                   <div>
                     <p className="font-bold text-stone-800 text-sm">Olá!</p>
                     <p className="text-stone-500 text-xs mt-1 leading-relaxed">
-                      Sou a <strong className="text-green-600">Nutri Van</strong>, sua assistente virtual. Posso te ajudar com dúvidas rápidas sobre seu cardápio, trocas ou motivação. Como posso ajudar hoje?
+                      Sou a <strong className="text-green-600">Nutri Van</strong>, sua assistente virtual. Posso te ajudar com dúvidas rápidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação. Como posso ajudar hoje?
                     </p>
                   </div>
                 </div>
@@ -239,22 +307,64 @@ export default function ChatAssistant() {
               )}
             </div>
 
-            {/* Input Area */}
+            {/* ========================================= */}
+            {/* ÁREA DE INPUT INTEGRADA COM IMAGEM        */}
+            {/* ========================================= */}
             <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0">
-              <div className="flex gap-2 bg-stone-100 p-1 rounded-[1.5rem] border border-stone-200 focus-within:border-stone-400 transition-all shadow-inner">
+              
+              {/* Preview da Imagem Selecionada */}
+              {selectedImage && (
+                <div className="relative mb-3 inline-block animate-in fade-in zoom-in duration-200">
+                  <img 
+                    src={`data:image/jpeg;base64,${selectedImage}`} 
+                    className="h-20 rounded-xl border border-stone-200 shadow-sm object-cover" 
+                    alt="Preview"
+                  />
+                  <button 
+                    onClick={() => setSelectedImage(null)} 
+                    className="absolute -top-2 -right-2 bg-stone-800 text-white rounded-full p-1 shadow-md hover:bg-stone-900 transition-colors"
+                  >
+                     <X size={12} />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-2 bg-stone-100 p-1 rounded-[1.5rem] border border-stone-200 focus-within:border-stone-400 transition-all shadow-inner items-center">
+                
+                {/* Botão Anexar Imagem */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-[1.2rem] transition-all shrink-0 ml-1"
+                  disabled={isLoading}
+                  title="Enviar foto do prato"
+                >
+                  <ImagePlus size={20} />
+                </button>
+                
+                {/* Input Invisível para o Arquivo */}
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+
                 <input 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   placeholder="Ex: O que substitui o frango?"
-                  className="flex-1 bg-transparent px-4 py-3 text-sm outline-none text-stone-700 w-full"
+                  className="flex-1 bg-transparent py-3 pr-2 text-sm outline-none text-stone-700 w-full"
                   disabled={isLoading}
                 />
+
+                {/* Botão Enviar */}
                 <button 
                   onClick={handleSend} 
-                  disabled={isLoading || !input.trim()} 
+                  disabled={isLoading || (!input.trim() && !selectedImage)} 
                   className={`p-3 rounded-2xl transition-all shadow-lg shrink-0 ${
-                    isLoading || !input.trim() 
+                    isLoading || (!input.trim() && !selectedImage)
                       ? 'bg-stone-300 text-stone-500' 
                       : 'bg-stone-900 text-white hover:bg-stone-800'
                   }`}
@@ -263,6 +373,7 @@ export default function ChatAssistant() {
                 </button>
               </div>
             </div>
+
           </div>
         </div>
       )}
