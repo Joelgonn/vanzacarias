@@ -98,17 +98,20 @@ export async function POST(req: Request) {
           .single();
 
         if (!insertError && insertedMsg) {
-          // 🔥 Ajuste de Ouro: Embedding Estratégico
-          // Só gasta processamento e IA se a mensagem tiver substância (> 10 caracteres)
           if (safeMessage.length > 10) {
             (async () => {
               try {
-                const embeddingVector = await generateEmbedding(safeMessage);
-                await supabase
-                  .from('ai_messages')
-                  .update({ embedding: embeddingVector })
-                  .eq('id', insertedMsg.id);
-                console.log(`[Background] Embedding salvo p/ Cache (Msg ID: ${insertedMsg.id})`);
+                // 🔥 MELHORIA: EMBEDDING RICO NO CACHE
+                const embeddingText = `Pergunta: ${safeMessage}\nResposta: ${cached}`;
+                const embeddingVector = await generateEmbedding(embeddingText);
+                
+                if (embeddingVector) {
+                  await supabase
+                    .from('ai_messages')
+                    .update({ embedding: embeddingVector })
+                    .eq('id', insertedMsg.id);
+                  console.log(`[Background] Embedding Rico salvo p/ Cache (Msg ID: ${insertedMsg.id})`);
+                }
               } catch (bgError) {
                 console.error('[Background Cache Error]', bgError);
               }
@@ -119,7 +122,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
           reply: cached,
           cached: true,
-          remaining: Math.max(currentRate.remaining - 1, 0), // Conta no limite
+          remaining: Math.max(currentRate.remaining - 1, 0),
           limit: currentRate.limit
         }, { status: 200 });
       }
@@ -139,15 +142,26 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 3. BUSCAR DADOS DO PACIENTE
+    // 🕰️ 3. CONFIGURAÇÃO DE FUSO HORÁRIO BRASIL
+    // ==========================================
+    const dataAtual = new Date();
+    const todayStr = dataAtual.toLocaleDateString('en-CA', { 
+      timeZone: 'America/Sao_Paulo' 
+    });
+    const currentTimeBR = dataAtual.toLocaleString('pt-BR', { 
+      timeZone: 'America/Sao_Paulo',
+      dateStyle: 'full',
+      timeStyle: 'short'
+    });
+
+    // ==========================================
+    // 4. BUSCAR DADOS DO PACIENTE
     // ==========================================
     const { data: profile } = await supabase
       .from('profiles')
       .select('full_name, meta_peso, meal_plan')
       .eq('id', userId)
       .single();
-
-    const todayStr = new Date().toLocaleDateString('en-CA');
 
     const { data: dailyLog } = await supabase
       .from('daily_logs')
@@ -180,7 +194,7 @@ export async function POST(req: Request) {
       .limit(2);
 
     // ==========================================
-    // 4. PROCESSAMENTO DE CONTEXTO
+    // 5. PROCESSAMENTO DE CONTEXTO
     // ==========================================
     const nomePaciente = profile?.full_name?.split(' ')[0] || 'Paciente';
     const objetivoPrincipal = evaluation?.answers?.["0"] || 'Não informado';
@@ -216,10 +230,8 @@ export async function POST(req: Request) {
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
 
     // ==========================================
-    // 5. CONTEXTO INTELIGENTE + RAG VETORIAL
+    // 6. CONTEXTO INTELIGENTE + RAG VETORIAL
     // ==========================================
-    
-    // Constrói o contexto base
     const baseContext = buildContext(safeMessage, {
       nomePaciente,
       objetivoPrincipal,
@@ -247,19 +259,20 @@ export async function POST(req: Request) {
       msgLower.includes('não consegui') ||
       msgLower.includes('nao consegui');
 
-    // 🔥 Aqui assumimos que a SQL Function (match_messages) já tem match_count: 2
     const semanticMemory = (shouldUseMemory && safeMessage) 
       ? await getSemanticMemories(userId, safeMessage) 
       : '';
 
     const contextoInjetado = `
+[INFORMAÇÃO DO SISTEMA]: A data e hora exata agora (Horário de Brasília) é: ${currentTimeBR}. Use isso para saber em que momento do dia o paciente está (manhã, tarde, noite) e agir adequadamente.
+
 ${baseContext}
 ${summary ? `RESUMO DO COMPORTAMENTO DO PACIENTE:\n${summary}\n` : ''}
 ${semanticMemory || ''}
     `.trim();
 
     // ==========================================
-    // 6. MODELO HÍBRIDO E LOGGING
+    // 7. MODELO HÍBRIDO E LOGGING
     // ==========================================
     const useComplexModel = isComplexRequest(safeMessage, !!image);
 
@@ -285,7 +298,7 @@ ${semanticMemory || ''}
     });
 
     // ==========================================
-    // 7. ENVIO AO GEMINI
+    // 8. ENVIO AO GEMINI
     // ==========================================
     let result;
 
@@ -310,7 +323,7 @@ ${semanticMemory || ''}
     }
 
     // ==========================================
-    // 8. SALVAR HISTÓRICO E PROCESSAR MEMÓRIA EM BACKGROUND
+    // 9. SALVAR HISTÓRICO E PROCESSAR MEMÓRIA EM BACKGROUND
     // ==========================================
     if (userId) {
       const questionText = safeMessage || 'Enviou uma imagem';
@@ -327,21 +340,26 @@ ${semanticMemory || ''}
 
       if (!insertError && insertedMsg) {
         
-        // Processamento Pesado em Paralelo (Não bloqueia a resposta ao usuário)
         (async () => {
           try {
-            // Atualiza Resumo Estratégico
             await updateUserSummary(userId, { question: questionText, answer: reply });
             console.log(`[Background] Resumo atualizado para ${userId}`);
 
-            // 🔥 Ajuste de Ouro: Só gera embedding se tiver contexto útil
             if (questionText.length > 10) {
-              const embeddingVector = await generateEmbedding(questionText);
-              await supabase
-                .from('ai_messages')
-                .update({ embedding: embeddingVector })
-                .eq('id', insertedMsg.id);
-              console.log(`[Background] Embedding Vector salvo na msg ${insertedMsg.id}`);
+              // 🔥 MELHORIA PRINCIPAL: EMBEDDING RICO
+              // Agora salvamos a Pergunta E a Resposta no mesmo vetor
+              const embeddingText = `Pergunta: ${questionText}\nResposta: ${reply}`;
+              const embeddingVector = await generateEmbedding(embeddingText);
+              
+              if (embeddingVector) {
+                await supabase
+                  .from('ai_messages')
+                  .update({ embedding: embeddingVector })
+                  .eq('id', insertedMsg.id);
+                console.log(`[Background] Embedding Rico Vector salvo na msg ${insertedMsg.id}`);
+              } else {
+                console.log(`[Background] Embedding pulado (Google recusou)`);
+              }
             } else {
               console.log(`[Background] Embedding pulado (Msg curta: ${insertedMsg.id})`);
             }
@@ -355,7 +373,7 @@ ${semanticMemory || ''}
     }
 
     // ==========================================
-    // 9. RETORNO FINAL RÁPIDO ⚡
+    // 10. RETORNO FINAL RÁPIDO ⚡
     // ==========================================
     return NextResponse.json({
       reply,
