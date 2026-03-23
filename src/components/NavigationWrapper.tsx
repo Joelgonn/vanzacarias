@@ -9,10 +9,9 @@ export default function NavigationWrapper({ children }: { children: React.ReactN
   const pathname = usePathname();
   
   // Define rotas que NÃO devem exibir Header, Footer e WhatsApp
-  // No NavigationWrapper.tsx
-  // Mantendo a lógica e o espaçamento exato do seu arquivo original
-  const isPanel =          
-                  pathname.startsWith('/avaliacao');
+  // Mantendo a lógica original e adicionando a verificação do Admin
+  const isPanel = pathname?.startsWith('/avaliacao');
+  const isAdmin = pathname?.startsWith('/admin');
 
   return (
     <>
@@ -29,18 +28,20 @@ export default function NavigationWrapper({ children }: { children: React.ReactN
       </main>
 
       {/* 
-          Footer e Botão de WhatsApp:
-          Só aparecem se não for uma rota de "painel" (avaliação).
-          Isso evita poluição visual no mobile durante o preenchimento do quiz.
+          Footer: Aparece se não for painel de avaliação.
       */}
-      {!isPanel && (
-        <>
-          <Footer />
-          <WhatsAppButton
-            phoneNumber="5544999997275"
-            message="Olá Vanusa, gostaria de mais informações sobre seus serviços!"
-          />
-        </>
+      {!isPanel && <Footer />}
+
+      {/* 
+          Botão de WhatsApp:
+          Não aparece na avaliação (para não poluir o quiz)
+          E NÃO aparece no Admin (conforme solicitado).
+      */}
+      {!isPanel && !isAdmin && (
+        <WhatsAppButton
+          phoneNumber="5544999997275"
+          message="Olá Vanusa, gostaria de mais informações sobre seus serviços!"
+        />
       )}
     </>
   );

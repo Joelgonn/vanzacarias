@@ -4,7 +4,21 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, ImagePlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-export default function ChatAssistant() {
+// ===============================
+// INTERFACES (NOVO: Contexto Admin)
+// ===============================
+interface AdminContext {
+  patients?: any[];
+  leads?: any[];
+  usageStats?: Record<string, number>;
+  todayTotalMessages?: number;
+}
+
+interface ChatAssistantProps {
+  adminContext?: AdminContext;
+}
+
+export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
   // ===============================
   // ESTADOS DO CHAT E UI
   // ===============================
@@ -16,7 +30,7 @@ export default function ChatAssistant() {
   const [avatarMood, setAvatarMood] = useState<'neutra' | 'feliz' | 'seria'>('neutra');
   
   // ===============================
-  // ESTADOS DE IMAGEM (NOVA LÓGICA)
+  // ESTADOS DE IMAGEM
   // ===============================
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +49,12 @@ export default function ChatAssistant() {
   // HUMOR DA NUTRI
   // ===============================
   const checkTodayMood = async () => {
+    // Se for o Admin (Nutricionista), não busca log de paciente e deixa "feliz" padrão
+    if (adminContext) {
+      setAvatarMood('feliz');
+      return;
+    }
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -157,9 +177,10 @@ export default function ChatAssistant() {
         body: JSON.stringify({
           userId: session?.user?.id,
           message: userMessage,
-          // 🔥 Limitado exatamente a 6 (3 perguntas, 3 respostas) para salvar tokens
           history: messages.slice(-6),
-          image: selectedImage // 🔥 Envia a imagem pro backend
+          image: selectedImage,
+          isAdmin: !!adminContext, // 🔥 Informa a API que é o modo Admin
+          adminData: adminContext  // 🔥 Envia os dados dos pacientes/leads
         })
       });
 
@@ -177,7 +198,7 @@ export default function ChatAssistant() {
       }]);
     } finally {
       setIsLoading(false);
-      setSelectedImage(null); // Limpa a foto depois de enviar
+      setSelectedImage(null); 
     }
   };
 
@@ -190,7 +211,7 @@ export default function ChatAssistant() {
   return (
     <>
       {/* ========================================= */}
-      {/* BOTÃO FLUTUANTE FECHADO (INTACTO)         */}
+      {/* BOTÃO FLUTUANTE FECHADO                   */}
       {/* ========================================= */}
       {!isOpen && (
         <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
@@ -209,7 +230,13 @@ export default function ChatAssistant() {
             </div>
             
             <div className="absolute right-20 top-1/2 -translate-y-1/2 bg-white text-stone-900 px-4 py-2 rounded-xl text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-stone-100 pointer-events-none">
-              {avatarMood === 'seria' ? 'Vamos focar hoje? 🧐' : avatarMood === 'feliz' ? 'Você tá arrasando! 🎉' : 'Dúvidas sobre a dieta? 🍎'}
+              {adminContext 
+                ? 'Pronta para te ajudar com os pacientes! 🚀' 
+                : avatarMood === 'seria' 
+                  ? 'Vamos focar hoje? 🧐' 
+                  : avatarMood === 'feliz' 
+                    ? 'Você tá arrasando! 🎉' 
+                    : 'Dúvidas sobre a dieta? 🍎'}
             </div>
           </button>
         </div>
@@ -222,7 +249,7 @@ export default function ChatAssistant() {
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex justify-center sm:block pointer-events-none">
           <div className="w-full max-w-[400px] sm:w-[380px] h-[75vh] max-h-[550px] bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-stone-100 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300 origin-bottom sm:origin-bottom-right pointer-events-auto">
             
-            {/* Header com a identidade "Nutri Van" */}
+            {/* Header */}
             <div className="bg-stone-900 p-4 sm:p-5 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-white/20 shrink-0 bg-nutri-800 flex items-end justify-center ${getAvatarAnimation()}`}>
@@ -239,25 +266,32 @@ export default function ChatAssistant() {
                   <div className="flex items-center gap-1 mt-0.5">
                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
                     <span className="text-[9px] text-stone-300 uppercase tracking-widest font-bold">
-                      {avatarMood === 'seria' ? 'De olho em você' : 'Assistente Virtual'}
+                      {adminContext 
+                        ? 'Assistente IA da Nutri' 
+                        : avatarMood === 'seria' 
+                          ? 'De olho em você' 
+                          : 'Assistente Virtual'}
                     </span>
                   </div>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
-                <a 
-                  href={`https://wa.me/${numeroWhatsApp}?text=Oi%20Nutri!%20Estou%20com%20uma%20dúvida%20aqui%20no%20app.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors group"
-                  title="Falar com a Nutricionista"
-                >
-                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">WhatsApp</span>
-                </a>
+                {/* Se for Admin, ocultamos o botão do WhatsApp pois ela não vai falar com ela mesma */}
+                {!adminContext && (
+                  <a 
+                    href={`https://wa.me/${numeroWhatsApp}?text=Oi%20Nutri!%20Estou%20com%20uma%20dúvida%20aqui%20no%20app.`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors group"
+                    title="Falar com a Nutricionista"
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                    </svg>
+                    <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">WhatsApp</span>
+                  </a>
+                )}
 
                 <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors shrink-0">
                   <X size={18} />
@@ -277,9 +311,13 @@ export default function ChatAssistant() {
                     />
                   </div>
                   <div>
-                    <p className="font-bold text-stone-800 text-sm">Olá!</p>
+                    <p className="font-bold text-stone-800 text-sm">
+                      {adminContext ? 'Olá, Vanusa!' : 'Olá!'}
+                    </p>
                     <p className="text-stone-500 text-xs mt-1 leading-relaxed">
-                      Sou a <strong className="text-green-600">Nutri Van</strong>, sua assistente virtual. Posso te ajudar com dúvidas rápidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação. Como posso ajudar hoje?
+                      {adminContext 
+                        ? 'Estou conectada aos dados dos seus pacientes e leads ativos. Você pode me pedir resumos, perguntar quem está com dieta pendente, ou pedir que eu rascunhe mensagens para enviar a eles. Como posso ajudar?'
+                        : 'Sou a Nutri Van, sua assistente virtual. Posso te ajudar com dúvidas rápidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação. Como posso ajudar hoje?'}
                     </p>
                   </div>
                 </div>
@@ -308,11 +346,10 @@ export default function ChatAssistant() {
             </div>
 
             {/* ========================================= */}
-            {/* ÁREA DE INPUT INTEGRADA COM IMAGEM        */}
+            {/* ÁREA DE INPUT                             */}
             {/* ========================================= */}
             <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0">
               
-              {/* Preview da Imagem Selecionada */}
               {selectedImage && (
                 <div className="relative mb-3 inline-block animate-in fade-in zoom-in duration-200">
                   <img 
@@ -331,17 +368,15 @@ export default function ChatAssistant() {
 
               <div className="flex gap-2 bg-stone-100 p-1 rounded-[1.5rem] border border-stone-200 focus-within:border-stone-400 transition-all shadow-inner items-center">
                 
-                {/* Botão Anexar Imagem */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="p-3 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-[1.2rem] transition-all shrink-0 ml-1"
                   disabled={isLoading}
-                  title="Enviar foto do prato"
+                  title="Enviar foto"
                 >
                   <ImagePlus size={20} />
                 </button>
                 
-                {/* Input Invisível para o Arquivo */}
                 <input
                   type="file"
                   accept="image/*"
@@ -354,12 +389,11 @@ export default function ChatAssistant() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="Ex: O que substitui o frango?"
+                  placeholder={adminContext ? "Pergunte sobre seus pacientes..." : "Ex: O que substitui o frango?"}
                   className="flex-1 bg-transparent py-3 pr-2 text-sm outline-none text-stone-700 w-full"
                   disabled={isLoading}
                 />
 
-                {/* Botão Enviar */}
                 <button 
                   onClick={handleSend} 
                   disabled={isLoading || (!input.trim() && !selectedImage)} 

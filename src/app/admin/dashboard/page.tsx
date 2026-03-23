@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder'; 
+import ChatAssistant from '@/components/ChatAssistant'; 
 import Link from 'next/link';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
@@ -34,6 +35,7 @@ interface Patient {
   isLate?: boolean;
   daysSinceLast?: number;
   isNew?: boolean;
+  todayLog?: { water_ml: number; mood: string } | null; // 🔥 NOVO: Dados de hoje
 }
 
 interface Lead {
@@ -103,20 +105,17 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]); 
   const [loading, setLoading] = useState(true);
   
-  // Filtros e Abas
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [lastSeenNewPatientTime, setLastSeenNewPatientTime] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'pacientes' | 'leads' | 'agenda' | 'financeiro'>('pacientes');
   
-  // Edição e Modais
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   const [evalModalOpen, setEvalModalOpen] = useState<{isOpen: boolean, data: any, name: string}>({ isOpen: false, data: null, name: '' });
   const [dietModalOpen, setDietModalOpen] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
   
-  // Configurações do Sistema
   const [premiumPrice, setPremiumPrice] = useState('297.00');
   const [mealPlanPrice, setMealPlanPrice] = useState('147.00');
   const [consultationPrice, setConsultationPrice] = useState('197.00');
@@ -124,11 +123,9 @@ export default function AdminDashboard() {
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // 🔥 NOVOS ESTADOS: USO DE IA
   const [usageStats, setUsageStats] = useState<Record<string, number>>({});
   const [todayTotalMessages, setTodayTotalMessages] = useState(0);
 
-  // Formulário de Edição Rápida
   const [editForm, setEditForm] = useState({ 
     data_nascimento: '', 
     sexo: '', 
@@ -175,6 +172,10 @@ export default function AdminDashboard() {
       const { data: evals } = await supabase.from('evaluations').select('user_id, answers');
       const { data: checkins } = await supabase.from('checkins').select('user_id, created_at').order('created_at', { ascending: false });
       
+      // 🔥 NOVO: Busca logs de HOJE para saber a água e humor de todos os pacientes
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      const { data: logs } = await supabase.from('daily_logs').select('user_id, water_ml, mood').eq('date', todayStr);
+      
       const combined = profiles?.map(profile => {
         const userCheckins = checkins?.filter(c => c.user_id === profile.id);
         const lastCheckin = userCheckins && userCheckins.length > 0 ? userCheckins[0] : null;
@@ -199,12 +200,15 @@ export default function AdminDashboard() {
           isNew = diffInHours >= 0 && diffInHours <= 24;
         }
 
+        const patientLog = logs?.find(l => l.user_id === profile.id);
+
         return {
           ...profile,
           evaluation: evals?.find(e => e.user_id === profile.id),
           isLate,
           daysSinceLast,
-          isNew
+          isNew,
+          todayLog: patientLog || null // 🔥 Adiciona o log de hoje no objeto
         };
       }) as Patient[];
       
@@ -218,9 +222,6 @@ export default function AdminDashboard() {
 
       setLeads(leadsData as Lead[] || []);
 
-      // ==========================================
-      // 🔥 BUSCAR USO DE IA (NOVO)
-      // ==========================================
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
 
@@ -261,7 +262,6 @@ export default function AdminDashboard() {
 
   const filteredPatients = useMemo(() => {
     return patients.filter(p => {
-      // CORREÇÃO TYPESCRIPT: Forçando conversão estrita para Booleano
       const nameMatch = p.full_name ? p.full_name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
       const isDietReady = Boolean(p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0);
       
@@ -284,7 +284,6 @@ export default function AdminDashboard() {
   // =========================================================================
   const updateProfile = async (id: string) => {
     const updateData = {
-      // Evita strings vazias em colunas DATE/TEXT do PostgreSQL enviando null explicitamente
       data_nascimento: editForm.data_nascimento?.trim() ? editForm.data_nascimento : null,
       sexo: editForm.sexo?.trim() ? editForm.sexo : null,
       tipo_perfil: editForm.tipo_perfil,
@@ -299,7 +298,6 @@ export default function AdminDashboard() {
       toast.success("Perfil do paciente atualizado com sucesso!");
     } else {
       toast.error("Falha ao atualizar o perfil. Tente novamente.");
-      // Transforma o erro em JSON legível caso seja devolvido um objeto opaco
       console.error("Erro Supabase:", JSON.stringify(error, null, 2), error);
     }
   };
@@ -356,9 +354,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // =========================================================================
-  // GERAÇÃO DE PDF PAGINADO USANDO jsPDF
-  // =========================================================================
   const handleGeneratePDF = async (patient: Patient) => {
     if (!patient.meal_plan || patient.meal_plan.length === 0) {
       toast.warning("A dieta deste paciente está vazia. Adicione refeições antes de gerar o PDF.");
@@ -515,6 +510,13 @@ export default function AdminDashboard() {
     }
   };
 
+  const adminContext = useMemo(() => ({
+    patients,
+    leads,
+    usageStats,
+    todayTotalMessages
+  }), [patients, leads, usageStats, todayTotalMessages]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50">
       <div className="flex flex-col items-center gap-4">
@@ -627,7 +629,6 @@ export default function AdminDashboard() {
           ========================================================================= */}
       {activeTab === 'pacientes' && (
         <>
-          {/* 🔥 NOVO BLOCO: RESUMO DE USO DE IA (TOPO DO DASHBOARD) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-in-up">
             <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
               <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1">
@@ -669,8 +670,6 @@ export default function AdminDashboard() {
             ) : (
               filteredPatients.map((p) => {
                 const isDietReady = Boolean(p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0);
-                
-                // Variáveis para o uso de IA
                 const usage = usageStats[p.id] || 0;
                 const remaining = Math.max(0, 25 - usage);
                 const isHeavyUser = usage >= 20;
@@ -781,7 +780,6 @@ export default function AdminDashboard() {
                           </div>
                         )}
 
-                        {/* 🔥 NOVO BLOCO: USO DE IA DO PACIENTE */}
                         <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-6">
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">
@@ -1011,7 +1009,6 @@ export default function AdminDashboard() {
             </div>
 
             <div className="space-y-10 mb-10">
-              {/* Preços */}
               <section>
                 <h3 className="text-sm font-black text-stone-400 uppercase tracking-[0.15em] mb-6 flex items-center gap-2">
                   <DollarSign size={16} /> Preços de Checkout
@@ -1075,7 +1072,6 @@ export default function AdminDashboard() {
                 </div>
               </section>
 
-              {/* Integrações */}
               <section>
                 <h3 className="text-sm font-black text-stone-400 uppercase tracking-[0.15em] mb-6 flex items-center gap-2">
                   <Link2 size={16} /> Integrações Externas
@@ -1113,7 +1109,7 @@ export default function AdminDashboard() {
       )}
 
       {/* =========================================================================
-          MODAL 1: VISUALIZAR AVALIAÇÃO INICIAL
+          MODAIS E CHATBOT
           ========================================================================= */}
       {evalModalOpen.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/70 backdrop-blur-sm p-4 animate-fade-in">
@@ -1149,9 +1145,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 2: CONSTRUTOR DE DIETA
-          ========================================================================= */}
       {dietModalOpen.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-4 md:p-8 animate-fade-in overflow-y-auto">
           <div className="w-full max-w-4xl relative my-auto animate-fade-in-up">
@@ -1165,7 +1158,6 @@ export default function AdminDashboard() {
             >
               <X size={24} />
             </button>
-            
             <DietBuilder 
               patientId={dietModalOpen.id} 
               patientName={dietModalOpen.name} 
@@ -1178,15 +1170,14 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 3: INSERÇÃO DE DADOS CLÍNICOS
-          ========================================================================= */}
       <ClinicalDataModal 
         isOpen={!!selectedPatient} 
         onClose={() => setSelectedPatient(null)} 
         patientId={selectedPatient?.id || ''} 
         patientName={selectedPatient?.name || ''} 
       />
+
+      <ChatAssistant adminContext={adminContext} />
 
     </main>
   );
