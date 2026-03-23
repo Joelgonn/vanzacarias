@@ -124,6 +124,10 @@ export default function AdminDashboard() {
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // 🔥 NOVOS ESTADOS: USO DE IA
+  const [usageStats, setUsageStats] = useState<Record<string, number>>({});
+  const [todayTotalMessages, setTodayTotalMessages] = useState(0);
+
   // Formulário de Edição Rápida
   const [editForm, setEditForm] = useState({ 
     data_nascimento: '', 
@@ -213,6 +217,30 @@ export default function AdminDashboard() {
         .order('updated_at', { ascending: false });
 
       setLeads(leadsData as Lead[] || []);
+
+      // ==========================================
+      // 🔥 BUSCAR USO DE IA (NOVO)
+      // ==========================================
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const { data: aiUsage } = await supabase
+        .from('ai_messages')
+        .select('user_id, created_at')
+        .gte('created_at', startOfDay.toISOString());
+
+      const usageMap: Record<string, number> = {};
+      let total = 0;
+
+      aiUsage?.forEach((msg) => {
+        if (msg.user_id) {
+          usageMap[msg.user_id] = (usageMap[msg.user_id] || 0) + 1;
+        }
+        total++;
+      });
+
+      setUsageStats(usageMap);
+      setTodayTotalMessages(total);
 
     } catch (error) {
       console.error("Erro ao carregar dados do admin:", error);
@@ -598,184 +626,255 @@ export default function AdminDashboard() {
           ABA 1: MEUS PACIENTES
           ========================================================================= */}
       {activeTab === 'pacientes' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
-          {filteredPatients.length === 0 ? (
-            <div className="col-span-full bg-white p-12 rounded-[2.5rem] shadow-sm border border-stone-100 flex flex-col items-center justify-center text-center">
-              <Users size={48} className="text-stone-300 mb-4" />
-              <h3 className="text-xl font-bold text-stone-800 mb-2">Nenhum paciente encontrado</h3>
-              <p className="text-stone-500 max-w-md">Verifique os filtros aplicados ou a busca realizada. Caso seja um paciente novo, ele aparecerá aqui assim que se cadastrar no App.</p>
+        <>
+          {/* 🔥 NOVO BLOCO: RESUMO DE USO DE IA (TOPO DO DASHBOARD) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-in-up">
+            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
+              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1">
+                <MessageCircle size={14} className="text-nutri-800" /> Mensagens Hoje
+              </p>
+              <p className="text-3xl font-extrabold text-nutri-900">
+                {todayTotalMessages}
+              </p>
             </div>
-          ) : (
-            filteredPatients.map((p) => {
-              const isDietReady = Boolean(p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0);
 
-              return (
-              <div key={p.id} className={`bg-white p-6 md:p-8 rounded-[2rem] shadow-sm hover:shadow-md border flex flex-col justify-between transition-all duration-300 ${p.isNew ? 'border-nutri-300 ring-2 ring-nutri-50' : p.isLate ? 'border-amber-200 ring-2 ring-amber-50' : isDietReady ? 'border-green-100/50 bg-green-50/5' : 'border-stone-100'}`}>
+            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
+              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1">
+                <Users size={14} className="text-nutri-800" /> Pacientes Ativos no Chat
+              </p>
+              <p className="text-3xl font-extrabold text-nutri-900">
+                {Object.keys(usageStats).length}
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
+              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1">
+                <Activity size={14} className="text-nutri-800" /> Média por Paciente
+              </p>
+              <p className="text-3xl font-extrabold text-nutri-900">
+                {Object.keys(usageStats).length > 0
+                  ? Math.round(todayTotalMessages / Object.keys(usageStats).length)
+                  : 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+            {filteredPatients.length === 0 ? (
+              <div className="col-span-full bg-white p-12 rounded-[2.5rem] shadow-sm border border-stone-100 flex flex-col items-center justify-center text-center">
+                <Users size={48} className="text-stone-300 mb-4" />
+                <h3 className="text-xl font-bold text-stone-800 mb-2">Nenhum paciente encontrado</h3>
+                <p className="text-stone-500 max-w-md">Verifique os filtros aplicados ou a busca realizada. Caso seja um paciente novo, ele aparecerá aqui assim que se cadastrar no App.</p>
+              </div>
+            ) : (
+              filteredPatients.map((p) => {
+                const isDietReady = Boolean(p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0);
                 
-                {editingId === p.id ? (
-                  <div className="space-y-4 animate-fade-in">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Nascimento</label>
-                        <input type="date" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800" defaultValue={p.data_nascimento} onChange={e => setEditForm({...editForm, data_nascimento: e.target.value})} />
+                // Variáveis para o uso de IA
+                const usage = usageStats[p.id] || 0;
+                const remaining = Math.max(0, 25 - usage);
+                const isHeavyUser = usage >= 20;
+                const usagePercent = Math.min(100, (usage / 25) * 100);
+
+                return (
+                <div key={p.id} className={`bg-white p-6 md:p-8 rounded-[2rem] shadow-sm hover:shadow-md border flex flex-col justify-between transition-all duration-300 ${p.isNew ? 'border-nutri-300 ring-2 ring-nutri-50' : p.isLate ? 'border-amber-200 ring-2 ring-amber-50' : isDietReady ? 'border-green-100/50 bg-green-50/5' : 'border-stone-100'}`}>
+                  
+                  {editingId === p.id ? (
+                    <div className="space-y-4 animate-fade-in">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Nascimento</label>
+                          <input type="date" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800" defaultValue={p.data_nascimento} onChange={e => setEditForm({...editForm, data_nascimento: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Meta (kg)</label>
+                          <input type="number" step="0.1" placeholder="0.0" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800" defaultValue={p.meta_peso || ''} onChange={e => setEditForm({...editForm, meta_peso: e.target.value})} />
+                        </div>
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Meta (kg)</label>
-                        <input type="number" step="0.1" placeholder="0.0" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800" defaultValue={p.meta_peso || ''} onChange={e => setEditForm({...editForm, meta_peso: e.target.value})} />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Perfil Clínico</label>
-                      <select className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800 bg-white" defaultValue={p.tipo_perfil} onChange={e => setEditForm({...editForm, tipo_perfil: e.target.value})}>
-                        <option value="adulto">Adulto</option>
-                        <option value="atleta">Atleta</option>
-                        <option value="crianca">Criança</option>
-                        <option value="idoso">Idoso</option>
-                      </select>
-                    </div>
-                    
-                    <div className="space-y-3 pt-4 border-t border-stone-100">
-                      <div>
-                        <label className="text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center gap-1 mb-1"><Star size={12}/> Acesso no App</label>
-                        <select className="w-full p-3 border border-green-200 bg-green-50 rounded-xl font-bold text-sm text-green-900 outline-none focus:ring-2 focus:ring-green-500" defaultValue={p.account_type || 'free'} onChange={e => setEditForm({...editForm, account_type: e.target.value})}>
-                          <option value="free">Básico (Apenas Check-in)</option>
-                          <option value="premium">Premium (Acesso Total Liberado)</option>
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Perfil Clínico</label>
+                        <select className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1 outline-none focus:border-nutri-800 bg-white" defaultValue={p.tipo_perfil} onChange={e => setEditForm({...editForm, tipo_perfil: e.target.value})}>
+                          <option value="adulto">Adulto</option>
+                          <option value="atleta">Atleta</option>
+                          <option value="crianca">Criança</option>
+                          <option value="idoso">Idoso</option>
                         </select>
                       </div>
-                    </div>
+                      
+                      <div className="space-y-3 pt-4 border-t border-stone-100">
+                        <div>
+                          <label className="text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center gap-1 mb-1"><Star size={12}/> Acesso no App</label>
+                          <select className="w-full p-3 border border-green-200 bg-green-50 rounded-xl font-bold text-sm text-green-900 outline-none focus:ring-2 focus:ring-green-500" defaultValue={p.account_type || 'free'} onChange={e => setEditForm({...editForm, account_type: e.target.value})}>
+                            <option value="free">Básico (Apenas Check-in)</option>
+                            <option value="premium">Premium (Acesso Total Liberado)</option>
+                          </select>
+                        </div>
+                      </div>
 
-                    <div className="flex gap-3 pt-4 border-t border-stone-100 mt-2">
-                      <button onClick={() => updateProfile(p.id)} title="Salvar Alterações" className="bg-nutri-900 text-white px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold hover:bg-nutri-800 active:scale-95 transition-all shadow-sm"><Save size={18}/> Salvar</button>
-                      <button onClick={() => setEditingId(null)} title="Cancelar Edição" className="bg-stone-100 text-stone-600 px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold hover:bg-stone-200 active:scale-95 transition-all"><X size={18}/> Cancelar</button>
+                      <div className="flex gap-3 pt-4 border-t border-stone-100 mt-2">
+                        <button onClick={() => updateProfile(p.id)} title="Salvar Alterações" className="bg-nutri-900 text-white px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold hover:bg-nutri-800 active:scale-95 transition-all shadow-sm"><Save size={18}/> Salvar</button>
+                        <button onClick={() => setEditingId(null)} title="Cancelar Edição" className="bg-stone-100 text-stone-600 px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold hover:bg-stone-200 active:scale-95 transition-all"><X size={18}/> Cancelar</button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col h-full animate-fade-in">
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="flex flex-col">
-                          <Link href={`/admin/paciente/${p.id}/historico`} title="Acessar Prontuário Completo" className="group font-extrabold text-lg flex items-center gap-2 text-stone-900 hover:text-nutri-800 transition-colors">
-                            <Users size={18} className="text-nutri-800" /> 
-                            {p.full_name || 'Sem nome'}
-                            
-                            <span title={p.account_type === 'premium' ? "Conta Premium Ativa" : "Conta Básica"}>
-                              <Star size={14} className={p.account_type === 'premium' ? "text-amber-500 fill-amber-500" : "text-stone-300"} />
+                  ) : (
+                    <div className="flex flex-col h-full animate-fade-in">
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-6">
+                          <div className="flex flex-col">
+                            <Link href={`/admin/paciente/${p.id}/historico`} title="Acessar Prontuário Completo" className="group font-extrabold text-lg flex items-center gap-2 text-stone-900 hover:text-nutri-800 transition-colors">
+                              <Users size={18} className="text-nutri-800" /> 
+                              {p.full_name || 'Sem nome'}
+                              
+                              <span title={p.account_type === 'premium' ? "Conta Premium Ativa" : "Conta Básica"}>
+                                <Star size={14} className={p.account_type === 'premium' ? "text-amber-500 fill-amber-500" : "text-stone-300"} />
+                              </span>
+
+                              <TrendingUp size={14} className="opacity-0 group-hover:opacity-100 transition-opacity -ml-1 text-stone-400" />
+                            </Link>
+                            {p.isNew ? (
+                              <span className="flex items-center gap-1.5 text-[10px] text-nutri-700 font-bold uppercase tracking-wider mt-1.5">
+                                <Bell size={12} fill="currentColor" className="animate-pulse" /> Novo Paciente
+                              </span>
+                            ) : p.isLate && (
+                              <span className="flex items-center gap-1.5 text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1.5">
+                                <AlertCircle size={12} /> Check-in Atrasado
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-3">
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 shadow-sm ${isDietReady ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
+                              {isDietReady ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                              {isDietReady ? 'Dieta Pronta' : 'Dieta Pendente'}
                             </span>
 
-                            <TrendingUp size={14} className="opacity-0 group-hover:opacity-100 transition-opacity -ml-1 text-stone-400" />
-                          </Link>
-                          {p.isNew ? (
-                            <span className="flex items-center gap-1.5 text-[10px] text-nutri-700 font-bold uppercase tracking-wider mt-1.5">
-                              <Bell size={12} fill="currentColor" className="animate-pulse" /> Novo Paciente
+                            <button onClick={() => { 
+                              setEditingId(p.id); 
+                              setEditForm({ 
+                                data_nascimento: p.data_nascimento || '', 
+                                sexo: p.sexo || '', 
+                                tipo_perfil: p.tipo_perfil || 'adulto', 
+                                meta_peso: p.meta_peso ? p.meta_peso.toString() : '', 
+                                account_type: p.account_type || 'free'
+                              }); 
+                            }} title="Editar Perfil do Paciente" className="p-2 hover:bg-stone-100 rounded-lg transition-colors text-stone-400 hover:text-nutri-800">
+                              <Edit2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-6 bg-stone-50/80 p-4 rounded-2xl border border-stone-100 text-center">
+                          <div><p className="text-[10px] text-stone-400 uppercase font-black tracking-widest text-center mb-1">Perfil</p><p className="text-sm font-bold text-stone-700 capitalize">{p.tipo_perfil || 'Não def.'}</p></div>
+                          <div><p className="text-[10px] text-stone-400 uppercase font-black tracking-widest text-center mb-1">Meta de Peso</p><p className="text-sm font-bold text-stone-700">{p.meta_peso ? `${p.meta_peso} kg` : '---'}</p></div>
+                        </div>
+
+                        {p.evaluation ? (
+                          <button onClick={() => setEvalModalOpen({ isOpen: true, data: p.evaluation?.answers, name: p.full_name })} title="Ver Respostas da Avaliação Inicial" className="w-full flex items-center justify-between bg-nutri-50/50 hover:bg-nutri-50 transition-colors p-4 rounded-2xl border border-nutri-100/50 mb-4 group text-left">
+                            <div className="flex-1 pr-4">
+                              <p className="font-bold text-nutri-900 mb-1.5 text-[10px] uppercase tracking-widest flex items-center gap-1.5"><Eye size={14}/> Avaliação Respondida</p>
+                              <p className="line-clamp-1 text-xs text-stone-600 italic leading-relaxed">"{Object.values(p.evaluation.answers)[0] as string}"</p>
+                            </div>
+                            <ChevronRight size={16} className="text-nutri-800 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ) : (
+                          <div className="text-xs text-stone-400 font-medium italic mb-4 bg-stone-50 p-4 rounded-2xl text-center border border-dashed border-stone-200 flex items-center justify-center gap-2">
+                            <FileText size={14}/> Sem avaliação cadastrada.
+                          </div>
+                        )}
+
+                        {/* 🔥 NOVO BLOCO: USO DE IA DO PACIENTE */}
+                        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-6">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">
+                              Uso do Chat Hoje
                             </span>
-                          ) : p.isLate && (
-                            <span className="flex items-center gap-1.5 text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1.5">
-                              <AlertCircle size={12} /> Check-in Atrasado
+                            {isHeavyUser && (
+                              <span className="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-0.5 rounded-md border border-red-100">
+                                Alto uso ⚠️
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 flex justify-between items-end">
+                            <span className="text-xl font-extrabold text-nutri-900 leading-none">
+                              {usage} <span className="text-xs text-stone-400 font-medium">msgs</span>
                             </span>
+                            <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">
+                              restante: {remaining}
+                            </span>
+                          </div>
+
+                          <div className="w-full bg-stone-200 h-1.5 rounded-full mt-3 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${isHeavyUser ? 'bg-red-500' : 'bg-nutri-800'}`}
+                              style={{ width: `${usagePercent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                      </div>
+
+                      <div className="pt-5 border-t border-stone-100 flex items-center justify-between flex-wrap gap-3 mt-auto">
+                        
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <button 
+                            onClick={() => setDietModalOpen({ isOpen: true, id: p.id, name: p.full_name })}
+                            title={isDietReady ? "Editar Dieta do Paciente" : "Montar Nova Dieta"}
+                            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                              isDietReady 
+                                ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' 
+                                : 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 hover:bg-nutri-800 hover:-translate-y-0.5'
+                            }`}
+                          >
+                            <Utensils size={16} /> {isDietReady ? 'Editar Dieta' : 'Montar Dieta'}
+                          </button>
+
+                          {isDietReady && (
+                            <button 
+                              onClick={() => handleGeneratePDF(p)}
+                              title="Gerar e Imprimir Dieta em PDF"
+                              className="px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-700 shadow-lg shadow-rose-600/20 transition-all active:scale-95 hover:-translate-y-0.5"
+                            >
+                              <FileText size={16} /> PDF
+                            </button>
                           )}
                         </div>
-                        <div className="flex flex-col items-end gap-3">
-                          <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 shadow-sm ${isDietReady ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
-                            {isDietReady ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                            {isDietReady ? 'Dieta Pronta' : 'Dieta Pendente'}
-                          </span>
 
-                          <button onClick={() => { 
-                            setEditingId(p.id); 
-                            setEditForm({ 
-                              data_nascimento: p.data_nascimento || '', 
-                              sexo: p.sexo || '', 
-                              tipo_perfil: p.tipo_perfil || 'adulto', 
-                              meta_peso: p.meta_peso ? p.meta_peso.toString() : '', 
-                              account_type: p.account_type || 'free'
-                            }); 
-                          }} title="Editar Perfil do Paciente" className="p-2 hover:bg-stone-100 rounded-lg transition-colors text-stone-400 hover:text-nutri-800">
-                            <Edit2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 mb-6 bg-stone-50/80 p-4 rounded-2xl border border-stone-100 text-center">
-                        <div><p className="text-[10px] text-stone-400 uppercase font-black tracking-widest text-center mb-1">Perfil</p><p className="text-sm font-bold text-stone-700 capitalize">{p.tipo_perfil || 'Não def.'}</p></div>
-                        <div><p className="text-[10px] text-stone-400 uppercase font-black tracking-widest text-center mb-1">Meta de Peso</p><p className="text-sm font-bold text-stone-700">{p.meta_peso ? `${p.meta_peso} kg` : '---'}</p></div>
-                      </div>
-
-                      {p.evaluation ? (
-                        <button onClick={() => setEvalModalOpen({ isOpen: true, data: p.evaluation?.answers, name: p.full_name })} title="Ver Respostas da Avaliação Inicial" className="w-full flex items-center justify-between bg-nutri-50/50 hover:bg-nutri-50 transition-colors p-4 rounded-2xl border border-nutri-100/50 mb-6 group text-left">
-                          <div className="flex-1 pr-4">
-                            <p className="font-bold text-nutri-900 mb-1.5 text-[10px] uppercase tracking-widest flex items-center gap-1.5"><Eye size={14}/> Avaliação Respondida</p>
-                            <p className="line-clamp-1 text-xs text-stone-600 italic leading-relaxed">"{Object.values(p.evaluation.answers)[0] as string}"</p>
-                          </div>
-                          <ChevronRight size={16} className="text-nutri-800 opacity-40 group-hover:opacity-100 transition-opacity" />
-                        </button>
-                      ) : (
-                        <div className="text-xs text-stone-400 font-medium italic mb-6 bg-stone-50 p-4 rounded-2xl text-center border border-dashed border-stone-200 flex items-center justify-center gap-2">
-                          <FileText size={14}/> Sem avaliação cadastrada.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-5 border-t border-stone-100 flex items-center justify-between flex-wrap gap-3 mt-auto">
-                      
-                      <div className="flex gap-2 w-full sm:w-auto">
-                        <button 
-                          onClick={() => setDietModalOpen({ isOpen: true, id: p.id, name: p.full_name })}
-                          title={isDietReady ? "Editar Dieta do Paciente" : "Montar Nova Dieta"}
-                          className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                            isDietReady 
-                              ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' 
-                              : 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 hover:bg-nutri-800 hover:-translate-y-0.5'
-                          }`}
-                        >
-                          <Utensils size={16} /> {isDietReady ? 'Editar Dieta' : 'Montar Dieta'}
-                        </button>
-
-                        {isDietReady && (
-                          <button 
-                            onClick={() => handleGeneratePDF(p)}
-                            title="Gerar e Imprimir Dieta em PDF"
-                            className="px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-700 shadow-lg shadow-rose-600/20 transition-all active:scale-95 hover:-translate-y-0.5"
+                        <div className="flex gap-2 w-full sm:w-auto justify-end mt-2 sm:mt-0">
+                          <a 
+                            href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá%20${p.full_name?.split(' ')[0]},%20aqui%20é%20a%20Nutri%20Vanusa!%20Notei%20que%20você%20ainda%20não%20enviou%20seu%20check-in%20dessa%20semana.%20Como%20estão%20as%20coisas?`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            title="Cobrar Check-in via WhatsApp"
+                            className={`p-2.5 rounded-xl transition-all flex items-center justify-center border ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 hover:scale-105' : 'bg-stone-50 text-stone-400 border-stone-200 hover:bg-stone-100'}`}
                           >
-                            <FileText size={16} /> PDF
+                            <BellRing size={18} />
+                          </a>
+                          <button 
+                            onClick={() => setSelectedPatient({ id: p.id, name: p.full_name })} 
+                            title="Inserir/Ver Dados Clínicos (Medidas e Exames)" 
+                            className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 hover:scale-105 transition-all"
+                          >
+                            <Activity size={18} />
                           </button>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2 w-full sm:w-auto justify-end mt-2 sm:mt-0">
-                        <a 
-                          href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá%20${p.full_name?.split(' ')[0]},%20aqui%20é%20a%20Nutri%20Vanusa!%20Notei%20que%20você%20ainda%20não%20enviou%20seu%20check-in%20dessa%20semana.%20Como%20estão%20as%20coisas?`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          title="Cobrar Check-in via WhatsApp"
-                          className={`p-2.5 rounded-xl transition-all flex items-center justify-center border ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 hover:scale-105' : 'bg-stone-50 text-stone-400 border-stone-200 hover:bg-stone-100'}`}
-                        >
-                          <BellRing size={18} />
-                        </a>
-                        <button 
-                          onClick={() => setSelectedPatient({ id: p.id, name: p.full_name })} 
-                          title="Inserir/Ver Dados Clínicos (Medidas e Exames)" 
-                          className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 hover:scale-105 transition-all"
-                        >
-                          <Activity size={18} />
-                        </button>
-                        <a 
-                          href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá%20${p.full_name?.split(' ')[0]},%20tudo%20bem?`} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          title="Enviar Mensagem no WhatsApp" 
-                          className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 hover:scale-105 transition-all"
-                        >
-                          <MessageCircle size={18} />
-                        </a>
+                          <a 
+                            href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá%20${p.full_name?.split(' ')[0]},%20tudo%20bem?`} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            title="Enviar Mensagem no WhatsApp" 
+                            className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 hover:scale-105 transition-all"
+                          >
+                            <MessageCircle size={18} />
+                          </a>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-              );
-            })
-          )}
-        </div>
+                  )}
+                </div>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
 
       {/* =========================================================================
