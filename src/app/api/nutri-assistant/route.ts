@@ -3,9 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { buildContext } from '@/lib/contextBuilder'
 import { checkRateLimit } from '@/lib/rateLimiter'
-import { getRelevantMemories } from '@/lib/memoryRetriever'
 import { getCachedResponse } from '@/lib/responseCache'
-import { getUserSummary, updateUserSummary } from '@/lib/memorySummary' // 🔥 NOVO IMPORT
+import { getUserSummary, updateUserSummary } from '@/lib/memorySummary'
+import { getSemanticMemories } from '@/lib/semanticSearch'
+import { generateEmbedding } from '@/lib/embeddingService'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +17,7 @@ const supabase = createClient(
 // 🧠 DETECTOR DE COMPLEXIDADE
 // ==========================================
 function isComplexRequest(message: string, hasImage: boolean): boolean {
-  const msg = message?.toLowerCase() || '';
+  const msg = message.toLowerCase();
 
   if (hasImage) return true;
 
@@ -46,10 +47,13 @@ export async function POST(req: Request) {
   try {
     const { userId, message, history, image } = await req.json()
 
+    // 🔥 Proteção e Padronização da Mensagem
+    const safeMessage = message?.trim() || '';
+
     // ==========================================
-    // 🛡️ EARLY RETURN (Proteção Básica)
+    // 🛡️ EARLY RETURN
     // ==========================================
-    if (!message && !image) {
+    if (!safeMessage && !image) {
       return NextResponse.json({ reply: "Por favor, digite uma mensagem ou envie uma foto do seu prato." }, { status: 200 });
     }
 
@@ -63,27 +67,66 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // ⚡ 1. CACHE (Roda Antes de Tudo)
+    // ⚡ 1. CACHE C/ CONSUMO DE LIMITE E SALVAMENTO INTELIGENTE
     // ==========================================
-    if (!image && message) {
-      const cached = await getCachedResponse(userId, message);
+    if (!image && safeMessage) {
+      const cached = await getCachedResponse(userId, safeMessage);
 
       if (cached) {
         console.log(`[Cache Hit] Resposta instantânea via cache para o usuário ${userId}`);
         
         const currentRate = await checkRateLimit(userId);
+        
+        // Anti-Spam
+        if (!currentRate.allowed) {
+          return NextResponse.json({
+            reply: `Você atingiu o limite diário de ${currentRate.limit} mensagens.\n\nVolte amanhã ou fale com a nutricionista pelo WhatsApp 💬`,
+            limitReached: true,
+            remaining: 0
+          }, { status: 200 });
+        }
+
+        // Salvar a interação de cache no banco
+        const { data: insertedMsg, error: insertError } = await supabase
+          .from('ai_messages')
+          .insert({
+            user_id: userId,
+            question: safeMessage,
+            answer: cached
+          })
+          .select('id')
+          .single();
+
+        if (!insertError && insertedMsg) {
+          // 🔥 Ajuste de Ouro: Embedding Estratégico
+          // Só gasta processamento e IA se a mensagem tiver substância (> 10 caracteres)
+          if (safeMessage.length > 10) {
+            (async () => {
+              try {
+                const embeddingVector = await generateEmbedding(safeMessage);
+                await supabase
+                  .from('ai_messages')
+                  .update({ embedding: embeddingVector })
+                  .eq('id', insertedMsg.id);
+                console.log(`[Background] Embedding salvo p/ Cache (Msg ID: ${insertedMsg.id})`);
+              } catch (bgError) {
+                console.error('[Background Cache Error]', bgError);
+              }
+            })();
+          }
+        }
 
         return NextResponse.json({
           reply: cached,
           cached: true,
-          remaining: currentRate.remaining, 
+          remaining: Math.max(currentRate.remaining - 1, 0), // Conta no limite
           limit: currentRate.limit
         }, { status: 200 });
       }
     }
 
     // ==========================================
-    // 🔒 2. RATE LIMIT
+    // 🔒 2. RATE LIMIT (Caso não tenha cache)
     // ==========================================
     const rate = await checkRateLimit(userId);
 
@@ -173,11 +216,11 @@ export async function POST(req: Request) {
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
 
     // ==========================================
-    // 5. CONTEXTO INTELIGENTE + DUPLA MEMÓRIA 🔥
+    // 5. CONTEXTO INTELIGENTE + RAG VETORIAL
     // ==========================================
     
     // Constrói o contexto base
-    const baseContext = buildContext(message || '', {
+    const baseContext = buildContext(safeMessage, {
       nomePaciente,
       objetivoPrincipal,
       metaPeso: profile?.meta_peso ? `${profile.meta_peso}kg` : 'Manutenção',
@@ -193,42 +236,39 @@ export async function POST(req: Request) {
       hasImage: !!image
     });
 
-    // 🧠 5.1 Busca Memória de Longo Prazo (Resumo)
     const summary = await getUserSummary(userId);
 
-    // 🧠 5.2 Busca Memória de Curto Prazo (Últimas interações, apenas se necessário)
-    const msgLower = message?.toLowerCase() || '';
+    const msgLower = safeMessage.toLowerCase();
     const shouldUseMemory =
       !!image ||
-      (message && message.length > 20) ||
+      safeMessage.length > 20 ||
       msgLower.includes('trocar') ||
       msgLower.includes('emagrec') ||
       msgLower.includes('não consegui') ||
       msgLower.includes('nao consegui');
 
-    const memoryContext = shouldUseMemory
-      ? await getRelevantMemories(userId)
+    // 🔥 Aqui assumimos que a SQL Function (match_messages) já tem match_count: 2
+    const semanticMemory = (shouldUseMemory && safeMessage) 
+      ? await getSemanticMemories(userId, safeMessage) 
       : '';
 
-    // Injeta as memórias no contexto final
     const contextoInjetado = `
 ${baseContext}
-
 ${summary ? `RESUMO DO COMPORTAMENTO DO PACIENTE:\n${summary}\n` : ''}
-${memoryContext ? `${memoryContext}` : ''}
+${semanticMemory || ''}
     `.trim();
 
     // ==========================================
     // 6. MODELO HÍBRIDO E LOGGING
     // ==========================================
-    const useComplexModel = isComplexRequest(message || '', !!image);
+    const useComplexModel = isComplexRequest(safeMessage, !!image);
 
     const modelName = useComplexModel
       ? "gemini-2.5-flash"
       : "gemini-2.5-flash-lite";
 
-    // Logging Estratégico Completo
-    console.log(`[AI] Modelo: ${modelName} | Restante: ${rate.remaining} | Usa Resumo: ${!!summary} | Usa Memória: ${!!memoryContext}`);
+    const remainingReal = Math.max(rate.remaining - 1, 0);
+    console.log(`[AI] Modelo: ${modelName} | Restante Real: ${remainingReal} | Usa Resumo: ${!!summary} | Usa Vector RAG: ${!!semanticMemory}`);
 
     const genAI = new GoogleGenerativeAI(geminiKey);
 
@@ -251,7 +291,7 @@ ${memoryContext ? `${memoryContext}` : ''}
 
     if (image) {
       result = await chat.sendMessage([
-        { text: message || "Analise esse prato para mim" },
+        { text: safeMessage || "Analise esse prato para mim" },
         {
           inlineData: {
             mimeType: "image/jpeg",
@@ -260,7 +300,7 @@ ${memoryContext ? `${memoryContext}` : ''}
         }
       ]);
     } else {
-      result = await chat.sendMessage(message);
+      result = await chat.sendMessage(safeMessage);
     }
 
     const reply = result.response.text();
@@ -270,38 +310,56 @@ ${memoryContext ? `${memoryContext}` : ''}
     }
 
     // ==========================================
-    // 8. SALVAR INTERAÇÃO E ATUALIZAR RESUMO 🧠
+    // 8. SALVAR HISTÓRICO E PROCESSAR MEMÓRIA EM BACKGROUND
     // ==========================================
     if (userId) {
-      const questionText = message || 'Enviou uma imagem';
+      const questionText = safeMessage || 'Enviou uma imagem';
       
-      // Salva a mensagem no histórico do banco
-      await supabase.from('ai_messages').insert({
-        user_id: userId,
-        question: questionText,
-        answer: reply
-      });
-
-      // 🔥 ATUALIZA O RESUMO (Background seguro)
-      // Usamos um bloco try/catch isolado para que uma falha na IA de resumo 
-      // não impeça o paciente de receber a resposta na tela.
-      try {
-        await updateUserSummary(userId, {
+      const { data: insertedMsg, error: insertError } = await supabase
+        .from('ai_messages')
+        .insert({
+          user_id: userId,
           question: questionText,
           answer: reply
-        });
-        console.log(`[AI Memory] Resumo atualizado para o usuário ${userId}`);
-      } catch (summaryError) {
-        console.error('[AI Memory Error] Falha ao atualizar resumo:', summaryError);
+        })
+        .select('id')
+        .single();
+
+      if (!insertError && insertedMsg) {
+        
+        // Processamento Pesado em Paralelo (Não bloqueia a resposta ao usuário)
+        (async () => {
+          try {
+            // Atualiza Resumo Estratégico
+            await updateUserSummary(userId, { question: questionText, answer: reply });
+            console.log(`[Background] Resumo atualizado para ${userId}`);
+
+            // 🔥 Ajuste de Ouro: Só gera embedding se tiver contexto útil
+            if (questionText.length > 10) {
+              const embeddingVector = await generateEmbedding(questionText);
+              await supabase
+                .from('ai_messages')
+                .update({ embedding: embeddingVector })
+                .eq('id', insertedMsg.id);
+              console.log(`[Background] Embedding Vector salvo na msg ${insertedMsg.id}`);
+            } else {
+              console.log(`[Background] Embedding pulado (Msg curta: ${insertedMsg.id})`);
+            }
+            
+          } catch (bgError) {
+            console.error('[Background Task Error]', bgError);
+          }
+        })();
+        
       }
     }
 
     // ==========================================
-    // 9. RETORNO FINAL
+    // 9. RETORNO FINAL RÁPIDO ⚡
     // ==========================================
     return NextResponse.json({
       reply,
-      remaining: rate.remaining - 1,
+      remaining: remainingReal, 
       limit: rate.limit
     })
 
