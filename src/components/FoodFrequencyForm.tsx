@@ -12,17 +12,17 @@ import { useRouter } from 'next/navigation';
 interface QFAItem {
   id: string;
   label: string;
-  description?: string; // Novo campo para explicação do alimento
+  description?: string;
 }
 
 interface QFACategory {
   category: string;
-  description?: string; // Novo campo para explicação da categoria
+  description?: string;
   items: QFAItem[];
 }
 
 // =========================================================================
-// DADOS DO QUESTIONÁRIO (QFA) - PADRÃO OURO CLÍNICO (EXPLICATIVO)
+// DADOS DO QUESTIONÁRIO (QFA) - PADRÃO OURO CLÍNICO
 // =========================================================================
 const qfaData: QFACategory[] = [
   {
@@ -157,7 +157,6 @@ export default function FoodFrequencyForm() {
         return;
       }
 
-      // Salva as respostas no banco de dados de forma segura (atualiza se já existir)
       const { error } = await supabase
         .from('qfa_responses')
         .upsert({ 
@@ -170,7 +169,6 @@ export default function FoodFrequencyForm() {
 
       toast.success("Raio-X Alimentar concluído com sucesso!", { id: toastId });
       
-      // Redireciona o paciente de volta ao painel após 2 segundos
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
@@ -187,64 +185,65 @@ export default function FoodFrequencyForm() {
   // RENDERIZAÇÃO
   // =========================================================================
   return (
-    <div className="max-w-4xl mx-auto bg-white p-6 md:p-10 lg:p-12 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.03)] border border-stone-100 relative">
+    <div className="max-w-4xl mx-auto bg-white/70 backdrop-blur-xl p-6 md:p-10 lg:p-12 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative mt-8 mb-24">
       
       {/* CABEÇALHO */}
       <div className="mb-10 text-center md:text-left">
-        <h2 className="text-3xl md:text-4xl font-black text-stone-900 tracking-tight mb-3">
-          Raio-X Alimentar (QFA)
+        <h2 className="text-3xl md:text-[2.5rem] font-bold text-stone-900 tracking-tight mb-3">
+          Raio-X Alimentar
         </h2>
         <p className="text-stone-500 font-medium leading-relaxed max-w-2xl text-sm md:text-base">
-          Para que a Nutri elabore um plano perfeito para o seu metabolismo, indique a <b className="text-nutri-800">frequência real</b> que você consome os alimentos abaixo. Seja o mais honesto possível!
+          Para que o cardápio fique perfeito para você, indique a <b className="text-stone-800">frequência real</b> que você consome os alimentos abaixo. Não existe resposta certa ou errada, seja honesto!
         </p>
       </div>
 
-      {/* BARRA DE PROGRESSO STICKY (Flutua no mobile ao rolar para não perder o contexto) */}
-      <div className="sticky top-20 z-40 bg-white/90 backdrop-blur-md pt-2 pb-6 md:static md:bg-transparent md:pt-0 border-b border-stone-100 mb-10">
-        <div className="bg-stone-50 p-5 rounded-3xl border border-stone-200/60 shadow-inner flex flex-col md:flex-row md:items-center gap-5">
+      {/* BARRA DE PROGRESSO STICKY PREMIUM */}
+      <div className="sticky top-20 z-40 bg-transparent pt-2 pb-6 mb-8 transition-all">
+        <div className="bg-white/90 backdrop-blur-xl p-5 md:px-6 rounded-3xl border border-stone-200/50 shadow-[0_8px_30px_rgba(0,0,0,0.06)] flex flex-col md:flex-row md:items-center gap-5">
           <div className="flex-1">
-            <div className="flex justify-between items-end mb-3">
+            <div className="flex justify-between items-end mb-2.5">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Progresso da Avaliação</span>
-              <span className={`text-lg font-black transition-colors ${isComplete ? 'text-emerald-500' : 'text-nutri-800'}`}>
+              <span className={`text-xl font-bold tracking-tight transition-colors ${isComplete ? 'text-emerald-500' : 'text-stone-800'}`}>
                 {progress}%
               </span>
             </div>
-            <div className="w-full h-2.5 bg-stone-200 rounded-full overflow-hidden shadow-inner">
+            <div className="w-full h-2 bg-stone-100/80 rounded-full overflow-hidden shadow-inner">
               <div 
-                className={`h-full transition-all duration-700 ease-[0.22,1,0.36,1] ${isComplete ? 'bg-emerald-500' : 'bg-gradient-to-r from-nutri-600 to-nutri-800'}`} 
+                className={`h-full transition-all duration-700 ease-out ${isComplete ? 'bg-emerald-500' : 'bg-gradient-to-r from-stone-400 to-stone-800'}`} 
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
           </div>
           {isComplete && (
-            <div className="hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100 animate-fade-in">
-              <CheckCircle2 size={16} /> Concluído
+            <div className="hidden md:flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100/50 animate-fade-in">
+              <CheckCircle2 size={16} /> Finalizado
             </div>
           )}
         </div>
       </div>
 
       {/* AVISO DIDÁTICO */}
-      <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-start gap-3 mb-8">
-        <div className="bg-amber-100 text-amber-600 p-2 rounded-xl shrink-0"><Info size={16} /></div>
-        <p className="text-xs font-medium text-amber-800 leading-relaxed">
-          Se você consome um alimento apenas aos finais de semana, a opção correta é <b>"2-3x Sem"</b>. Se consome todos os dias de segunda a sexta, marque <b>"4-5x Sem"</b>.
+      <div className="bg-amber-50/50 border border-amber-100/50 p-5 rounded-2xl flex items-start gap-4 mb-10 shadow-sm backdrop-blur-sm">
+        <div className="bg-amber-100/50 text-amber-600 p-2.5 rounded-xl shrink-0"><Info size={18} /></div>
+        <p className="text-xs md:text-sm font-medium text-amber-800/80 leading-relaxed mt-0.5">
+          <strong className="text-amber-900 block mb-1">Como preencher:</strong>
+          Se consome apenas aos finais de semana, marque <b>"2-3x Sem"</b>. Se consome todos os dias de segunda a sexta, marque <b>"4-5x Sem"</b>.
         </p>
       </div>
 
-      {/* LISTA DE PERGUNTAS DINÂMICA */}
-      <div className="space-y-14">
+      {/* LISTA DE PERGUNTAS DINÂMICA (Estilo Cards Premium) */}
+      <div className="space-y-16">
         {qfaData.map((category, catIndex) => (
           <div key={catIndex} className="animate-fade-in-up" style={{ animationDelay: `${catIndex * 100}ms` }}>
             
             {/* Título da Categoria com Descrição */}
-            <div className="mb-6">
-              <h3 className="text-sm font-black text-stone-600 uppercase tracking-[0.15em] mb-2 flex items-center gap-3">
-                <span className="bg-nutri-50 border border-nutri-100 w-8 h-8 rounded-full flex items-center justify-center text-[11px] text-nutri-800 shadow-sm">{catIndex + 1}</span>
+            <div className="mb-6 px-2">
+              <h3 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-3">
+                <span className="bg-white border border-stone-200/60 shadow-sm w-7 h-7 rounded-full flex items-center justify-center text-[10px] text-stone-500">{catIndex + 1}</span>
                 {category.category}
               </h3>
               {category.description && (
-                <p className="text-xs font-medium text-stone-400 ml-11">
+                <p className="text-xs font-medium text-stone-500 ml-10">
                   {category.description}
                 </p>
               )}
@@ -257,45 +256,46 @@ export default function FoodFrequencyForm() {
                 return (
                   <div 
                     key={item.id} 
-                    className={`bg-stone-50/50 p-5 md:p-6 rounded-3xl border transition-all duration-300 flex flex-col xl:flex-row xl:items-center justify-between gap-5 group
-                      ${hasAnswer ? 'border-nutri-200/50 shadow-sm bg-white' : 'border-stone-100 hover:border-stone-300'}
+                    className={`bg-white/50 p-5 md:p-6 rounded-[1.5rem] border transition-all duration-300 flex flex-col xl:flex-row xl:items-center justify-between gap-6 group backdrop-blur-sm
+                      ${hasAnswer ? 'border-emerald-100/50 shadow-[0_2px_15px_rgba(16,185,129,0.03)] bg-white/80 scale-[0.99]' : 'border-stone-100/80 hover:border-stone-200 hover:shadow-sm'}
                     `}
                   >
                     {/* Bloco de Texto do Item (Label + Descrição Sutil) */}
-                    <div className="w-full xl:w-5/12 flex items-start gap-3">
+                    <div className="w-full xl:w-5/12 flex items-start gap-3.5">
                       {hasAnswer ? (
-                        <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 shrink-0 animate-fade-in" /> 
+                        <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 shrink-0 animate-fade-in" strokeWidth={2.5} /> 
                       ) : (
-                        <ChevronRight size={18} className="text-stone-300 mt-0.5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                        <ChevronRight size={18} className="text-stone-300 mt-0.5 shrink-0 group-hover:translate-x-1 group-hover:text-stone-400 transition-all" />
                       )}
                       
                       <div className="flex flex-col">
-                        <span className={`text-sm md:text-base font-bold transition-colors ${hasAnswer ? 'text-stone-900' : 'text-stone-700'}`}>
+                        <span className={`text-sm md:text-base font-bold transition-colors ${hasAnswer ? 'text-stone-400' : 'text-stone-800'}`}>
                           {item.label}
                         </span>
                         {item.description && (
-                          <span className="text-[11px] md:text-xs text-stone-400 font-medium leading-snug mt-1 flex items-start gap-1">
-                            <HelpCircle size={12} className="shrink-0 mt-[2px] opacity-60" />
+                          <span className={`text-[11px] font-medium leading-snug mt-1 flex items-start gap-1.5 transition-colors ${hasAnswer ? 'text-stone-300' : 'text-stone-500'}`}>
+                            <HelpCircle size={12} className="shrink-0 mt-[1px] opacity-40" />
                             {item.description}
                           </span>
                         )}
                       </div>
                     </div>
                     
-                    {/* Botões de Frequência */}
-                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full xl:w-auto bg-stone-100/50 p-1.5 rounded-2xl border border-stone-200/60 shadow-inner">
+                    {/* Botões de Frequência - Segmented Control Premium */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full xl:w-auto bg-stone-50/80 p-1.5 rounded-2xl border border-stone-100 shadow-inner">
                       {frequencyOptions.map((opt) => {
                         const isSelected = answers[item.id] === opt;
-                        const notSelectedFaded = hasAnswer && !isSelected ? 'opacity-50 hover:opacity-100' : '';
+                        // Apaga as opções não selecionadas APENAS se a pergunta já foi respondida
+                        const notSelectedFaded = hasAnswer && !isSelected ? 'opacity-40 hover:opacity-100 scale-95' : '';
                         
                         return (
                           <button
                             key={opt}
                             onClick={() => handleSelect(item.id, opt)}
-                            className={`flex-1 sm:flex-none sm:min-w-[70px] py-3 sm:py-2.5 px-2 text-[10px] sm:text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all duration-300 active:scale-90 ${notSelectedFaded} ${
+                            className={`flex-1 sm:flex-none sm:min-w-[80px] py-3 sm:py-2.5 px-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all duration-300 active:scale-90 ${notSelectedFaded} ${
                               isSelected 
-                                ? 'bg-nutri-900 text-white shadow-md scale-105' 
-                                : 'text-stone-500 hover:bg-white hover:text-stone-800 hover:shadow-sm border border-transparent hover:border-stone-200'
+                                ? 'bg-white text-stone-800 shadow-[0_2px_10px_rgba(0,0,0,0.08)] scale-100 border border-stone-100/50' 
+                                : 'text-stone-500 hover:bg-white hover:text-stone-700 hover:shadow-sm border border-transparent'
                             }`}
                           >
                             {opt}
@@ -311,19 +311,19 @@ export default function FoodFrequencyForm() {
         ))}
       </div>
 
-      {/* BOTÃO SALVAR */}
-      <div className="mt-12 pt-8 border-t border-stone-100 flex flex-col md:flex-row items-center justify-between gap-6">
-        <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest text-center md:text-left">
+      {/* BOTÃO SALVAR PREMIUM */}
+      <div className="mt-14 pt-8 border-t border-stone-200/50 flex flex-col md:flex-row items-center justify-between gap-6">
+        <p className="text-[11px] text-stone-400 font-bold uppercase tracking-[0.15em] text-center md:text-left">
           {isComplete ? "Tudo pronto! Você pode enviar sua avaliação." : `Faltam responder ${totalQuestions - answeredCount} itens.`}
         </p>
         
         <button 
           onClick={handleSave}
           disabled={isSaving || !isComplete}
-          className="w-full md:w-auto px-12 flex items-center justify-center gap-3 bg-nutri-900 text-white py-5 rounded-2xl font-bold text-base hover:bg-nutri-800 transition-all duration-300 disabled:opacity-50 disabled:bg-stone-300 disabled:text-stone-500 shadow-xl shadow-nutri-900/20 disabled:shadow-none active:scale-95"
+          className="w-full md:w-auto px-10 flex items-center justify-center gap-3 bg-stone-900 text-white py-4 md:py-5 rounded-2xl font-bold text-sm hover:bg-stone-800 transition-all duration-300 disabled:opacity-50 disabled:bg-stone-200 disabled:text-stone-400 shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] disabled:shadow-none active:scale-95"
         >
-          {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-          {isSaving ? "Analisando Respostas..." : "Enviar Raio-X Alimentar"}
+          {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+          {isSaving ? "Analisando Perfil..." : "Enviar Raio-X Alimentar"}
         </button>
       </div>
 

@@ -8,7 +8,7 @@ import {
   Loader2, CheckCircle2, TrendingDown, PlusCircle, X,
   Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, 
   Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
-  Smile, Frown, Meh, BellRing, Scale, Layers, Activity, Syringe,
+  Smile, Frown, Meh, BellRing, Scale, Layers, Activity as ActivityIcon, Syringe,
   Target, Calendar, ArrowDown, ArrowUp, Minus
 } from 'lucide-react';
 import Link from 'next/link';
@@ -18,6 +18,9 @@ import {
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
 import ChatAssistant from '@/components/ChatAssistant';
+import ActivityCard from '@/components/ActivityCard';
+import AddActivityModal from '@/components/AddActivityModal';
+import { Activity, getTotalActivityKcal } from '@/lib/activities';
 import { toast } from 'sonner';
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -31,7 +34,6 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
-// HELPER PARA DATA LOCAL CORRETA (Alinhado com MeuPlano.tsx para evitar conflito de fuso horário)
 const getLocalTodayString = () => {
   const date = new Date();
   const year = date.getFullYear();
@@ -52,6 +54,7 @@ export default function Dashboard() {
   
   const [hasCompletedQFA, setHasCompletedQFA] = useState<boolean>(true);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
 
   const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(true); 
@@ -62,7 +65,9 @@ export default function Dashboard() {
   const [dailyLog, setDailyLog] = useState({
     water_ml: 0,
     meals_checked: [] as string[],
-    mood: null as string | null
+    mood: null as string | null,
+    activities: [] as Activity[],
+    activity_kcal: 0
   });
 
   const router = useRouter();
@@ -125,7 +130,7 @@ export default function Dashboard() {
       .eq('user_id', userId)
       .order('exam_date', { ascending: false });
 
-    const todayStr = getLocalTodayString(); // Usando a função padronizada
+    const todayStr = getLocalTodayString(); 
     const { data: dailyData } = await supabase
       .from('daily_logs')
       .select('*')
@@ -137,23 +142,18 @@ export default function Dashboard() {
       setDailyLog({
         water_ml: dailyData.water_ml || 0,
         meals_checked: dailyData.meals_checked || [],
-        mood: dailyData.mood || null
+        mood: dailyData.mood || null,
+        activities: dailyData.activities || [],
+        activity_kcal: dailyData.activity_kcal || 0
       });
-    }
-
-    try {
-      const { data: apptData } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('appointment_date', new Date().toISOString())
-        .order('appointment_date', { ascending: true })
-        .limit(1)
-        .single();
-      
-      if (apptData) setNextAppointment(apptData);
-    } catch (e) {
-      console.log("Módulo de agendamentos ainda não configurado.");
+    } else {
+      setDailyLog({
+        water_ml: 0,
+        meals_checked: [],
+        mood: null,
+        activities: [],
+        activity_kcal: 0
+      });
     }
 
     setProfile(profileData);
@@ -237,13 +237,10 @@ export default function Dashboard() {
     }
   };
 
-  // =========================================================================
-  // LÓGICA DE METAS DIÁRIAS (ÁGUA E REFEIÇÕES)
-  // =========================================================================
   const latestWeightForWater = useMemo(() => {
     if (checkins.length > 0) return checkins[checkins.length - 1].peso;
     if (antroData.length > 0) return antroData[0].weight;
-    return 70; // fallback seguro
+    return 70; 
   }, [checkins, antroData]);
 
   const waterGoal = Math.round(latestWeightForWater * 35);
@@ -274,7 +271,9 @@ export default function Dashboard() {
         date: todayStr,
         water_ml: newLog.water_ml,
         meals_checked: newLog.meals_checked,
-        mood: newLog.mood
+        mood: newLog.mood,
+        activities: newLog.activities,
+        activity_kcal: newLog.activity_kcal
       }, { onConflict: 'user_id, date' });
   };
 
@@ -309,6 +308,26 @@ export default function Dashboard() {
         colors: ['#166534', '#22c55e', '#bbf7d0'] 
       });
     }
+  };
+
+  const handleAddActivity = (activity: Activity) => {
+    const updatedActivities = [...(dailyLog.activities || []), activity];
+    const totalKcal = getTotalActivityKcal(updatedActivities, latestWeightForWater);
+  
+    handleUpdateDailyLog({
+      activities: updatedActivities,
+      activity_kcal: totalKcal
+    });
+  };
+  
+  const handleRemoveActivity = (id: string) => {
+    const updatedActivities = (dailyLog.activities || []).filter(a => a.id !== id);
+    const totalKcal = getTotalActivityKcal(updatedActivities, latestWeightForWater);
+  
+    handleUpdateDailyLog({
+      activities: updatedActivities,
+      activity_kcal: totalKcal
+    });
   };
 
   const handleCheckinSuccess = () => {
@@ -378,9 +397,9 @@ export default function Dashboard() {
     if (checkins.length === 0) return null;
     const last = checkins[checkins.length - 1];
     if (last.adesao_ao_plano >= 4) {
-      return { type: 'success', title: 'Excelente foco!', text: 'Sua adesão ao plano foi ótima no último relato. Continue assim!', icon: Trophy, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
+      return { type: 'success', title: 'Excelente foco!', text: 'Sua adesão ao plano foi ótima no último relato. Continue assim!', icon: Trophy, color: 'text-amber-500', bg: 'bg-amber-50/50', border: 'border-amber-200/50' };
     } else {
-      return { type: 'support', title: 'Não desanime!', text: 'Semana difícil? Faz parte do processo. O importante é retomar o foco na próxima refeição.', icon: HeartPulse, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-200' };
+      return { type: 'support', title: 'Não desanime!', text: 'Semana difícil? Faz parte do processo. O importante é retomar o foco na próxima refeição.', icon: HeartPulse, color: 'text-rose-500', bg: 'bg-rose-50/50', border: 'border-rose-200/50' };
     }
   }, [checkins]);
 
@@ -401,9 +420,6 @@ export default function Dashboard() {
     return { isActive: daysLeft > 0, daysLeft: daysLeft > 0 ? daysLeft : 0 };
   }, [profile, isPremium]);
 
-  // =========================================================================
-  // FUNÇÕES DE CÁLCULO DE IMC
-  // =========================================================================
   const getIMC = (peso: number, altura: number) => {
     if (!peso || !altura || altura === 0) return null;
     return (peso / (altura * altura)).toFixed(1);
@@ -418,9 +434,6 @@ export default function Dashboard() {
     return 'Obesidade Grau III';
   };
 
-  // =========================================================================
-  // LOGICA DO GRAFICO UNIFICADO (MULTI-LENTES) + IMC
-  // =========================================================================
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
     const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
@@ -432,7 +445,6 @@ export default function Dashboard() {
 
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-    // Busca a altura mais recente que o paciente informou nos check-ins
     const checkinComAltura = [...checkins].reverse().find(c => c.altura);
     const ultimaAltura = checkinComAltura?.altura || null;
 
@@ -470,9 +482,6 @@ export default function Dashboard() {
     });
   }, [checkins, antroData, skinfoldsData, bioData]);
 
-  // =========================================================================
-  // DELTAS (RESUMO DE EVOLUÇÃO)
-  // =========================================================================
   const deltas = useMemo(() => {
     const validWeights = timelineData.filter(d => d.peso !== null).map(d => d.peso!);
     const validWaists = timelineData.filter(d => d.cintura !== null).map(d => d.cintura!);
@@ -485,25 +494,22 @@ export default function Dashboard() {
 
   const isGoalMet = profile?.meta_peso && deltas.currentWeight && deltas.currentWeight <= profile.meta_peso;
 
-  // =========================================================================
-  // PROJEÇÃO DE CHEGADA (ETA INTELIGENTE)
-  // =========================================================================
   const projection = useMemo(() => {
     if (!profile?.meta_peso) return null;
     
     const validPoints = timelineData.filter(d => d.peso !== null);
-    if (validPoints.length < 2) return null; // Precisa de pelo menos 2 registros para ter uma média
+    if (validPoints.length < 2) return null; 
 
     const firstPoint = validPoints[0];
     const lastPoint = validPoints[validPoints.length - 1];
     
     const weightLost = firstPoint.peso! - lastPoint.peso!;
-    if (weightLost <= 0) return null; // Só projeta se estiver perdendo peso
+    if (weightLost <= 0) return null; 
 
     const daysPassed = (new Date(lastPoint.date).getTime() - new Date(firstPoint.date).getTime()) / (1000 * 3600 * 24);
     const weeksPassed = daysPassed / 7;
     
-    if (weeksPassed < 1) return null; // Menos de 1 semana é pouco tempo para estipular um ritmo real
+    if (weeksPassed < 1) return null; 
 
     const ratePerWeek = weightLost / weeksPassed;
     const weightLeft = lastPoint.peso! - profile.meta_peso;
@@ -520,78 +526,81 @@ export default function Dashboard() {
   }, [timelineData, profile?.meta_peso]);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50">
-      <Loader2 className="animate-spin text-nutri-800" size={48} />
+    <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="animate-spin text-nutri-800" size={40} strokeWidth={2.5} />
+        <p className="text-stone-400 font-medium text-sm animate-pulse">Preparando seu painel...</p>
+      </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-stone-50 flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0">
+    <main className="min-h-screen bg-[#F9FAFB] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
       
-      {/* SIDEBAR DESKTOP */}
-      <aside className="w-64 bg-white border-r border-stone-200 hidden md:flex flex-col p-8 sticky top-20 h-[calc(100vh-80px)] z-10">
-        <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-10">Menu do Paciente</h2>        
-        <nav className="flex-1 space-y-6">
-          <Link href="/dashboard" className="text-nutri-800 font-bold text-sm block transition-all">Painel Geral</Link>
-          <Link href="/paciente/avaliacao" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Minha Avaliação (QFA)</Link>
-          <Link href="/dashboard/meu-plano" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors flex justify-between items-center">
-            Meu Plano {!canAccessMealPlan && <Lock size={12} className="text-stone-300"/>}
+      {/* SIDEBAR DESKTOP PREMIUM */}
+      <aside className="w-64 bg-white/60 backdrop-blur-xl border-r border-stone-200/50 hidden md:flex flex-col p-8 sticky top-20 h-[calc(100vh-80px)] z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)]">
+        <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-10">Navegação</h2>        
+        <nav className="flex-1 space-y-2">
+          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 bg-white text-nutri-900 font-bold text-sm rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-stone-100 transition-all">Painel Geral</Link>
+          <Link href="/paciente/avaliacao" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Avaliação (QFA)</Link>
+          <Link href="/dashboard/meu-plano" className="flex items-center justify-between px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">
+            Meu Plano {!canAccessMealPlan && <Lock size={14} className="text-stone-300"/>}
           </Link>
-          <Link href="/dashboard/agendamentos" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Agendamentos</Link>
-          <Link href="/dashboard/perfil" className="text-stone-500 hover:text-nutri-800 font-bold text-sm block transition-colors">Meu Perfil</Link>
+          <Link href="/dashboard/agendamentos" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Agendamentos</Link>
+          <Link href="/dashboard/perfil" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Meu Perfil</Link>
         </nav>
-        <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} className="text-red-500 text-xs font-black uppercase tracking-widest hover:text-red-700 transition-colors mt-auto pt-8 border-t border-stone-100">Sair da Conta</button>
+        <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} className="text-stone-400 text-xs font-bold uppercase tracking-wider hover:text-red-500 transition-colors mt-auto pt-8 border-t border-stone-200/60 w-full text-left flex items-center gap-2">Sair da Conta</button>
       </aside>
 
-      <section className="flex-1 p-5 md:p-10 lg:p-12 overflow-y-auto w-full">
+      <section className="flex-1 p-5 md:p-10 lg:p-12 overflow-y-auto w-full max-w-7xl mx-auto">
         
         {!hasCompletedQFA && (
-          <div className="mb-8 p-6 bg-rose-600 rounded-[2rem] text-white shadow-xl shadow-rose-600/20 flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in-up">
+          <div className="mb-8 p-6 bg-gradient-to-r from-rose-600 to-rose-500 rounded-[2rem] text-white shadow-[0_8px_30px_rgba(225,29,72,0.2)] flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in-up border border-rose-400/30">
             <div className="flex items-center gap-4 text-center md:text-left">
-              <div className="bg-white/20 p-3 rounded-2xl">
-                <ClipboardCheck size={28} />
+              <div className="bg-white/20 backdrop-blur-md p-3.5 rounded-2xl shadow-inner">
+                <ClipboardCheck size={28} className="text-white" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Avaliação Pendente!</h3>
-                <p className="text-rose-100 text-sm">Preencha seu Raio-X alimentar para a Nutri liberar seu cardápio.</p>
+                <h3 className="text-xl font-bold tracking-tight">Avaliação Pendente!</h3>
+                <p className="text-rose-100/90 text-sm mt-0.5">Preencha seu Raio-X alimentar para a Nutri liberar seu cardápio.</p>
               </div>
             </div>
-            <Link href="/paciente/avaliacao" className="w-full md:w-auto bg-white text-rose-600 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-100 transition-all text-center shadow-sm">
+            <Link href="/paciente/avaliacao" className="w-full md:w-auto bg-white text-rose-600 px-8 py-3.5 rounded-xl font-bold text-sm hover:bg-stone-50 hover:scale-[1.02] transition-all text-center shadow-sm">
               Começar Agora
             </Link>
           </div>
         )}
 
         {!isPremium && (
-          <div className={`mb-8 p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border animate-fade-in-up ${trialData.isActive ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
-            <div className="flex items-center gap-3 text-center sm:text-left">
-              <div className={`p-2 rounded-full ${trialData.isActive ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
-                {trialData.isActive ? <Zap size={20} /> : <AlertCircle size={20} />}
+          <div className={`mb-8 p-5 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-5 border shadow-sm animate-fade-in-up ${trialData.isActive ? 'bg-gradient-to-r from-amber-50 to-white border-amber-200/60' : 'bg-gradient-to-r from-red-50 to-white border-red-200/60'}`}>
+            <div className="flex items-center gap-4 text-center sm:text-left">
+              <div className={`p-3 rounded-2xl ${trialData.isActive ? 'bg-amber-100/50 text-amber-600' : 'bg-red-100/50 text-red-600'}`}>
+                {trialData.isActive ? <Zap size={24} /> : <AlertCircle size={24} />}
               </div>
               <div>
-                <p className="font-bold text-sm md:text-base">{trialData.isActive ? `Período de teste acaba em ${trialData.daysLeft} dias.` : 'Seu teste gratuito expirou.'}</p>
-                <p className={`text-xs md:text-sm mt-0.5 ${trialData.isActive ? 'text-amber-700' : 'text-red-700'}`}>Desbloqueie o acesso completo para continuar evoluindo.</p>
+                <p className={`font-bold text-base ${trialData.isActive ? 'text-amber-900' : 'text-red-900'}`}>{trialData.isActive ? `Período de teste acaba em ${trialData.daysLeft} dias.` : 'Seu teste gratuito expirou.'}</p>
+                <p className={`text-sm mt-0.5 ${trialData.isActive ? 'text-amber-700/80' : 'text-red-700/80'}`}>Desbloqueie o acesso completo para continuar evoluindo.</p>
               </div>
             </div>
-            <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="w-full sm:w-auto bg-nutri-900 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-nutri-800 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
-              {processingCheckout ? <Loader2 size={16} className="animate-spin" /> : <Star size={16} />} Desbloquear Premium
+            <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="w-full sm:w-auto bg-stone-900 text-white px-7 py-3.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-70 shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)]">
+              {processingCheckout ? <Loader2 size={18} className="animate-spin" /> : <Star size={18} />} Desbloquear Premium
             </button>
           </div>
         )}
 
-        <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 animate-fade-in-up">
+        <header className="mb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-6 animate-fade-in-up">
           <div className="text-left">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-3xl md:text-4xl font-bold text-stone-900 tracking-tighter">Olá, {profile?.full_name?.split(' ')[0] || 'Paciente'}!</h2>
-              {isPremium && <span className="bg-nutri-100 text-nutri-800 p-1.5 rounded-full"><Star size={16} fill="currentColor" /></span>}
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="text-3xl md:text-[2.5rem] font-bold text-stone-900 tracking-tight leading-none">Olá, {profile?.full_name?.split(' ')[0] || 'Paciente'}!</h2>
+              {isPremium && <span className="bg-gradient-to-br from-amber-200 to-amber-400 text-amber-900 p-1.5 rounded-full shadow-sm"><Star size={16} fill="currentColor" /></span>}
             </div>
-            <p className="text-sm md:text-base text-stone-500 font-light">Seu progresso de saúde em tempo real.</p>
+            <p className="text-base text-stone-500 font-medium">Bem-vindo(a) de volta ao seu progresso de saúde.</p>
           </div>
           
           <div className="flex flex-col sm:flex-row items-center gap-4">
             {currentStreak > 0 && (
-              <div className="flex items-center gap-3 bg-white px-5 py-3.5 rounded-2xl border border-stone-200 shadow-sm w-full sm:w-auto justify-center group">
-                <div className="bg-orange-50 p-2 rounded-xl text-orange-500 group-hover:scale-110 transition-transform"><Flame size={20} fill="currentColor" /></div>
+              <div className="flex items-center gap-3 bg-white px-5 py-3.5 rounded-2xl border border-stone-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] w-full sm:w-auto justify-center group">
+                <div className="bg-orange-50 p-2.5 rounded-xl text-orange-500 group-hover:scale-110 group-hover:-rotate-6 transition-all"><Flame size={20} fill="currentColor" /></div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest leading-none mb-1">Ofensiva</p>
                   <p className="font-bold text-stone-800 leading-none">{currentStreak} Semanas</p>
@@ -600,206 +609,239 @@ export default function Dashboard() {
             )}
             
             {!isCheckinDoneThisWeek ? (
-              <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all shadow-xl shadow-nutri-900/10 ${(!isPremium && !trialData.isActive) ? 'bg-stone-200 text-stone-400 cursor-not-allowed' : 'bg-nutri-900 text-white hover:bg-nutri-800 active:scale-[0.98]'}`}>
+              <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all shadow-lg ${(!isPremium && !trialData.isActive) ? 'bg-stone-100 text-stone-400 cursor-not-allowed shadow-none' : 'bg-nutri-900 text-white hover:bg-nutri-800 shadow-nutri-900/20 hover:shadow-nutri-900/30 active:scale-[0.98]'}`}>
                 {!isPremium && !trialData.isActive ? <Lock size={20} /> : <PlusCircle size={20} />} {!isPremium && !trialData.isActive ? 'Check-in Bloqueado' : 'Relato Semanal'}
               </button>
             ) : (
-              <div className="w-full sm:w-auto flex flex-col items-center justify-center bg-green-50 text-green-800 px-6 py-3 rounded-2xl border border-green-200 text-center">
-                <div className="flex items-center gap-2 font-bold"><CheckCircle2 size={18} /> Relato da semana feito!</div>
-                <span className="text-xs text-green-600 font-medium mt-0.5">Próximo abre em {daysUntilNextCheckin} dias</span>
+              <div className="w-full sm:w-auto flex flex-col items-center justify-center bg-green-50/80 text-green-800 px-6 py-3 rounded-2xl border border-green-200/50 text-center shadow-[0_2px_10px_rgba(34,197,94,0.05)]">
+                <div className="flex items-center gap-2 font-bold"><CheckCircle2 size={18} className="text-green-600" /> Relato concluído!</div>
+                <span className="text-xs text-green-600/80 font-medium mt-0.5">Próximo abre em {daysUntilNextCheckin} dias</span>
               </div>
             )}
           </div>
         </header>
 
         {smartFeedback && (
-          <div className={`mb-8 p-5 md:p-6 rounded-[2rem] border ${smartFeedback.bg} ${smartFeedback.border} flex flex-col sm:flex-row items-start sm:items-center gap-4 animate-fade-in-up`}>
-            <div className={`p-3 bg-white rounded-2xl shadow-sm ${smartFeedback.color} shrink-0`}><smartFeedback.icon size={24} /></div>
+          <div className={`mb-10 p-5 md:p-6 rounded-[2rem] border shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)] ${smartFeedback.bg} ${smartFeedback.border} flex flex-col sm:flex-row items-start sm:items-center gap-5 animate-fade-in-up backdrop-blur-sm`}>
+            <div className={`p-3.5 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm ${smartFeedback.color} shrink-0`}><smartFeedback.icon size={26} strokeWidth={2.5} /></div>
             <div>
-              <h4 className={`font-bold text-lg mb-1 ${smartFeedback.color}`}>{smartFeedback.title}</h4>
-              <p className="text-stone-600 text-sm md:text-base leading-relaxed">{smartFeedback.text}</p>
+              <h4 className={`font-bold text-lg mb-1 tracking-tight ${smartFeedback.color}`}>{smartFeedback.title}</h4>
+              <p className="text-stone-600 text-sm md:text-base leading-relaxed font-medium">{smartFeedback.text}</p>
             </div>
           </div>
         )}
 
-        {/* ==================== DIÁRIO DE HÁBITOS (REFEIÇÕES E ÁGUA) ==================== */}
+        {/* ==================== DIÁRIO DE HÁBITOS (NOVO LAYOUT BENTO BOX) ==================== */}
         {canAccessMealPlan && (
-          <div className="mb-8 bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-nutri-50 p-2.5 rounded-2xl text-nutri-800">
-                <CheckCircle2 size={24} />
+          <div className="mb-10 bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white animate-fade-in-up">
+            
+            <div className="flex items-center gap-4 mb-8">
+              <div className="bg-nutri-50 p-3 rounded-2xl text-nutri-800 shadow-sm border border-nutri-100/50">
+                <ClipboardCheck size={26} />
               </div>
               <div>
-                <h3 className="text-xl md:text-2xl font-bold text-stone-900">Meu Diário de Hoje</h3>
-                <p className="text-sm text-stone-500">Marque o que você conseguiu fazer hoje.</p>
+                <h3 className="text-2xl font-bold text-stone-900 tracking-tight">Meu Diário de Hoje</h3>
+                <p className="text-sm text-stone-500 font-medium mt-0.5">Registre suas conquistas diárias e acompanhe seu ritmo.</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* O NOVO GRID BENTO BOX */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               
-              <div className="md:col-span-2 bg-stone-50 p-6 rounded-3xl border border-stone-100 flex flex-col">
-                <div className="flex justify-between items-end mb-4">
-                  <h4 className="text-xs font-black uppercase text-stone-400 tracking-widest flex items-center gap-2">
-                    <Utensils size={14} /> Refeições
-                  </h4>
-                  <span className="text-xs font-bold text-nutri-800 bg-nutri-100 px-2 py-1 rounded-md">
-                    {completedMeals} de {totalMeals} ({mealProgress}%)
-                  </span>
+              {/* === LINHA SUPERIOR (AÇÕES RÁPIDAS) === */}
+              {/* CARD DE ÁGUA HORIZONTAL */}
+              <div className="lg:col-span-6 flex flex-col justify-center relative p-6 md:px-8 md:py-7 rounded-[2rem] border overflow-hidden transition-all duration-500 min-h-[140px] shadow-sm bg-gradient-to-br from-white to-blue-50/30 border-blue-100">
+                {/* Elemento decorativo */}
+                <div className={`absolute -right-10 -bottom-10 w-40 h-40 rounded-full blur-3xl opacity-40 pointer-events-none transition-all duration-700 ${isWaterGoalMet ? 'bg-blue-400' : 'bg-blue-300'}`}></div>
+                
+                <div className="z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Droplets size={16} className={isWaterGoalMet ? 'text-blue-500' : 'text-blue-400'} />
+                      <h4 className={`text-[11px] font-black uppercase tracking-[0.15em] ${isWaterGoalMet ? 'text-blue-600' : 'text-blue-400'}`}>
+                        {isWaterGoalMet ? 'Meta Atingida!' : 'Hidratação'}
+                      </h4>
+                    </div>
+                    <div className="flex items-baseline gap-1 mb-2">
+                      <span className="text-4xl md:text-5xl font-black tracking-tight text-stone-800">{dailyLog.water_ml}</span>
+                      <span className="text-lg font-bold text-blue-400">/ {waterGoal}ml</span>
+                    </div>
+                    <div className="w-full max-w-[80%] bg-blue-100/50 rounded-full h-1.5 overflow-hidden shadow-inner">
+                      <div className={`h-1.5 rounded-full transition-all duration-700 ease-out ${isWaterGoalMet ? 'bg-blue-500' : 'bg-blue-400'}`} style={{ width: `${waterProgress}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-row md:flex-col items-center justify-end gap-3 shrink-0">
+                    <button 
+                      onClick={handleAddWater}
+                      className={`w-full md:w-auto px-6 py-3 md:py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isWaterGoalMet ? 'bg-white text-blue-600 border border-blue-100 shadow-sm hover:bg-blue-50' : 'bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.3)] hover:shadow-[0_6px_20px_rgba(59,130,246,0.4)] hover:-translate-y-0.5'}`}
+                    >
+                      <PlusCircle size={18} /> 250ml
+                    </button>
+
+                    {!isPushSubscribed && !isWaterGoalMet && (
+                      <button 
+                        onClick={subscribeToPush}
+                        disabled={isSubscribingPush}
+                        className="w-full md:w-auto px-4 py-2 text-xs font-bold uppercase tracking-wider text-blue-500 hover:text-blue-600 bg-transparent transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        {isSubscribingPush ? <Loader2 size={14} className="animate-spin" /> : <BellRing size={14} />}
+                        Lembretes
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD DE HUMOR HORIZONTAL */}
+              <div className="lg:col-span-6 bg-white p-6 md:px-8 md:py-7 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center min-h-[140px]">
+                <h4 className="text-[11px] font-black uppercase text-stone-400 tracking-[0.15em] mb-4">Como você está se sentindo?</h4>
+                <div className="flex bg-stone-50/80 p-1.5 rounded-2xl border border-stone-100/50">
+                  <button 
+                    onClick={() => handleUpdateDailyLog({ mood: 'feliz' })}
+                    className={`flex-1 flex flex-col md:flex-row items-center justify-center gap-2 py-3 rounded-xl transition-all duration-300 ${dailyLog.mood === 'feliz' ? 'bg-white shadow-[0_2px_10px_rgba(34,197,94,0.15)] text-green-500 scale-[1.02]' : 'text-stone-400 hover:text-stone-600'}`}
+                  >
+                    <Smile size={22} strokeWidth={dailyLog.mood === 'feliz' ? 2.5 : 2} />
+                    <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider">Ótimo</span>
+                  </button>
+                  <button 
+                    onClick={() => handleUpdateDailyLog({ mood: 'neutro' })}
+                    className={`flex-1 flex flex-col md:flex-row items-center justify-center gap-2 py-3 rounded-xl transition-all duration-300 ${dailyLog.mood === 'neutro' ? 'bg-white shadow-[0_2px_10px_rgba(245,158,11,0.15)] text-amber-500 scale-[1.02]' : 'text-stone-400 hover:text-stone-600'}`}
+                  >
+                    <Meh size={22} strokeWidth={dailyLog.mood === 'neutro' ? 2.5 : 2} />
+                    <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider">Normal</span>
+                  </button>
+                  <button 
+                    onClick={() => handleUpdateDailyLog({ mood: 'dificil' })}
+                    className={`flex-1 flex flex-col md:flex-row items-center justify-center gap-2 py-3 rounded-xl transition-all duration-300 ${dailyLog.mood === 'dificil' ? 'bg-white shadow-[0_2px_10px_rgba(244,63,94,0.15)] text-rose-500 scale-[1.02]' : 'text-stone-400 hover:text-stone-600'}`}
+                  >
+                    <Frown size={22} strokeWidth={dailyLog.mood === 'dificil' ? 2.5 : 2} />
+                    <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider">Difícil</span>
+                  </button>
+                </div>
+              </div>
+
+
+              {/* === LINHA INFERIOR (LISTAS/ACOMPANHAMENTOS) === */}
+              {/* REFEIÇÕES */}
+              <div className="lg:col-span-7 bg-stone-50/50 p-6 md:p-8 rounded-[2rem] border border-stone-100/80 flex flex-col">
+                <div className="flex justify-between items-end mb-6">
+                  <div>
+                    <h4 className="text-[11px] font-black uppercase text-stone-400 tracking-[0.15em] flex items-center gap-2 mb-1.5">
+                      <Utensils size={14} /> Refeições do Plano
+                    </h4>
+                    <span className="text-xl font-bold text-stone-800 tracking-tight">
+                      {completedMeals} de {totalMeals} concluídas
+                    </span>
+                  </div>
+                  <div className="bg-white px-3 py-1.5 rounded-xl shadow-sm border border-stone-100 font-bold text-sm text-nutri-800">
+                    {mealProgress}%
+                  </div>
                 </div>
                 
-                <div className="w-full bg-stone-200 rounded-full h-2.5 mb-6 overflow-hidden">
+                <div className="w-full bg-stone-200/60 rounded-full h-2 mb-8 overflow-hidden shadow-inner">
                   <div 
-                    className={`h-2.5 rounded-full transition-all duration-500 ${isMealGoalMet ? 'bg-green-500' : 'bg-nutri-700'}`} 
+                    className={`h-2 rounded-full transition-all duration-700 ease-out ${isMealGoalMet ? 'bg-green-500' : 'bg-nutri-600'}`} 
                     style={{ width: `${mealProgress}%` }}
                   ></div>
                 </div>
 
                 {isMealPlanReady ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 content-start">
+                  <div className="space-y-3 flex-1 content-start">
                     {mealNames.map((mealName: string, i: number) => {
                       const isChecked = dailyLog.meals_checked.includes(mealName);
                       return (
                         <button 
                           key={i}
                           onClick={() => handleToggleMeal(mealName)}
-                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all text-left group ${
+                          className={`w-full flex items-center justify-between p-4 md:p-5 rounded-2xl border transition-all duration-300 text-left group ${
                             isChecked 
-                              ? 'bg-nutri-50 border-nutri-200 text-nutri-900 shadow-sm' 
-                              : 'bg-white border-stone-200 text-stone-600 hover:border-nutri-200 hover:bg-white'
+                              ? 'bg-white border-green-100 shadow-[0_2px_10px_rgba(34,197,94,0.06)] scale-[0.99]' 
+                              : 'bg-white border-stone-100/80 hover:border-nutri-200 hover:shadow-md hover:-translate-y-0.5'
                           }`}
                         >
-                          <span className={`text-sm font-bold ${isChecked ? 'line-through opacity-70' : ''}`}>{mealName}</span>
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border transition-all ${
-                            isChecked ? 'bg-nutri-600 border-nutri-600 text-white' : 'bg-stone-50 border-stone-300 group-hover:border-nutri-300'
+                          <span className={`text-base font-bold transition-colors ${isChecked ? 'text-stone-400 line-through decoration-stone-300' : 'text-stone-700 group-hover:text-nutri-900'}`}>
+                            {mealName}
+                          </span>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-300 ${
+                            isChecked ? 'bg-green-500 border-green-500 text-white scale-110 shadow-sm' : 'bg-stone-50 border-stone-200 text-transparent group-hover:border-nutri-400 group-hover:bg-nutri-50'
                           }`}>
-                            {isChecked && <Check size={14} strokeWidth={3} />}
+                            <Check size={16} strokeWidth={isChecked ? 3 : 2} className={isChecked ? 'opacity-100' : 'opacity-0 group-hover:opacity-50 group-hover:text-nutri-400'} />
                           </div>
                         </button>
                       )
                     })}
                   </div>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p className="text-sm text-stone-500 italic bg-white p-4 rounded-2xl border border-stone-200 text-center w-full">
-                      Seu cardápio ainda está sendo elaborado.
+                  <div className="flex-1 flex items-center justify-center bg-white rounded-2xl border border-dashed border-stone-200 p-8">
+                    <p className="text-sm text-stone-500 font-medium text-center">
+                      Seu cardápio está sendo elaborado com carinho.<br/>Em breve aparecerá aqui.
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-6 flex flex-col">
-                
-                {/* CARD DE ÁGUA COM META E PROGRESSO */}
-                <div className={`flex-1 p-6 rounded-3xl border transition-colors relative overflow-hidden group flex flex-col items-center justify-center ${isWaterGoalMet ? 'bg-blue-500 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
-                  <h4 className={`text-xs font-black uppercase tracking-widest mb-1 z-10 w-full text-center ${isWaterGoalMet ? 'text-blue-100' : 'text-blue-400'}`}>
-                    {isWaterGoalMet ? 'Meta Atingida! 💧' : 'Água Consumida'}
-                  </h4>
-                  <p className={`text-[10px] font-bold mb-3 z-10 ${isWaterGoalMet ? 'text-blue-200' : 'text-stone-400'}`}>Meta: {waterGoal}ml</p>
-                  
-                  <div className="flex items-baseline gap-1 mb-4 z-10">
-                    <span className={`text-4xl font-black ${isWaterGoalMet ? 'text-white' : 'text-blue-900'}`}>{dailyLog.water_ml}</span>
-                    <span className={`text-sm font-bold ${isWaterGoalMet ? 'text-blue-200' : 'text-blue-600'}`}>ml</span>
-                  </div>
-
-                  <div className="w-full bg-black/10 rounded-full h-1.5 mb-5 z-10">
-                    <div className="bg-white h-1.5 rounded-full transition-all duration-500" style={{ width: `${waterProgress}%` }}></div>
-                  </div>
-
-                  <button 
-                    onClick={handleAddWater}
-                    className={`px-6 py-3 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm z-10 active:scale-95 ${isWaterGoalMet ? 'bg-white/20 text-white hover:bg-white/30 border border-white/30' : 'bg-white border-2 border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 group-hover:shadow-md'}`}
-                  >
-                    <Droplets size={16} fill="currentColor" className={dailyLog.water_ml > 0 && !isWaterGoalMet ? "text-blue-400 group-hover:text-white" : ""} /> + 250ml
-                  </button>
-
-                  {!isPushSubscribed && !isWaterGoalMet && (
-                    <button 
-                      onClick={subscribeToPush}
-                      disabled={isSubscribingPush}
-                      className="mt-4 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg z-10 hover:bg-blue-200 transition-colors"
-                    >
-                      {isSubscribingPush ? <Loader2 size={12} className="animate-spin" /> : <BellRing size={12} />}
-                      Ativar Lembretes
-                    </button>
-                  )}
-
-                  <Droplets size={140} className={`absolute -bottom-8 -right-8 opacity-10 rotate-12 ${isWaterGoalMet ? 'text-black' : 'text-blue-500'}`} />
-                </div>
-
-                {/* CARD DE HUMOR */}
-                <div className="bg-stone-50 p-5 rounded-3xl border border-stone-100">
-                  <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-3 text-center">Como foi o dia?</h4>
-                  <div className="flex justify-center gap-3">
-                    <button 
-                      onClick={() => handleUpdateDailyLog({ mood: 'feliz' })}
-                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'feliz' ? 'bg-green-100 border-green-500 text-green-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100 hover:scale-105'}`}
-                    >
-                      <Smile size={28} />
-                    </button>
-                    <button 
-                      onClick={() => handleUpdateDailyLog({ mood: 'neutro' })}
-                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'neutro' ? 'bg-amber-100 border-amber-500 text-amber-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100 hover:scale-105'}`}
-                    >
-                      <Meh size={28} />
-                    </button>
-                    <button 
-                      onClick={() => handleUpdateDailyLog({ mood: 'dificil' })}
-                      className={`p-3 rounded-full transition-all border-2 ${dailyLog.mood === 'dificil' ? 'bg-rose-100 border-rose-500 text-rose-600 scale-110 shadow-sm' : 'bg-white border-transparent text-stone-400 hover:bg-stone-100 hover:scale-105'}`}
-                    >
-                      <Frown size={28} />
-                    </button>
-                  </div>
-                </div>
-
+              {/* CARD DE ATIVIDADE FÍSICA */}
+              <div className="lg:col-span-5 flex flex-col h-full">
+                <ActivityCard
+                  activities={dailyLog.activities || []}
+                  weight={latestWeightForWater}
+                  onAdd={() => setIsActivityModalOpen(true)}
+                  onRemove={handleRemoveActivity}
+                />
               </div>
+
             </div>
           </div>
         )}
 
         {/* ==================== GRÁFICO E EVOLUÇÃO ==================== */}
-        <div className="mb-10 bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up">
+        <div className="mb-10 bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white animate-fade-in-up">
           
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
             <div>
-              <h3 className="text-xl md:text-2xl font-bold text-stone-900 flex items-center gap-3"><TrendingDown className="text-nutri-800" size={24} /> Meu Progresso</h3>
-              <p className="text-sm text-stone-500">Acompanhe sua evolução através de diferentes métricas.</p>
+              <h3 className="text-2xl font-bold text-stone-900 tracking-tight flex items-center gap-3">
+                <div className="bg-nutri-50 p-2 rounded-xl"><TrendingDown className="text-nutri-800" size={20} /></div>
+                Visão de Evolução
+              </h3>
+              <p className="text-sm text-stone-500 font-medium mt-1">Acompanhe seu progresso ao longo do tempo.</p>
             </div>
 
-            <div className="flex bg-stone-100 p-1.5 rounded-2xl w-full lg:w-auto">
+            <div className="flex bg-stone-50 p-1.5 rounded-2xl w-full lg:w-auto border border-stone-100">
               <button 
                 onClick={() => setActiveLens('medidas')} 
-                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'medidas' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'medidas' ? 'bg-white text-nutri-900 shadow-sm border border-stone-100' : 'text-stone-400 hover:text-stone-600'}`}
               >
-                <Scale size={14} /> Medidas
+                <Scale size={16} /> Medidas
               </button>
               
               <button 
                 onClick={() => isPremium ? setActiveLens('composicao') : handleUpgradeClick()} 
-                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'composicao' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'composicao' ? 'bg-white text-nutri-900 shadow-sm border border-stone-100' : 'text-stone-400 hover:text-stone-600'}`}
               >
-                <Layers size={14} /> {isPremium ? 'Dobras' : <Lock size={12} className="text-amber-500" />}
+                <Layers size={16} /> {isPremium ? 'Dobras' : <Lock size={14} className="text-amber-400" />}
               </button>
 
               <button 
                 onClick={() => isPremium ? setActiveLens('metabolico') : handleUpgradeClick()} 
-                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'metabolico' ? 'bg-white text-nutri-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeLens === 'metabolico' ? 'bg-white text-nutri-900 shadow-sm border border-stone-100' : 'text-stone-400 hover:text-stone-600'}`}
               >
-                <Activity size={14} /> {isPremium ? 'Metabolismo' : <Lock size={12} className="text-amber-500" />}
+                <ActivityIcon size={16} /> {isPremium ? 'Metabolismo' : <Lock size={14} className="text-amber-400" />}
               </button>
             </div>
           </div>
 
           {/* DELTAS DE PROGRESSO */}
           {(deltas.weightDelta || deltas.waistDelta) && (
-            <div className="flex gap-4 mb-8">
+            <div className="flex flex-wrap gap-4 mb-8">
               {deltas.weightDelta && (
-                <div className={`px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold border ${parseFloat(deltas.weightDelta) <= 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                <div className={`px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold border backdrop-blur-sm ${parseFloat(deltas.weightDelta) <= 0 ? 'bg-green-50/50 text-green-700 border-green-200' : 'bg-red-50/50 text-red-700 border-red-200'}`}>
                   {parseFloat(deltas.weightDelta) <= 0 ? <ArrowDown size={16}/> : <ArrowUp size={16}/>}
                   {Math.abs(parseFloat(deltas.weightDelta))} kg {parseFloat(deltas.weightDelta) <= 0 ? 'perdidos' : 'ganhos'}
                 </div>
               )}
               {deltas.waistDelta && (
-                <div className={`px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold border ${parseFloat(deltas.waistDelta) <= 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-stone-50 text-stone-700 border-stone-200'}`}>
+                <div className={`px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold border backdrop-blur-sm ${parseFloat(deltas.waistDelta) <= 0 ? 'bg-indigo-50/50 text-indigo-700 border-indigo-200' : 'bg-stone-50/50 text-stone-700 border-stone-200'}`}>
                   {parseFloat(deltas.waistDelta) <= 0 ? <ArrowDown size={16}/> : <Minus size={16}/>}
                   {Math.abs(parseFloat(deltas.waistDelta))} cm de cintura
                 </div>
@@ -807,77 +849,78 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="h-72 w-full -ml-4 lg:ml-0">
+          <div className="h-80 w-full -ml-4 lg:ml-0">
             {timelineData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={isGoalMet ? "#22c55e" : "#166534"} stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor={isGoalMet ? "#22c55e" : "#166534"} stopOpacity={0.2}/>
                       <stop offset="95%" stopColor={isGoalMet ? "#22c55e" : "#166534"} stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorAreaWaist" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
                       <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#94a3b8" fontSize={11} axisLine={false} tickLine={false} tickMargin={10} />
                   
-                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#94a3b8" fontSize={11} axisLine={false} tickLine={false} tickMargin={10} />
+                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} tickMargin={10} />
                   
                   <RechartsTooltip 
+                    cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '5 5' }}
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-xl border border-stone-800">
-                            <p className="text-xs font-bold text-stone-400 mb-2 border-b border-stone-700 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
+                          <div className="bg-white/90 backdrop-blur-xl text-stone-800 p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-200 min-w-[180px]">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3 border-b border-stone-100 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
                             
                             {activeLens === 'medidas' && (
                               <>
                                 {data.peso && (
-                                  <div className="space-y-1 mb-2">
-                                    <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
+                                  <div className="space-y-1.5 mb-3">
+                                    <p className="font-bold text-stone-700 flex justify-between gap-4">Peso: <span className="text-emerald-600 font-black">{data.peso} kg</span></p>
                                     {data.imc && (
-                                      <p className="text-xs text-stone-300 flex justify-between gap-4">
-                                        IMC: <span className="font-bold text-white">{data.imc} ({data.classificacao})</span>
+                                      <p className="text-xs text-stone-500 flex justify-between gap-4">
+                                        IMC: <span className="font-bold text-stone-700">{data.imc} <span className="font-medium text-[10px]">({data.classificacao})</span></span>
                                       </p>
                                     )}
                                   </div>
                                 )}
-                                {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
+                                {data.cintura && <p className="font-bold text-stone-700 flex justify-between gap-4">Cintura: <span className="text-indigo-600 font-black">{data.cintura} cm</span></p>}
                               </>
                             )}
 
                             {activeLens === 'composicao' && (
                               <>
                                 {data.peso && (
-                                  <div className="space-y-1 mb-2">
-                                    <p className="font-black text-emerald-400 flex justify-between gap-4">Peso: <span>{data.peso} kg</span></p>
+                                  <div className="space-y-1.5 mb-3">
+                                    <p className="font-bold text-stone-700 flex justify-between gap-4">Peso: <span className="text-emerald-600 font-black">{data.peso} kg</span></p>
                                     {data.imc && (
-                                      <p className="text-xs text-stone-300 flex justify-between gap-4">
-                                        IMC: <span className="font-bold text-white">{data.imc} ({data.classificacao})</span>
+                                      <p className="text-xs text-stone-500 flex justify-between gap-4">
+                                        IMC: <span className="font-bold text-stone-700">{data.imc} <span className="font-medium text-[10px]">({data.classificacao})</span></span>
                                       </p>
                                     )}
                                   </div>
                                 )}
-                                {data.somatorio_dobras && <p className="font-black text-pink-400 flex justify-between gap-4">7 Dobras: <span>{data.somatorio_dobras} mm</span></p>}
+                                {data.somatorio_dobras && <p className="font-bold text-stone-700 flex justify-between gap-4">7 Dobras: <span className="text-pink-500 font-black">{data.somatorio_dobras} mm</span></p>}
                               </>
                             )}
 
                             {activeLens === 'metabolico' && (
                               <>
-                                {data.cintura && <p className="font-black text-indigo-400 flex justify-between gap-4">Cintura: <span>{data.cintura} cm</span></p>}
-                                {data.homair && <p className="font-black text-amber-400 flex justify-between gap-4">HOMA-IR: <span>{data.homair}</span></p>}
+                                {data.cintura && <p className="font-bold text-stone-700 flex justify-between gap-4">Cintura: <span className="text-indigo-600 font-black">{data.cintura} cm</span></p>}
+                                {data.homair && <p className="font-bold text-stone-700 flex justify-between gap-4 mt-1.5">HOMA-IR: <span className="text-amber-500 font-black">{data.homair}</span></p>}
                               </>
                             )}
 
-                            <div className="mt-2 pt-2 border-t border-stone-700 space-y-1">
-                              {data.adesao && <p className="text-xs text-stone-300">Adesão: <span className="font-bold text-white">{data.adesao}/5</span></p>}
-                              {data.hasExam && <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1"><Syringe size={12}/> Exame Realizado</p>}
+                            <div className="mt-3 pt-3 border-t border-stone-100 space-y-1.5">
+                              {data.adesao && <p className="text-xs text-stone-500 flex justify-between">Adesão: <span className="font-bold text-stone-700">{data.adesao}/5</span></p>}
+                              {data.hasExam && <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mt-2 flex items-center justify-center gap-1 bg-amber-50 py-1 rounded-md"><Syringe size={12}/> Exame Consta</p>}
                             </div>
                           </div>
                         );
@@ -888,25 +931,25 @@ export default function Dashboard() {
                   
                   {activeLens === 'medidas' && (
                     <>
-                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#d6d3d1"} strokeDasharray="5 5" label={{ position: 'top', value: isGoalMet ? 'META ATINGIDA!' : 'META', fill: isGoalMet ? '#16a34a' : '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6, strokeWidth: 0, fill: isGoalMet ? "#22c55e" : "#166534" }} />
-                      <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1", strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: "#818cf8" }} connectNulls />
+                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" label={{ position: 'insideTopLeft', value: isGoalMet ? 'META ATINGIDA!' : 'META', fill: isGoalMet ? '#16a34a' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />}
+                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: isGoalMet ? "#22c55e" : "#166534" }} />
+                      <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1", strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: "#818cf8" }} connectNulls />
                     </>
                   )}
 
                   {activeLens === 'composicao' && (
                     <>
-                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#d6d3d1"} strokeDasharray="5 5" label={{ position: 'top', value: isGoalMet ? 'META ATINGIDA!' : 'META', fill: isGoalMet ? '#16a34a' : '#a8a29e', fontSize: 10, fontWeight: 'bold' }} />}
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6, strokeWidth: 0, fill: isGoalMet ? "#22c55e" : "#166534" }} />
-                      <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 4, fill: "#ec4899", strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: "#f472b6" }} connectNulls />
+                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" label={{ position: 'insideTopLeft', value: isGoalMet ? 'META ATINGIDA!' : 'META', fill: isGoalMet ? '#16a34a' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />}
+                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: isGoalMet ? "#22c55e" : "#166534" }} />
+                      <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 4, fill: "#ec4899", strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: "#f472b6" }} connectNulls />
                     </>
                   )}
 
                   {activeLens === 'metabolico' && (
                     <>
-                      <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'ALERTA HOMA-IR', fill: '#ef4444', fontSize: 10 }} />
-                      <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls activeDot={{ r: 6, strokeWidth: 0, fill: "#818cf8" }} />
-                      <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={4} dot={{ r: 5, fill: "#f59e0b", strokeWidth: 0 }} activeDot={{ r: 7, strokeWidth: 0, fill: "#fbbf24" }} connectNulls />
+                      <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'ALERTA HOMA-IR', fill: '#ef4444', fontSize: 10, fontWeight: 800 }} />
+                      <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: "#818cf8" }} />
+                      <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: "#f59e0b", strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: "#fbbf24" }} connectNulls />
                     </>
                   )}
                   
@@ -915,8 +958,8 @@ export default function Dashboard() {
                     if (!payload.hasExam) return <g></g>;
                     return (
                       <g transform={`translate(${cx - 8},${cy - 25})`}>
-                        <circle cx="8" cy="8" r="12" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" />
-                        <Syringe x="1" y="1" size={14} color="#d97706" />
+                        <circle cx="8" cy="8" r="10" fill="#fff" stroke="#f59e0b" strokeWidth="2" />
+                        <Syringe x="3" y="3" size={10} color="#d97706" />
                       </g>
                     );
                   }} />
@@ -924,119 +967,126 @@ export default function Dashboard() {
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-stone-200">
-                <TrendingDown size={40} />
-                <p className="text-stone-500 mt-4">Faça seu primeiro check-in para ver sua evolução.</p>
+              <div className="h-full flex flex-col items-center justify-center text-stone-300">
+                <TrendingDown size={48} strokeWidth={1} />
+                <p className="text-stone-500 mt-4 font-medium text-sm">Faça seu primeiro check-in para gerar os gráficos.</p>
               </div>
             )}
           </div>
 
           {/* PAINEL DE PREVISÃO DE CHEGADA E STATUS DA META */}
           {profile?.meta_peso && timelineData.length > 0 && (
-            <div className={`mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-2xl border transition-colors ${isGoalMet ? 'bg-green-50 border-green-200' : 'bg-stone-50 border-stone-100'}`}>
+            <div className={`mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 p-5 md:p-6 rounded-2xl border transition-colors shadow-sm ${isGoalMet ? 'bg-gradient-to-r from-green-50 to-white border-green-200' : 'bg-gradient-to-r from-stone-50 to-white border-stone-100'}`}>
               <div className="flex flex-col sm:flex-row items-center gap-4">
-                <div className={`p-3 rounded-2xl ${isGoalMet ? 'bg-green-200 text-green-800' : 'bg-nutri-100 text-nutri-900 shadow-sm'}`}>
+                <div className={`p-3.5 rounded-2xl ${isGoalMet ? 'bg-green-100 text-green-700' : 'bg-white shadow-sm border border-stone-100 text-nutri-800'}`}>
                   {isGoalMet ? <Trophy size={24}/> : <Target size={24}/>}
                 </div>
                 <div className="text-center sm:text-left">
-                  <p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isGoalMet ? 'text-green-700' : 'text-stone-400'}`}>
-                    {isGoalMet ? 'Meta Atingida!' : 'Destino: Peso Meta'}
+                  <p className={`text-[10px] font-black uppercase tracking-[0.15em] mb-1 ${isGoalMet ? 'text-green-600' : 'text-stone-400'}`}>
+                    {isGoalMet ? 'Você Chegou Lá!' : 'Destino: Peso Meta'}
                   </p>
-                  <p className={`font-black text-xl md:text-2xl ${isGoalMet ? 'text-green-900' : 'text-stone-900'}`}>{profile.meta_peso} kg</p>
+                  <p className={`font-black text-2xl tracking-tight ${isGoalMet ? 'text-green-800' : 'text-stone-800'}`}>{profile.meta_peso} kg</p>
                 </div>
               </div>
               
               {!isGoalMet && projection && !projection.achieved && (
-                <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l border-stone-200 pt-4 sm:pt-0 sm:pl-6">
+                <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l border-stone-200/60 pt-4 sm:pt-0 sm:pl-8">
                    <p className="text-sm text-stone-600 font-medium">Ritmo atual: <strong className="text-emerald-600">-{projection.ratePerWeek} kg/sem</strong></p>
                    <p className="text-xs text-stone-500 mt-1">Mantendo o foco, você chega lá em <strong className="text-stone-800">~{projection.weeksLeft} semanas</strong>.</p>
                 </div>
               )}
               
               {!isGoalMet && !projection && (
-                <p className={`text-xs font-medium text-center sm:text-right text-stone-500 max-w-xs`}>
-                  Continue registrando seus relatos semanais para o sistema calcular sua previsão de chegada.
+                <p className="text-xs font-medium text-center sm:text-right text-stone-500 max-w-xs">
+                  Continue registrando seus relatos semanais para a IA projetar sua data de chegada.
                 </p>
               )}
               
               {isGoalMet && (
-                <p className={`text-xs font-medium text-center sm:text-right text-green-700 max-w-xs`}>
-                  Parabéns pela dedicação! Você alcançou seu objetivo. O foco agora é a manutenção.
+                <p className="text-xs font-medium text-center sm:text-right text-green-700 max-w-xs leading-relaxed">
+                  Parabéns pela dedicação fantástica! Você alcançou seu objetivo. O foco agora é a manutenção.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        {/* ==================== WIDGETS INFERIORES ==================== */}
+        {/* ==================== WIDGETS INFERIORES PREMIUM ==================== */}
         <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
-          <div className="lg:col-span-2 bg-nutri-900 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group flex flex-col justify-center">
-            <h3 className="text-nutri-200 font-bold uppercase text-[10px] tracking-[0.2em] mb-4">Foco Principal</h3>
-            <p className="text-2xl md:text-3xl font-light leading-snug relative z-10">{evaluation ? Object.values(evaluation)[0] as string : 'Objetivo não definido.'}</p>
+          <div className="lg:col-span-2 bg-gradient-to-br from-nutri-900 to-stone-900 text-white p-8 md:p-10 rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.12)] relative overflow-hidden group flex flex-col justify-center">
+            {/* Elementos decorativos */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
+            
+            <h3 className="text-nutri-200/80 font-bold uppercase text-[11px] tracking-[0.2em] mb-4 relative z-10 flex items-center gap-2">
+              <Target size={14} /> Foco Principal
+            </h3>
+            <p className="text-2xl md:text-[2rem] font-medium leading-snug tracking-tight relative z-10">{evaluation ? Object.values(evaluation)[0] as string : 'Objetivo ainda não definido.'}</p>
           </div>
           
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 relative overflow-hidden flex flex-col justify-between min-h-[160px]">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-stone-100 relative overflow-hidden flex flex-col justify-between min-h-[180px] hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all">
             <div className="flex items-center gap-2 mb-6 text-stone-400 relative z-10">
               <Ruler size={18} /><h3 className="font-bold uppercase text-[10px] tracking-[0.2em]">Medida de Cintura</h3>
             </div>
-            <div className={!isPremium ? 'filter blur-sm select-none opacity-40' : ''}>
+            <div className={!isPremium ? 'filter blur-[6px] select-none opacity-40 transition-all' : ''}>
               {antroData.length > 0 && antroData[0].waist ? (
                 <div>
-                  <div className="flex items-baseline gap-2 mb-2"><span className="text-4xl font-black text-stone-900">{antroData[0].waist}</span><span className="text-stone-400 font-bold">cm</span></div>
-                  {antroData.length > 1 && <p className="text-xs font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1">Anterior: {antroData[1].waist}cm</p>}
+                  <div className="flex items-baseline gap-2 mb-2"><span className="text-[2.5rem] font-black tracking-tight text-stone-900">{antroData[0].waist}</span><span className="text-stone-400 font-bold text-lg">cm</span></div>
+                  {antroData.length > 1 && <p className="text-xs font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5"><ArrowRight size={12} /> Anterior: {antroData[1].waist}cm</p>}
                 </div>
-              ) : <p className="text-sm text-stone-500 italic font-light">Aguardando consulta.</p>}
+              ) : <p className="text-sm text-stone-500 font-medium">Aguardando consulta médica.</p>}
             </div>
             {!isPremium && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px]">
-                <div className="bg-white p-3 rounded-full shadow-lg border border-stone-100 text-amber-500 mb-2"><Lock size={20} /></div>
-                <span className="text-[10px] font-bold text-stone-800 uppercase tracking-widest bg-white/80 px-3 py-1 rounded-full">Exclusivo Premium</span>
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/50 backdrop-blur-[4px]">
+                <div className="bg-white p-3.5 rounded-2xl shadow-lg border border-stone-100 text-amber-500 mb-3"><Lock size={22} /></div>
+                <span className="text-[10px] font-bold text-stone-800 uppercase tracking-[0.15em] bg-white shadow-sm border border-stone-100 px-4 py-1.5 rounded-full">Exclusivo Premium</span>
               </div>
             )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up pb-10">
-          <Link href="/dashboard/meu-plano" className={`p-8 rounded-[2.5rem] border transition-all group relative overflow-hidden ${canAccessMealPlan ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200' : 'bg-stone-50 border-stone-200'}`}>
-            <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2">Alimentação {!canAccessMealPlan && <Lock size={12} className="text-amber-500" />}</h4>
-            <h3 className={`font-bold text-lg mb-4 ${canAccessMealPlan ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
-            <div className="flex items-center justify-between">
-              <p className={`text-sm font-bold flex items-center gap-1 ${canAccessMealPlan ? 'text-nutri-800' : 'text-stone-400'}`}>
+          <Link href="/dashboard/meu-plano" className={`p-8 rounded-[2.5rem] border transition-all duration-300 group relative overflow-hidden flex flex-col justify-between ${canAccessMealPlan ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200 hover:shadow-md hover:-translate-y-1' : 'bg-stone-50/50 border-stone-200'}`}>
+            <div>
+              <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2">Alimentação {!canAccessMealPlan && <Lock size={12} className="text-amber-500" />}</h4>
+              <h3 className={`font-bold text-xl mb-4 tracking-tight ${canAccessMealPlan ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
+            </div>
+            <div className="flex items-center justify-between mt-auto pt-4">
+              <p className={`text-sm font-bold flex items-center gap-1.5 group-hover:gap-2.5 transition-all ${canAccessMealPlan ? 'text-nutri-800' : 'text-stone-400'}`}>
                 {canAccessMealPlan ? (isMealPlanReady ? 'Cardápio Liberado' : 'Em elaboração') : 'Desbloquear Acesso'} 
                 <ArrowRight size={14} />
               </p>
-              {isMealPlanReady && canAccessMealPlan && <div className="bg-green-100 text-green-700 p-2 rounded-full animate-bounce"><Utensils size={14} /></div>}
+              {isMealPlanReady && canAccessMealPlan && <div className="bg-green-100/50 border border-green-200 text-green-600 p-2.5 rounded-2xl animate-pulse"><Utensils size={16} /></div>}
             </div>
           </Link>
 
-          <Link href="/paciente/avaliacao" className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 hover:border-nutri-200 transition-all group flex flex-col justify-between">
+          <Link href="/paciente/avaliacao" className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 hover:border-nutri-200 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group flex flex-col justify-between">
             <div>
               <h4 className="font-black text-stone-400 uppercase text-[10px] tracking-[0.2em] mb-3">Minha Rotina</h4>
-              <h3 className="font-bold text-stone-900 text-lg mb-4">Raio-X Alimentar</h3>
+              <h3 className="font-bold text-stone-900 text-xl mb-4 tracking-tight">Raio-X Alimentar</h3>
             </div>
-            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1 group-hover:gap-2 transition-all mt-auto">
+            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1.5 group-hover:gap-2.5 transition-all mt-auto pt-4">
               {hasCompletedQFA ? 'Ver minhas respostas' : 'Preencher agora'} <ArrowRight size={14} />
             </p>
           </Link>
 
-          <Link href="/dashboard/agendamentos" className={`p-8 rounded-[2.5rem] shadow-sm border transition-all group flex flex-col justify-between ${nextAppointment ? 'bg-nutri-50 border-nutri-200 hover:bg-nutri-100' : 'bg-white border-stone-100 hover:border-nutri-200'}`}>
+          <Link href="/dashboard/agendamentos" className={`p-8 rounded-[2.5rem] shadow-sm border transition-all duration-300 hover:-translate-y-1 group flex flex-col justify-between ${nextAppointment ? 'bg-nutri-50/50 border-nutri-200 hover:shadow-md hover:bg-nutri-50' : 'bg-white border-stone-100 hover:border-nutri-200 hover:shadow-md'}`}>
             <div>
               <h4 className={`font-black uppercase text-[10px] tracking-[0.2em] mb-3 flex items-center gap-2 ${nextAppointment ? 'text-nutri-600' : 'text-stone-400'}`}>
                 <Calendar size={14}/> Consultas
               </h4>
-              <h3 className="font-bold text-stone-900 text-lg mb-2">Agendamento</h3>
+              <h3 className="font-bold text-stone-900 text-xl mb-3 tracking-tight">Agendamento</h3>
               
               {nextAppointment ? (
-                <p className="text-sm text-stone-700 font-medium leading-tight">
-                  Sua próxima consulta é no dia <b className="text-nutri-800">{new Date(nextAppointment.appointment_date).toLocaleDateString('pt-BR')}</b> às <b className="text-nutri-800">{nextAppointment.appointment_time}</b>.
+                <p className="text-sm text-stone-600 font-medium leading-relaxed">
+                  Sua próxima consulta é no dia <b className="text-nutri-900 bg-white px-1.5 py-0.5 rounded-md border border-nutri-100">{new Date(nextAppointment.appointment_date).toLocaleDateString('pt-BR')}</b> às <b className="text-nutri-900 bg-white px-1.5 py-0.5 rounded-md border border-nutri-100">{nextAppointment.appointment_time}</b>.
                 </p>
               ) : (
-                <p className="text-sm text-stone-500">Nenhuma consulta futura agendada.</p>
+                <p className="text-sm text-stone-500 font-medium">Nenhuma consulta futura agendada.</p>
               )}
             </div>
             
-            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1 group-hover:gap-2 transition-all mt-4">
-              {nextAppointment ? 'Ver detalhes' : 'Ver horários'} <ArrowRight size={14} />
+            <p className="text-sm text-nutri-800 font-bold flex items-center gap-1.5 group-hover:gap-2.5 transition-all mt-auto pt-4">
+              {nextAppointment ? 'Ver detalhes' : 'Ver horários disponíveis'} <ArrowRight size={14} />
             </p>
           </Link>
         </div>
@@ -1045,15 +1095,22 @@ export default function Dashboard() {
 
       {/* MODAL DE CHECK-IN */}
       {isCheckinModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm sm:p-4 animate-fade-in">
-          <div className="relative w-full max-w-lg bg-white sm:bg-transparent rounded-t-[2.5rem] sm:rounded-none">
-            <button onClick={() => setIsCheckinModalOpen(false)} className="absolute top-4 right-4 sm:-top-4 sm:-right-4 md:-right-12 bg-stone-100 sm:bg-white text-stone-500 p-2.5 rounded-full z-10 hover:bg-stone-200 transition-colors">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/40 backdrop-blur-md sm:p-4 animate-fade-in transition-all">
+          <div className="relative w-full max-w-lg bg-white sm:bg-transparent rounded-t-[2.5rem] sm:rounded-none shadow-2xl">
+            <button onClick={() => setIsCheckinModalOpen(false)} className="absolute top-4 right-4 sm:-top-4 sm:-right-4 md:-right-12 bg-stone-100 sm:bg-white text-stone-500 p-2.5 rounded-full z-10 hover:bg-stone-200 hover:text-stone-800 transition-colors shadow-sm">
               <X size={20} />
             </button>
             <CheckinForm onSuccess={handleCheckinSuccess} onFormChange={() => {}} />
           </div>
         </div>
       )}
+
+      {/* MODAL DE ADICIONAR ATIVIDADE FÍSICA */}
+      <AddActivityModal
+        isOpen={isActivityModalOpen}
+        onClose={() => setIsActivityModalOpen(false)}
+        onSave={handleAddActivity}
+      />
 
       {/* MODAL / COMPONENTE DE CHAT FLUTUANTE */}
       <ChatAssistant />
