@@ -147,7 +147,17 @@ export async function POST(req: Request) {
         }))
       });
 
-      const result = await chat.sendMessage(safeMessage);
+      // 🔥 CORREÇÃO: Adicionado fluxo para tratar imagens no modo Admin
+      let result;
+      if (image) {
+        result = await chat.sendMessage([
+          safeMessage || "Analise essa imagem",
+          { inlineData: { mimeType: "image/jpeg", data: image } }
+        ]);
+      } else {
+        result = await chat.sendMessage(safeMessage);
+      }
+
       return NextResponse.json({ reply: result.response.text(), remaining: 999 });
     }
 
@@ -326,10 +336,11 @@ ${semanticMemory || ''}
       }))
     });
 
+    // 🔥 CORREÇÃO: Sintaxe otimizada para envio de array multimodal para o Gemini
     let result;
     if (image) {
       result = await chat.sendMessage([
-        { text: safeMessage || "Analise esse prato para mim" },
+        safeMessage || "Analise esse prato para mim",
         { inlineData: { mimeType: "image/jpeg", data: image } }
       ]);
     } else {
