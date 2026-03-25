@@ -1,6 +1,7 @@
-// contextBuilder.ts (VERSÃO PRO)
-
-type UserData = {
+// =========================================================================
+// TIPAGENS DO CONTEXTO
+// =========================================================================
+export type UserData = {
   nomePaciente: string;
   objetivoPrincipal: string;
   metaPeso: string;
@@ -13,210 +14,169 @@ type UserData = {
   aguaHoje: number;
   refeicoesFeitas: number;
   todayStr: string;
-  hasImage?: boolean; // 🔥 NOVO
+  hasImage?: boolean;
 };
 
-type IntentType =
-  | 'troca'
-  | 'resultado'
-  | 'motivacional'
-  | 'geral';
+type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
 
-// ===============================
-// 🔍 CLASSIFICADOR DE INTENÇÃO
-// ===============================
+// =========================================================================
+// 🔍 1. CLASSIFICADOR DE INTENÇÃO (Otimizado com Regex)
+// =========================================================================
 function detectIntent(message: string): IntentType {
-  const msg = message.toLowerCase();
+  // Normaliza a string (remove acentos e joga pra minúsculo) para melhorar a detecção
+  const msg = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-  if (
-    msg.includes('trocar') ||
-    msg.includes('substituir') ||
-    msg.includes('substituicao')
-  ) return 'troca';
+  if (/(troca|substitui|lugar de|em vez de|posso comer)/.test(msg)) {
+    return 'troca';
+  }
 
-  if (
-    msg.includes('emagrec') ||
-    msg.includes('resultado') ||
-    msg.includes('não emagreci') ||
-    msg.includes('nao emagreci')
-  ) return 'resultado';
+  if (/(emagrec|resultado|peso|medida|estagnei|nao perdi|balanca)/.test(msg)) {
+    return 'resultado';
+  }
 
-  if (
-    msg.includes('desanimei') ||
-    msg.includes('desanimado') ||
-    msg.includes('não consegui') ||
-    msg.includes('nao consegui') ||
-    msg.includes('dificil') ||
-    msg.includes('difícil')
-  ) return 'motivacional';
+  if (/(desanim|nao consegui|dificil|chutei o balde|jacad|compulsa|triste|ansios|culpa)/.test(msg)) {
+    return 'motivacional';
+  }
 
   return 'geral';
 }
 
-// ===============================
-// 🧠 BUILDER PRINCIPAL
-// ===============================
-export function buildContext(
-  message: string,
-  data: UserData
-): string {
+// =========================================================================
+// 🧩 2. MÓDULOS DE CONSTRUÇÃO DO PROMPT (Separação de Responsabilidades)
+// =========================================================================
 
+function buildSystemPersona(): string {
+  return `
+[PERSONA E TOM DE VOZ]
+Você é a Assistente Virtual Exclusiva da Nutricionista Vanusa.
+Seu papel é atuar como uma extensão do atendimento dela, oferecendo suporte rápido, preciso e acolhedor via WhatsApp/App.
+- TOM: Humano, direto, empático e encorajador.
+- PROIBIDO: Falar de forma robótica, dar respostas genéricas de internet, ou receitar medicamentos.
+- REGRA DE OURO: Você NUNCA substitui a consulta. Se a dúvida for muito complexa clínica ou medicamente, oriente o paciente a agendar um retorno com a Vanusa.
+`.trim();
+}
+
+function buildClinicalContext(data: UserData): string {
+  const aversões = data.alimentosEvitar.length > 0 ? data.alimentosEvitar.join(', ') : 'Nenhuma relatada';
+  
+  return `
+[DADOS CLÍNICOS DO PACIENTE]
+- Nome: ${data.nomePaciente}
+- Objetivo Principal: ${data.objetivoPrincipal}
+- Meta de Peso: ${data.metaPeso}
+- Evolução até agora: ${data.evolucaoTxt}
+- Alimentos a Evitar (Aversões/Alergias): ${aversões}
+
+[CARDÁPIO ATUAL]
+${data.cardapioFormatado}
+`.trim();
+}
+
+function buildBehavioralContext(data: UserData): string {
+  return `
+[ROTINA E COMPORTAMENTO]
+- Padrão de Sono: ${data.rotinaSono}
+- Relação com Doces: ${data.vontadesDoces}
+- Status de Hoje (${data.todayStr}):
+  * Água Ingerida: ${data.aguaHoje}ml
+  * Refeições Feitas: ${data.refeicoesFeitas}
+`.trim();
+}
+
+function buildEmotionalContext(data: UserData): string {
+  let alertas = '';
+
+  if (data.humorHoje === 'dificil') {
+    alertas += '\n⚠️ ALERTA EMOCIONAL: O paciente relatou que o dia hoje está "difícil". Priorize o acolhimento, valide o esforço dele e pegue leve nas cobranças técnicas.';
+  }
+  if (data.aguaHoje < 1500 && data.aguaHoje > 0) {
+    alertas += '\n💧 ALERTA DE HIDRATAÇÃO: Paciente bebeu pouca água hoje. Lembre-o gentilmente de se hidratar.';
+  }
+  if (data.refeicoesFeitas <= 2 && data.humorHoje !== 'Não registrado') {
+    alertas += '\n🍽️ ALERTA DE ADESÃO: Paciente pulou refeições hoje. Sugira uma retomada simples na próxima refeição, sem gerar culpa.';
+  }
+
+  return `
+[ESTADO EMOCIONAL DE HOJE]
+- Humor Relatado: ${data.humorHoje}
+${alertas}
+`.trim();
+}
+
+function buildIntentInstructions(intent: IntentType): string {
+  switch (intent) {
+    case 'troca':
+      return `
+[INSTRUÇÃO DE TAREFA: SUBSTITUIÇÃO DE ALIMENTOS]
+O paciente quer trocar um alimento.
+1. Olhe o [CARDÁPIO ATUAL] para ver o que ele deveria comer.
+2. Olhe as [Aversões] para NÃO sugerir o que ele odeia.
+3. Sugira de 1 a 3 opções de substituições nutricionalmente equivalentes (mesmo grupo alimentar).
+4. Seja prático e direto nas quantidades aproximadas.
+`.trim();
+
+    case 'resultado':
+      return `
+[INSTRUÇÃO DE TAREFA: RESULTADOS E ESTAGNAÇÃO]
+O paciente está perguntando sobre peso, medidas ou resultados.
+1. Analise a [Evolução até agora]. Se ele já perdeu peso, celebre isso!
+2. Lembre-o de que oscilações de peso são normais (água, intestino, sono).
+3. Revise o [Padrão de Sono] e [Relação com Doces] e sugira que o foco na constância é mais importante que a balança hoje.
+`.trim();
+
+    case 'motivacional':
+      return `
+[INSTRUÇÃO DE TAREFA: SUPORTE MOTIVACIONAL]
+O paciente está desanimado, falhou na dieta ou está com dificuldade.
+1. Seja extremamente empática. Mostre que falhar faz parte do processo.
+2. Use a regra do "feito é melhor que perfeito".
+3. Não dê uma aula de nutrição agora. Apenas encoraje-o a beber um copo de água ou fazer uma refeição leve na próxima oportunidade.
+`.trim();
+
+    case 'geral':
+    default:
+      return `
+[INSTRUÇÃO DE TAREFA: DÚVIDA GERAL]
+Responda à dúvida do paciente baseando-se no plano alimentar dele. Seja útil, amigável e concisa.
+`.trim();
+  }
+}
+
+function buildImageAnalysisRules(): string {
+  return `
+[INSTRUÇÃO DE TAREFA: ANÁLISE DE IMAGEM DO PRATO]
+O paciente enviou uma foto da refeição.
+1. Identifique os alimentos visíveis no prato com entusiasmo ("Que prato lindo! Vi que você colocou...").
+2. Avalie a proporção do prato (tem proteína suficiente? Salada?).
+3. Estime as calorias (deixe claro que é uma aproximação visual).
+4. Elogie os acertos e, se necessário, sugira uma pequena melhoria para a próxima vez.
+5. NÃO invente alimentos que não estão visíveis.
+`.trim();
+}
+
+// =========================================================================
+// 🧠 3. CONSTRUTOR PRINCIPAL (Orquestrador)
+// =========================================================================
+export function buildContext(message: string, data: UserData): string {
   const intent = detectIntent(message);
 
-  // ===============================
-  // 🔹 BASE FIXA (SEMPRE)
-  // ===============================
-  let contexto = `
-Você é a Assistente Nutricional da Nutricionista Vanusa.
+  // Monta o array apenas com as partes válidas e junta com duas quebras de linha
+  const promptParts = [
+    buildSystemPersona(),
+    buildClinicalContext(data),
+    buildBehavioralContext(data),
+    buildEmotionalContext(data),
+    buildIntentInstructions(intent),
+    data.hasImage ? buildImageAnalysisRules() : '',
+    `
+[REGRAS DE FORMATAÇÃO]
+1. Use parágrafos curtos (máximo de 2-3 linhas por parágrafo) para facilitar a leitura no celular.
+2. Use emojis com moderação para dar um tom amigável.
+3. Use **negrito** para destacar alimentos ou informações muito importantes.
+4. Nunca termine a frase pela metade.
+    `.trim()
+  ];
 
-Tom:
-- humano
-- direto
-- acolhedor (estilo WhatsApp)
-- motivador quando necessário
-- NUNCA robótico
-
-Regra crítica:
-- Nunca responda de forma genérica
-- Sempre considere o contexto do paciente
-- Nunca corte frase no meio
-
-DADOS DO PACIENTE:
-Nome: ${data.nomePaciente}
-Objetivo: ${data.objetivoPrincipal}
-Meta de Peso: ${data.metaPeso}
-`;
-
-  // ===============================
-  // 🔹 CONTEXTO POR INTENÇÃO
-  // ===============================
-
-  if (intent === 'troca') {
-    contexto += `
-CONTEXTO PARA TROCAS:
-Aversões: ${
-      data.alimentosEvitar.length > 0
-        ? data.alimentosEvitar.join(', ')
-        : 'Nenhuma'
-    }
-
-CARDÁPIO ATUAL:
-${data.cardapioFormatado}
-
-INSTRUÇÃO:
-- Sugira substituições equivalentes
-- Evite alimentos da lista de aversões
-- Seja prático (1–3 opções)
-`;
-  }
-
-  if (intent === 'resultado') {
-    contexto += `
-CONTEXTO DE RESULTADO:
-${data.evolucaoTxt}
-
-ROTINA:
-Sono: ${data.rotinaSono}
-Doces: ${data.vontadesDoces}
-
-INSTRUÇÃO:
-- Identifique possíveis erros
-- Dê ajustes simples
-- Evite resposta genérica
-`;
-  }
-
-  if (intent === 'motivacional') {
-    contexto += `
-CONTEXTO EMOCIONAL:
-Humor: ${data.humorHoje}
-Refeições feitas: ${data.refeicoesFeitas}
-Água: ${data.aguaHoje}ml
-
-INSTRUÇÃO:
-- Seja empática
-- Reforce progresso
-- Dê um passo simples possível hoje
-`;
-  }
-
-  if (intent === 'geral') {
-    contexto += `
-CONTEXTO GERAL:
-Aversões: ${
-      data.alimentosEvitar.length > 0
-        ? data.alimentosEvitar.join(', ')
-        : 'Nenhuma'
-    }
-
-CARDÁPIO:
-${data.cardapioFormatado}
-
-STATUS HOJE:
-Humor: ${data.humorHoje}
-Água: ${data.aguaHoje}ml
-Refeições: ${data.refeicoesFeitas}
-`;
-  }
-
-  // ===============================
-  // 🔥 INTELIGÊNCIA ADICIONAL
-  // ===============================
-
-  // 🔻 Baixa ingestão de água
-  if (data.aguaHoje < 1500) {
-    contexto += `
-ALERTA:
-Paciente com baixa ingestão de água.
-- Incentive aumento de forma leve.
-`;
-  }
-
-  // 🔻 Baixa adesão alimentar
-  if (data.refeicoesFeitas <= 2) {
-    contexto += `
-ALERTA:
-Baixa adesão ao plano alimentar hoje.
-- Sugira retomada simples (sem culpa).
-`;
-  }
-
-  // 🔻 Humor difícil
-  if (data.humorHoje === 'dificil') {
-    contexto += `
-ALERTA EMOCIONAL:
-Paciente em dia difícil.
-- Priorize acolhimento antes de orientação técnica.
-`;
-  }
-
-  // ===============================
-  // 🔥 MODO IMAGEM
-  // ===============================
-  if (data.hasImage) {
-    contexto += `
-ANÁLISE DE IMAGEM:
-- Identifique alimentos visíveis
-- Estime calorias (aproximação)
-- Avalie qualidade do prato
-- Sugira melhorias simples
-
-IMPORTANTE:
-- Não inventar alimentos não visíveis
-- Assumir estimativa, não precisão
-`;
-  }
-
-  // ===============================
-  // 🔹 REGRAS FINAIS
-  // ===============================
-  contexto += `
-REGRAS FINAIS:
-1. Use linguagem simples
-2. Use negrito para alimentos importantes
-3. Evite respostas longas demais
-4. Seja útil e direto
-`;
-
-  return contexto.trim();
+  // Filtra itens vazios (caso hasImage seja false) e une tudo
+  return promptParts.filter(part => part.length > 0).join('\n\n');
 }

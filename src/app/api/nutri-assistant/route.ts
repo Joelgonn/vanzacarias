@@ -8,13 +8,15 @@ import { getUserSummary, updateUserSummary } from '@/lib/memorySummary'
 import { getSemanticMemories } from '@/lib/semanticSearch'
 import { generateEmbedding } from '@/lib/embeddingService'
 
-const supabase = createClient(
+// O client Service Role ignora as RLS (Row Level Security).
+// Por isso, é CRÍTICO validarmos quem é o usuário antes de executar buscas profundas.
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 // ==========================================
-// 🧠 DETECTOR DE COMPLEXIDADE
+// 🛠️ FUNÇÕES AUXILIARES
 // ==========================================
 function isComplexRequest(message: string, hasImage: boolean): boolean {
   const msg = message.toLowerCase();
@@ -25,17 +27,20 @@ function isComplexRequest(message: string, hasImage: boolean): boolean {
   return false;
 }
 
+function normalizeString(str: string): string {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 // ==========================================
 // 🛠️ CONSTRUTOR DE CONTEXTO ADMIN
 // ==========================================
 function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: string): string {
   const patientsResumo = adminData?.patients?.map((p: any) => {
     const isDietReady = p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
-    const objetivo = p.evaluation?.answers?.["0"] || 'Não definido';
     const aguaHoje = p.todayLog?.water_ml ? `${p.todayLog.water_ml}ml` : '0ml';
     const humorHoje = p.todayLog?.mood || 'Não registrou';
 
-    return `- Nome: ${p.full_name || 'Desconhecido'} | Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} | Novo: ${p.isNew ? 'Sim' : 'Não'} | Atrasado: ${p.isLate ? 'Sim' : 'Não'} | Meta: ${p.meta_peso ? `${p.meta_peso}kg` : 'N/A'} | Água Hoje: ${aguaHoje} | Humor Hoje: ${humorHoje}`;
+    return `- Nome: ${p.full_name || 'Desconhecido'} | Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} | Atrasado: ${p.isLate ? 'Sim' : 'Não'} | Meta: ${p.meta_peso ? `${p.meta_peso}kg` : 'N/A'} | Água: ${aguaHoje} | Humor: ${humorHoje}`;
   }).join('\n') || 'Nenhum paciente cadastrado.';
 
   const leadsResumo = adminData?.leads?.map((l: any) => 
@@ -45,13 +50,13 @@ function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: s
   return `
 Você é a Assistente de Inteligência Artificial exclusiva da Nutricionista Vanusa.
 Você está operando no PAINEL ADMINISTRATIVO dela. 
-A data e hora exata agora (Horário de Brasília) é: ${currentTimeBR}.
+Data e hora (Brasília): ${currentTimeBR}.
 
-O seu objetivo é agir como uma co-piloto clínica e administrativa da Vanusa. 
+Seu objetivo é agir como uma co-piloto clínica e administrativa.
 
-📊 DADOS DE USO HOJE:
-- Mensagens hoje: ${adminData?.todayTotalMessages || 0}
-- Pacientes ativos no chat hoje: ${Object.keys(adminData?.usageStats || {}).length}
+📊 DADOS DE USO:
+- Mensagens da IA hoje: ${adminData?.todayTotalMessages || 0}
+- Pacientes ativos no chat: ${Object.keys(adminData?.usageStats || {}).length}
 
 👥 VISÃO GERAL DOS PACIENTES:
 ${patientsResumo}
@@ -63,9 +68,7 @@ ${deepContext ? `\n🔍 DADOS CLÍNICOS PROFUNDOS ENCONTRADOS NO BANCO DE DADOS:
 
 REGRAS:
 - Dirija-se a ela como "Vanusa" ou "Nutri".
-- Você tem acesso direto ao banco de dados Supabase dela (Antropometria, Exames Bioquímicos, Dobras Cutâneas, Diários Históricos, Notas Clínicas).
-- Quando a Vanusa perguntar sobre medidas, histórico de água, balanço hídrico ou exames de um paciente específico, USE OS DADOS PROFUNDOS fornecidos acima para dar uma resposta analítica e precisa.
-- Nunca limite o tamanho das suas respostas se a análise clínica exigir profundidade.
+- Analise os dados profundamente quando solicitado.
 `.trim();
 }
 
@@ -75,7 +78,7 @@ export async function POST(req: Request) {
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {
-      return NextResponse.json({ reply: "Por favor, digite uma mensagem ou envie uma foto do seu prato." }, { status: 200 });
+      return NextResponse.json({ reply: "Por favor, digite uma mensagem ou envie uma foto." }, { status: 200 });
     }
 
     if (!userId) {
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
 
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) {
-      return NextResponse.json({ reply: "Erro: Chave de API não configurada." }, { status: 200 });
+      return NextResponse.json({ reply: "Erro de configuração no servidor (Gemini API Key)." }, { status: 500 });
     }
 
     const genAI = new GoogleGenerativeAI(geminiKey);
@@ -93,45 +96,74 @@ export async function POST(req: Request) {
     const currentTimeBR = dataAtual.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
 
     // ==========================================
-    // 👑 MODO ADMINISTRADOR (Varredura de Todas as Tabelas)
+    // 👑 MODO ADMINISTRADOR (Validado e Otimizado)
     // ==========================================
-    if (isAdmin && adminData) {
+    if (isAdmin) {
+      console.log(`[API Nutri Assistant] Iniciando verificação de Admin. UserId recebido:`, userId);
+
+      // 1. CAMADA DE SEGURANÇA: Retiramos o .single() para evitar o erro de coerção JSON.
+      // Solicitamos um array com limite de 1.
+      const { data: profilesData, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('role') 
+        .eq('id', userId)
+        .limit(1);
+
+      if (profileError) {
+        return NextResponse.json({ 
+          reply: `Erro de segurança ao consultar o banco de dados: ${profileError.message}` 
+        }, { status: 403 });
+      }
+
+      // Extraímos o primeiro item do array de forma segura
+      const userProfile = profilesData && profilesData.length > 0 ? profilesData[0] : null;
+
+      if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'nutricionista')) {
+        return NextResponse.json({ 
+          reply: `Acesso negado. Perfil não encontrado ou sem permissão de administrador. (UserId buscado: ${userId})` 
+        }, { status: 403 });
+      }
+
       let deepContext = '';
-      const safeMessageLower = safeMessage.toLowerCase();
+      const normalizedMsg = normalizeString(safeMessage);
       
-      // Tenta identificar o paciente pelo primeiro nome na mensagem
-      const mentionedPatient = adminData.patients?.find((p: any) => {
+      // 2. IDENTIFICAÇÃO DE PACIENTE (Mais Robusta)
+      const mentionedPatient = adminData?.patients?.find((p: any) => {
         if (!p.full_name) return false;
-        const firstName = p.full_name.split(' ')[0].toLowerCase();
-        return safeMessageLower.includes(firstName);
+        const patientNameParts = normalizeString(p.full_name).split(' ');
+        const firstName = patientNameParts[0];
+        
+        // Ex: Procura o primeiro nome se ele for maior que 2 letras
+        return firstName.length > 2 && normalizedMsg.includes(firstName);
       });
 
+      // 3. BUSCA DE DADOS LIMITADA (Evitar consumo excessivo de tokens)
       if (mentionedPatient) {
         const targetId = mentionedPatient.id;
 
-        // 🔥 VARREDURA TOTAL: Busca em TODAS as tabelas clínicas filtrando por user_id
         const [antro, skin, bio, notes, logs, qfa, evals, checkins] = await Promise.all([
-          supabase.from('anthropometry').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }),
-          supabase.from('skinfolds').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }),
-          supabase.from('biochemicals').select('*').eq('user_id', targetId).order('exam_date', { ascending: false }),
-          supabase.from('clinical_notes').select('*').eq('user_id', targetId).order('created_at', { ascending: false }),
-          supabase.from('daily_logs').select('*').eq('user_id', targetId).order('date', { ascending: false }).limit(30),
-          supabase.from('qfa_responses').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(1),
-          supabase.from('evaluations').select('*').eq('user_id', targetId).limit(1),
-          supabase.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(4)
+          supabaseAdmin.from('anthropometry').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }).limit(3),
+          supabaseAdmin.from('skinfolds').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }).limit(3),
+          supabaseAdmin.from('biochemicals').select('*').eq('user_id', targetId).order('exam_date', { ascending: false }).limit(2),
+          supabaseAdmin.from('clinical_notes').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(3),
+          supabaseAdmin.from('daily_logs').select('*').eq('user_id', targetId).order('date', { ascending: false }).limit(7),
+          supabaseAdmin.from('qfa_responses').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(1),
+          supabaseAdmin.from('evaluations').select('*').eq('user_id', targetId).limit(1),
+          supabaseAdmin.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(3)
         ]);
+
+        // Tratamento de erros das queries (opcional, apenas para log)
+        if (antro.error || logs.error) console.error("Erro ao buscar contexto profundo:", antro.error || logs.error);
 
         deepContext = `
         DADOS DO PACIENTE: ${mentionedPatient.full_name}
-        
-        📋 AVALIAÇÃO INICIAL (Histórico de Saúde): ${JSON.stringify(evals.data)}
-        🍎 QFA (Questionário de Frequência Alimentar): ${JSON.stringify(qfa.data)}
-        ✅ ÚLTIMOS CHECK-INS (Evolução relatada): ${JSON.stringify(checkins.data)}
-        📊 ANTROPOMETRIA (Peso/Medidas): ${JSON.stringify(antro.data)}
-        🤏 DOBRAS CUTÂNEAS: ${JSON.stringify(skin.data)}
-        🩸 EXAMES BIOQUÍMICOS: ${JSON.stringify(bio.data)}
-        📝 NOTAS DA NUTRI: ${JSON.stringify(notes.data)}
-        💧 DIÁRIO (Últimos 30 dias): ${JSON.stringify(logs.data)}
+        📋 AVALIAÇÃO: ${JSON.stringify(evals.data)}
+        ✅ ÚLTIMOS 3 CHECK-INS: ${JSON.stringify(checkins.data)}
+        📊 ANTROPOMETRIA (Últimas 3): ${JSON.stringify(antro.data)}
+        🤏 DOBRAS (Últimas 3): ${JSON.stringify(skin.data)}
+        🩸 EXAMES (Últimos 2): ${JSON.stringify(bio.data)}
+        📝 NOTAS DA NUTRI (Últimas 3): ${JSON.stringify(notes.data)}
+        💧 DIÁRIO (Últimos 7 dias): ${JSON.stringify(logs.data)}
         `;
       }
 
@@ -147,7 +179,6 @@ export async function POST(req: Request) {
         }))
       });
 
-      // 🔥 CORREÇÃO: Adicionado fluxo para tratar imagens no modo Admin
       let result;
       if (image) {
         result = await chat.sendMessage([
@@ -158,52 +189,61 @@ export async function POST(req: Request) {
         result = await chat.sendMessage(safeMessage);
       }
 
-      return NextResponse.json({ reply: result.response.text(), remaining: 999 });
+      const adminReply = result.response.text();
+
+      // 4. SALVAR HISTÓRICO DO ADMIN (Background Task)
+      (async () => {
+        try {
+          await supabaseAdmin.from('ai_messages').insert({ 
+            user_id: userId, 
+            question: `[ADMIN] ${safeMessage || 'Imagem enviada'}`, 
+            answer: adminReply 
+          });
+        } catch (err) {
+          console.error('[Admin Log Error]', err);
+        }
+      })();
+
+      return NextResponse.json({ reply: adminReply, remaining: 999 });
     }
 
     // ==========================================
     // ⚡ FLUXO PADRÃO (PACIENTE)
     // ==========================================
 
-    // ==========================================
-    // ⚡ 1. CACHE C/ CONSUMO DE LIMITE (PACIENTE)
-    // ==========================================
+    // 1. CACHE C/ CONSUMO DE LIMITE
     if (!image && safeMessage) {
       const cached = await getCachedResponse(userId, safeMessage);
 
       if (cached) {
-        console.log(`[Cache Hit] Resposta instantânea via cache para o usuário ${userId}`);
-        
         const currentRate = await checkRateLimit(userId);
         
         if (!currentRate.allowed) {
           return NextResponse.json({
-            reply: `Você atingiu o limite diário de ${currentRate.limit} mensagens.\n\nVolte amanhã ou fale com a nutricionista pelo WhatsApp 💬`,
+            reply: `Você atingiu o limite diário de ${currentRate.limit} mensagens.\n\nVolte amanhã ou fale com a nutricionista no WhatsApp 💬`,
             limitReached: true,
             remaining: 0
           }, { status: 200 });
         }
 
-        const { data: insertedMsg, error: insertError } = await supabase
+        const { data: insertedMsg, error: insertError } = await supabaseAdmin
           .from('ai_messages')
           .insert({ user_id: userId, question: safeMessage, answer: cached })
           .select('id')
           .single();
 
-        if (!insertError && insertedMsg) {
-          if (safeMessage.length > 10) {
-            (async () => {
-              try {
-                const embeddingText = `Pergunta: ${safeMessage}\nResposta: ${cached}`;
-                const embeddingVector = await generateEmbedding(embeddingText);
-                if (embeddingVector) {
-                  await supabase.from('ai_messages').update({ embedding: embeddingVector }).eq('id', insertedMsg.id);
-                }
-              } catch (bgError) {
-                console.error('[Background Cache Error]', bgError);
+        if (!insertError && insertedMsg && safeMessage.length > 10) {
+          (async () => {
+            try {
+              const embeddingText = `Pergunta: ${safeMessage}\nResposta: ${cached}`;
+              const embeddingVector = await generateEmbedding(embeddingText);
+              if (embeddingVector) {
+                await supabaseAdmin.from('ai_messages').update({ embedding: embeddingVector }).eq('id', insertedMsg.id);
               }
-            })();
-          }
+            } catch (bgError) {
+              console.error('[Background Cache Error]', bgError);
+            }
+          })();
         }
 
         return NextResponse.json({
@@ -215,11 +255,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // ==========================================
-    // 🔒 2. RATE LIMIT (PACIENTE)
-    // ==========================================
+    // 2. RATE LIMIT
     const rate = await checkRateLimit(userId);
-
     if (!rate.allowed) {
       return NextResponse.json({
         reply: `Você atingiu o limite diário de ${rate.limit} mensagens.\n\nVolte amanhã ou fale com a nutricionista pelo WhatsApp 💬`,
@@ -228,18 +265,23 @@ export async function POST(req: Request) {
       }, { status: 200 });
     }
 
-    // ==========================================
     // 3. BUSCAR DADOS DO PACIENTE
-    // ==========================================
-    const { data: profile } = await supabase.from('profiles').select('full_name, meta_peso, meal_plan').eq('id', userId).single();
-    const { data: dailyLog } = await supabase.from('daily_logs').select('water_ml, meals_checked, mood').eq('user_id', userId).eq('date', todayStr).single();
-    const { data: evaluation } = await supabase.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
-    const { data: qfa } = await supabase.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
-    const { data: antro } = await supabase.from('anthropometry').select('weight, waist, measurement_date').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2);
+    const [profileRes, dailyLogRes, evalRes, qfaRes, antroRes] = await Promise.all([
+      supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan').eq('id', userId).limit(1),
+      supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood').eq('user_id', userId).eq('date', todayStr).limit(1),
+      supabaseAdmin.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
+      supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
+      supabaseAdmin.from('anthropometry').select('weight, waist, measurement_date').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2)
+    ]);
 
-    // ==========================================
+    // Otimização e prevenção do mesmo erro de JSON (.single()) nos dados do paciente
+    const profile = profileRes.data?.[0];
+    const dailyLog = dailyLogRes.data?.[0];
+    const evaluation = evalRes.data?.[0];
+    const qfa = qfaRes.data?.[0];
+    const antro = antroRes.data;
+
     // 4. PROCESSAMENTO DE CONTEXTO
-    // ==========================================
     const nomePaciente = profile?.full_name?.split(' ')[0] || 'Paciente';
     const objetivoPrincipal = evaluation?.answers?.["0"] || 'Não informado';
     const rotinaSono = evaluation?.answers?.["3"] || '';
@@ -273,9 +315,7 @@ export async function POST(req: Request) {
     const aguaHoje = dailyLog?.water_ml || 0;
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
 
-    // ==========================================
     // 5. CONTEXTO INTELIGENTE + RAG VETORIAL
-    // ==========================================
     const baseContext = buildContext(safeMessage, {
       nomePaciente,
       objetivoPrincipal,
@@ -308,21 +348,17 @@ export async function POST(req: Request) {
       : '';
 
     const contextoInjetado = `
-[INFORMAÇÃO DO SISTEMA]: A data e hora exata agora (Horário de Brasília) é: ${currentTimeBR}. Use isso para saber em que momento do dia o paciente está (manhã, tarde, noite) e agir adequadamente.
+[INFORMAÇÃO DO SISTEMA]: A data e hora exata agora (Horário de Brasília) é: ${currentTimeBR}. Use isso para saber o momento do dia e agir adequadamente.
 
 ${baseContext}
 ${summary ? `RESUMO DO COMPORTAMENTO DO PACIENTE:\n${summary}\n` : ''}
 ${semanticMemory || ''}
     `.trim();
 
-    // ==========================================
     // 6. MODELO HÍBRIDO E LOGGING
-    // ==========================================
     const useComplexModel = isComplexRequest(safeMessage, !!image);
     const modelName = useComplexModel ? "gemini-2.5-flash" : "gemini-2.5-flash-lite";
     const remainingReal = Math.max(rate.remaining - 1, 0);
-
-    console.log(`[AI] Modelo: ${modelName} | Restante Real: ${remainingReal} | Usa Resumo: ${!!summary} | Usa Vector RAG: ${!!semanticMemory}`);
 
     const model = genAI.getGenerativeModel({
       model: modelName,
@@ -336,7 +372,6 @@ ${semanticMemory || ''}
       }))
     });
 
-    // 🔥 CORREÇÃO: Sintaxe otimizada para envio de array multimodal para o Gemini
     let result;
     if (image) {
       result = await chat.sendMessage([
@@ -348,18 +383,18 @@ ${semanticMemory || ''}
     }
 
     const reply = result.response.text();
-    if (!reply) return NextResponse.json({ reply: "Pode repetir?" }, { status: 200 })
+    if (!reply) return NextResponse.json({ reply: "Pode repetir?" }, { status: 200 });
 
-    // ==========================================
     // 7. SALVAR HISTÓRICO E RAG EM BACKGROUND
-    // ==========================================
     if (userId) {
       const questionText = safeMessage || 'Enviou uma imagem';
-      const { data: insertedMsg, error: insertError } = await supabase
+      // Aqui usamos data[0] em vez de single() para manter o padrão seguro e evitar bugs no insert
+      const { data: insertedMsgs, error: insertError } = await supabaseAdmin
         .from('ai_messages')
         .insert({ user_id: userId, question: questionText, answer: reply })
-        .select('id')
-        .single();
+        .select('id');
+
+      const insertedMsg = insertedMsgs?.[0];
 
       if (!insertError && insertedMsg) {
         (async () => {
@@ -369,7 +404,7 @@ ${semanticMemory || ''}
               const embeddingText = `Pergunta: ${questionText}\nResposta: ${reply}`;
               const embeddingVector = await generateEmbedding(embeddingText);
               if (embeddingVector) {
-                await supabase.from('ai_messages').update({ embedding: embeddingVector }).eq('id', insertedMsg.id);
+                await supabaseAdmin.from('ai_messages').update({ embedding: embeddingVector }).eq('id', insertedMsg.id);
               }
             }
           } catch (bgError) {

@@ -1,5 +1,3 @@
-// /lib/memorySummary.ts
-
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
@@ -33,22 +31,28 @@ async function generateSummaryWithRetry(model: any, prompt: string, retries = 2)
 }
 
 // ==========================================
-// 📥 GET SUMMARY
+// 📥 GET SUMMARY (Corrigido para evitar crash)
 // ==========================================
 export async function getUserSummary(userId: string): Promise<string> {
   if (!userId) return '';
 
-  const { data } = await supabase
+  // Substituímos .single() por .limit(1) para não quebrar a API em pacientes novos sem resumo
+  const { data, error } = await supabase
     .from('user_memory_summary')
     .select('summary')
     .eq('user_id', userId)
-    .single();
+    .limit(1);
 
-  return data?.summary || '';
+  if (error) {
+    console.error('[Memory Summary] Erro ao buscar resumo:', error);
+    return '';
+  }
+
+  return data?.[0]?.summary || '';
 }
 
 // ==========================================
-// 🔄 UPDATE SUMMARY (IA)
+// 🔄 UPDATE SUMMARY (IA - Incremental e Controlado)
 // ==========================================
 export async function updateUserSummary(
   userId: string,
@@ -67,27 +71,30 @@ export async function updateUserSummary(
   const currentSummary = await getUserSummary(userId);
 
   // ===============================
-  // 🧠 PROMPT DE RESUMO
+  // 🧠 PROMPT DE RESUMO (Anti Crescimento Infinito)
   // ===============================
+  // A instrução agora obriga a IA a "esquecer" coisas antigas em favor das novas,
+  // mantendo o texto curto e condensado.
   const prompt = `
-Você é um sistema que mantém um resumo nutricional de um paciente.
+Você é uma IA de memória responsável por atualizar o perfil comportamental de um paciente clínico.
+Sua tarefa é reescrever o resumo existente incorporando o que foi falado na nova interação.
 
-Atualize o resumo com base na nova interação.
+REGRAS RÍGIDAS (EVITAR CRESCIMENTO INFINITO):
+1. O resumo DEVE ter NO MÁXIMO 5 tópicos (bullet points curtos).
+2. Limite estrito de 500 caracteres no total.
+3. Se o limite de espaço estiver sendo atingido, EXCLUA (esqueça) informações antigas ou problemas já resolvidos. 
+4. O resumo deve ser uma "foto" do momento atual do paciente, não um histórico do passado.
+5. Foque estritamente em: Dificuldades atuais de adesão à dieta, emoções recorrentes, preferências novas ou sintomas reportados.
+6. Responda APENAS com o texto do resumo, sem introduções ou cumprimentos.
 
-REGRAS:
-- Máximo 5-6 linhas
-- Foque em comportamento, preferências e dificuldades
-- Não repetir informações
-- Seja direto
+[RESUMO ATUAL]:
+${currentSummary || 'Nenhum paciente registrado ainda.'}
 
-RESUMO ATUAL:
-${currentSummary || 'Nenhum'}
+[NOVA INTERAÇÃO]:
+Paciente: "${newInteraction.question}"
+Assistente: "${newInteraction.answer}"
 
-NOVA INTERAÇÃO:
-Paciente: ${newInteraction.question}
-Assistente: ${newInteraction.answer}
-
-NOVO RESUMO:
+[NOVO RESUMO ATUALIZADO (Máximo 5 tópicos e 500 caracteres)]:
 `;
 
   let newSummary: string | undefined = '';
@@ -117,16 +124,17 @@ NOVO RESUMO:
     }
   }
 
-  if (!newSummary) return;
+  // Verifica se a string existe e não é vazia antes de salvar
+  if (!newSummary || newSummary.trim() === '') return;
 
   // ===============================
-  // 💾 UPSERT
+  // 💾 UPSERT NO BANCO
   // ===============================
   await supabase
     .from('user_memory_summary')
     .upsert({
       user_id: userId,
-      summary: newSummary,
+      summary: newSummary.trim(),
       updated_at: new Date().toISOString()
     });
 }

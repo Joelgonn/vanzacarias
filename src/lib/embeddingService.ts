@@ -1,5 +1,3 @@
-// /lib/embeddingService.ts
-
 import OpenAI from 'openai'
 
 // ==========================================

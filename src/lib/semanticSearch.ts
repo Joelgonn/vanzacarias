@@ -16,37 +16,14 @@ interface MatchResult {
 }
 
 // ==========================================
-// ⚙️ CONFIGURAÇÕES
+// ⚙️ CONFIGURAÇÕES E THRESHOLD FIXO
 // ==========================================
 const MAX_RESULTS = 3;
 const INITIAL_FETCH = 5; // busca mais pra filtrar depois
 
-// ==========================================
-// 🧠 CALCULAR THRESHOLD DINÂMICO
-// ==========================================
-function getDynamicThreshold(totalMessages: number): number {
-  // 🔥 AJUSTE DE PRODUÇÃO: Thresholds mais rigorosos agora que temos Embeddings Ricos
-  if (totalMessages < 150) return 0.60; 
-  if (totalMessages < 400) return 0.65;
-  return 0.75;                         
-}
-
-// ==========================================
-// 📊 CONTAR MENSAGENS DO USUÁRIO
-// ==========================================
-async function getUserMessageCount(userId: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('ai_messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId);
-
-  if (error) {
-    console.warn('[RAG] Erro ao contar mensagens:', error);
-    return 0;
-  }
-
-  return count || 0;
-}
+// 🔥 AJUSTE DE PERFORMANCE: Threshold fixo e ideal para o text-embedding-3-small.
+// Isso elimina a necessidade de fazer um "SELECT COUNT" no banco a cada mensagem.
+const SIMILARITY_THRESHOLD = 0.65; 
 
 // ==========================================
 // 🔍 BUSCA SEMÂNTICA REFINADA
@@ -59,12 +36,6 @@ export async function getSemanticMemories(
   if (!userId || !message) return '';
 
   try {
-    // ==========================================
-    // 📊 BASE DO USUÁRIO
-    // ==========================================
-    const totalMessages = await getUserMessageCount(userId);
-    const SIMILARITY_THRESHOLD = getDynamicThreshold(totalMessages);
-
     // ==========================================
     // 🧠 GERAR EMBEDDING
     // ==========================================
@@ -92,19 +63,16 @@ export async function getSemanticMemories(
     // ==========================================
     // 🧪 DEBUG (IMPORTANTE)
     // ==========================================
-    console.log('[RAG] Total msgs:', totalMessages);
-    console.log('[RAG] Threshold:', SIMILARITY_THRESHOLD);
-    // Correção aplicada aqui: adicionado a tipagem (d: MatchResult)
+    console.log('[RAG] Threshold Aplicado:', SIMILARITY_THRESHOLD);
     console.log('[RAG] Similaridades:', data.map((d: MatchResult) => d.similarity));
 
     // ==========================================
     // 🔥 FILTRO DE QUALIDADE
     // ==========================================
-    // Correção aplicada aqui: adicionado a tipagem (item: MatchResult)
     const filtered = data
       .filter((item: MatchResult) =>
         item.similarity != null &&
-        item.similarity > 0.5 && // 🔥 NOVO FILTRO EXTRA: Limite mínimo absoluto de segurança
+        item.similarity > 0.5 && // 🔥 Limite mínimo absoluto de segurança
         item.similarity >= SIMILARITY_THRESHOLD &&
         item.question?.length > 10 &&
         item.answer?.length > 20
