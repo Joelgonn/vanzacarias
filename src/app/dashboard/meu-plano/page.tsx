@@ -6,7 +6,8 @@ import {
   Loader2, FileText, Download, ChevronLeft, Lock, Star, 
   Clock, Utensils, ChevronRight, Info, Filter, ShoppingCart, 
   X, CalendarDays, Copy, CheckCheck, ArrowLeftRight,
-  Droplets, CheckCircle2, Circle, Flame, Plus, Minus, Search
+  Droplets, CheckCircle2, Circle, Flame, Plus, Minus, Search,
+  Beef, Wheat
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,6 +22,101 @@ const WhatsAppIcon = ({ size = 24, className = "" }) => (
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.888-.788-1.487-1.761-1.66-2.06-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
   </svg>
 );
+
+// =========================================================================
+// COMPONENTE DE MACROS
+// =========================================================================
+interface MacroPorRefeicao {
+  nome: string;
+  horario: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+function MacroCard({ 
+  totalKcal, 
+  totalProtein, 
+  totalCarbs, 
+  totalFat, 
+  macrosPorRefeicao = [] 
+}: { 
+  totalKcal: number; 
+  totalProtein: number; 
+  totalCarbs: number; 
+  totalFat: number; 
+  macrosPorRefeicao?: MacroPorRefeicao[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (totalKcal === 0 && totalProtein === 0 && totalCarbs === 0 && totalFat === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-stone-100 shadow-sm">
+      <h3 className="text-sm font-bold text-stone-600 mb-4 flex items-center gap-2">
+        <Flame size={18} className="text-orange-500" />
+        Valores Nutricionais Diários
+      </h3>
+      
+      <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="text-center">
+          <Flame size={20} className="text-orange-500 mx-auto mb-1" />
+          <p className="text-xl font-black text-stone-800">{Math.round(totalKcal)}</p>
+          <p className="text-[10px] font-bold text-stone-400 uppercase">Kcal</p>
+        </div>
+        <div className="text-center">
+          <Beef size={20} className="text-red-500 mx-auto mb-1" />
+          <p className="text-xl font-black text-stone-800">{Math.round(totalProtein)}<span className="text-sm">g</span></p>
+          <p className="text-[10px] font-bold text-stone-400 uppercase">Proteínas</p>
+        </div>
+        <div className="text-center">
+          <Wheat size={20} className="text-amber-500 mx-auto mb-1" />
+          <p className="text-xl font-black text-stone-800">{Math.round(totalCarbs)}<span className="text-sm">g</span></p>
+          <p className="text-[10px] font-bold text-stone-400 uppercase">Carboidratos</p>
+        </div>
+        <div className="text-center">
+          <Droplets size={20} className="text-blue-500 mx-auto mb-1" />
+          <p className="text-xl font-black text-stone-800">{Math.round(totalFat)}<span className="text-sm">g</span></p>
+          <p className="text-[10px] font-bold text-stone-400 uppercase">Gorduras</p>
+        </div>
+      </div>
+
+      {macrosPorRefeicao.length > 0 && (
+        <>
+          <button 
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center justify-between text-sm font-medium text-nutri-600 hover:text-nutri-800 py-2 border-t border-stone-100 mt-2"
+          >
+            <span>Distribuição por refeição</span>
+            {expanded ? <ChevronRight size={16} className="rotate-90" /> : <ChevronRight size={16} />}
+          </button>
+          
+          {expanded && (
+            <div className="mt-3 space-y-2">
+              {macrosPorRefeicao.map((ref, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2 bg-stone-50 rounded-xl text-sm">
+                  <div>
+                    <p className="font-bold text-stone-700">{ref.nome}</p>
+                    <p className="text-xs text-stone-400">{ref.horario}</p>
+                  </div>
+                  <div className="flex gap-3 text-xs font-bold">
+                    <span className="text-orange-600">{Math.round(ref.kcal)}kcal</span>
+                    <span className="text-red-600">{Math.round(ref.protein)}g P</span>
+                    <span className="text-amber-600">{Math.round(ref.carbs)}g C</span>
+                    <span className="text-blue-600">{Math.round(ref.fat)}g G</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 // =========================================================================
 // TIPAGEM PARA A TABELA DE SUBSTITUIÇÕES
@@ -50,7 +146,7 @@ interface SubstituicaoGrupo {
 }
 
 // =========================================================================
-// BANCO DE ALIMENTOS E CONSTANTES (VERSÃO ELITE - EXPANDIDA)
+// BANCO DE ALIMENTOS E CONSTANTES
 // =========================================================================
 const SUBSTITUICOES_PADRAO: SubstituicaoGrupo[] = [
   { 
@@ -144,7 +240,7 @@ const SUBSTITUICOES_PADRAO: SubstituicaoGrupo[] = [
 ];
 
 // =========================================================================
-// RENDERIZADOR DE TEXTO INTELIGENTE (SUBSTITUIÇÃO CONTEXTUAL CLICÁVEL)
+// RENDERIZADOR DE TEXTO INTELIGENTE
 // =========================================================================
 const renderDescriptionWithTooltips = (text: string, onWordClick: (categoria: string) => void) => {
   const rules = [
@@ -190,49 +286,8 @@ const renderDescriptionWithTooltips = (text: string, onWordClick: (categoria: st
 };
 
 // =========================================================================
-// INTERFACES E FUNÇÕES DA LISTA DE MERCADO
+// FUNÇÕES AUXILIARES
 // =========================================================================
-interface ParsedIngredient {
-  name: string;
-  qty: number;
-  unit: string;
-  isTextOnly: boolean;
-  original: string;
-}
-
-const parseDescription = (desc: string): ParsedIngredient[] => {
-  if (!desc) return [];
-  const parts = desc.split('+').map(s => s.trim());
-  
-  return parts.map(part => {
-    const match = part.match(/^(.*?)(?:\s*\((.*?)\))?$/);
-    let name = part;
-    let qty = 0;
-    let unit = '';
-    let isTextOnly = true;
-
-    if (match) {
-      name = match[1].trim();
-      const qtyUnit = match[2] ? match[2].trim() : '';
-
-      if (qtyUnit && !qtyUnit.toLowerCase().includes('vontade')) {
-        const numMatch = qtyUnit.match(/^([\d.,]+)\s*(.*)$/);
-        if (numMatch) {
-          qty = parseFloat(numMatch[1].replace(',', '.'));
-          unit = numMatch[2].trim();
-          isTextOnly = false;
-        } else {
-          unit = qtyUnit; 
-        }
-      } else if (qtyUnit.toLowerCase().includes('vontade')) {
-        unit = 'à vontade';
-      }
-    }
-    return { name, qty, unit, isTextOnly, original: part };
-  });
-};
-
-// HELPER PARA DATA LOCAL CORRETA (Corrigindo bug do fuso horário UTC)
 const getLocalTodayString = () => {
   const date = new Date();
   const year = date.getFullYear();
@@ -241,6 +296,72 @@ const getLocalTodayString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const buildDescriptionFromFoods = (option: any) => {
+  if (option?.description && (!option?.foodItems || option.foodItems.length === 0)) {
+    return option.description;
+  }
+  if (!option?.foodItems || !Array.isArray(option.foodItems) || option.foodItems.length === 0) {
+    return 'Refeição não definida';
+  }
+  return option.foodItems
+    .map((food: any) => food.name || '')
+    .filter(Boolean)
+    .join(' + ');
+};
+
+const calcularMacrosDoCardapio = (mealPlan: any[]) => {
+  if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
+    return {
+      totalKcal: 0,
+      totalProtein: 0,
+      totalCarbs: 0,
+      totalFat: 0,
+      macrosPorRefeicao: []
+    };
+  }
+
+  const macrosPorRefeicao: MacroPorRefeicao[] = [];
+  let totalKcal = 0;
+  let totalProtein = 0;
+  let totalCarbs = 0;
+  let totalFat = 0;
+
+  for (const meal of mealPlan) {
+    const option = meal.options?.[0] ?? null;
+    if (option) {
+      const kcal = option.kcal || 0;
+      const protein = option.macros?.p || 0;
+      const carbs = option.macros?.c || 0;
+      const fat = option.macros?.g || 0;
+
+      totalKcal += kcal;
+      totalProtein += protein;
+      totalCarbs += carbs;
+      totalFat += fat;
+
+      macrosPorRefeicao.push({
+        nome: meal.name || 'Refeição',
+        horario: meal.time || '--:--',
+        kcal,
+        protein,
+        carbs,
+        fat
+      });
+    }
+  }
+
+  return {
+    totalKcal,
+    totalProtein,
+    totalCarbs,
+    totalFat,
+    macrosPorRefeicao
+  };
+};
+
+// =========================================================================
+// COMPONENTE PRINCIPAL
+// =========================================================================
 export default function MeuPlano() {
   const [planoPDF, setPlanoPDF] = useState<any>(null);
   const [mealPlanJSON, setMealPlanJSON] = useState<any[] | null>(null);
@@ -259,19 +380,18 @@ export default function MeuPlano() {
   const [isCopied, setIsCopied] = useState(false);
 
   const [isSubstitutionsModalOpen, setIsSubstitutionsModalOpen] = useState(false);
-  
-  // ESTADO DA SUBSTITUIÇÃO CONTEXTUAL
   const [contextualCategory, setContextualCategory] = useState<string | null>(null);
 
-  // Estados integrados do Diário de Rotina
   const [completedMeals, setCompletedMeals] = useState<string[]>([]);
   const [waterCount, setWaterCount] = useState<number>(0);
-  // NOVO: Preservar o humor para não sobrescrever os dados do Dashboard
   const [currentMood, setCurrentMood] = useState<string | null>(null);
 
   const supabase = createClient();
   const router = useRouter();
 
+  // =========================================================================
+  // LOAD DATA
+  // =========================================================================
   useEffect(() => {
     async function fetchData() {
       try {
@@ -317,7 +437,6 @@ export default function MeuPlano() {
             setPlanoPDF(profileData.meal_plan_pdf_url);
           }
 
-          // Busca logs do diário de hoje usando Fuso Horário Local
           const today = getLocalTodayString();
           const { data: logs } = await supabase
             .from('daily_logs')
@@ -328,8 +447,8 @@ export default function MeuPlano() {
 
           if (logs) {
             setCompletedMeals(logs.meals_checked || []);
-            setWaterCount(logs.water_ml ? logs.water_ml / 250 : 0); // Copos de 250ml
-            setCurrentMood(logs.mood || null); // Salva o humor para não perder na atualização
+            setWaterCount(logs.water_ml ? logs.water_ml / 250 : 0);
+            setCurrentMood(logs.mood || null);
           }
         }
       } catch (err: any) {
@@ -344,7 +463,99 @@ export default function MeuPlano() {
   }, [supabase]);
 
   // =========================================================================
-  // FUNÇÕES DE AÇÕES (PAGAMENTO, CHECK-IN, ÁGUA)
+  // MEMOS
+  // =========================================================================
+  const macros = useMemo(() => {
+    return calcularMacrosDoCardapio(mealPlanJSON || []);
+  }, [mealPlanJSON]);
+
+  const filterTabs = useMemo(() => {
+    if (!mealPlanJSON) return [];
+    const days = new Set<string>();
+    mealPlanJSON.forEach(meal => {
+      meal.options?.forEach((opt: any) => {
+        const d = opt.day?.trim();
+        if (d && d.toLowerCase() !== 'todos os dias') days.add(d);
+      });
+    });
+    return Array.from(days);
+  }, [mealPlanJSON]);
+
+  const filteredMeals = useMemo(() => {
+    if (!mealPlanJSON) return [];
+    if (selectedDayFilter === 'Todos') return mealPlanJSON;
+
+    return mealPlanJSON.map(meal => {
+      const filteredOptions = meal.options?.filter((opt: any) => {
+        const optDay = opt.day?.trim();
+        return optDay?.toLowerCase() === 'todos os dias' || optDay === selectedDayFilter;
+      }) || [];
+      return { ...meal, options: filteredOptions };
+    }).filter(meal => meal.options.length > 0); 
+  }, [mealPlanJSON, selectedDayFilter]);
+
+  const marketList = useMemo(() => {
+    if (!mealPlanJSON) return { measured: [], others: [] };
+    const map = new Map<string, { name: string; qty: number; unit: string }>();
+    const textItems = new Set<string>();
+
+    mealPlanJSON.forEach(meal => {
+      if (meal.options && meal.options.length > 0) {
+        const opt = meal.options[0] ?? null; 
+        if (!opt) return;
+
+        let localMultiplier = marketMultiplier;
+        const dayStr = opt.day?.trim().toLowerCase();
+        
+        if (dayStr && dayStr !== 'todos os dias' && dayStr !== 'opção') {
+          if (marketMultiplier === 7) localMultiplier = 1;
+          else if (marketMultiplier === 15) localMultiplier = 2;
+          else if (marketMultiplier === 30) localMultiplier = 4;
+          else if (marketMultiplier === 1) localMultiplier = 0; 
+        }
+
+        const description = buildDescriptionFromFoods(opt);
+        const parts = description.split('+').map((s: string) => s.trim());
+        
+        parts.forEach((part: string) => {
+          const match = part.match(/^(.*?)(?:\s*\((.*?)\))?$/);
+          if (match) {
+            const name = match[1].trim();
+            const qtyUnit = match[2] ? match[2].trim() : '';
+            
+            if (qtyUnit && !qtyUnit.toLowerCase().includes('vontade')) {
+              const numMatch = qtyUnit.match(/^([\d.,]+)\s*(.*)$/);
+              if (numMatch) {
+                const qty = parseFloat(numMatch[1].replace(',', '.'));
+                const unit = numMatch[2].trim();
+                const key = `${name.toLowerCase()}|${unit.toLowerCase()}`;
+                if (map.has(key)) {
+                  const existing = map.get(key)!;
+                  existing.qty += (qty * localMultiplier);
+                } else {
+                  map.set(key, { name, qty: qty * localMultiplier, unit });
+                }
+              } else {
+                textItems.add(part);
+              }
+            } else {
+              textItems.add(part);
+            }
+          } else {
+            textItems.add(part);
+          }
+        });
+      }
+    });
+
+    return {
+      measured: Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name)),
+      others: Array.from(textItems)
+    };
+  }, [mealPlanJSON, marketMultiplier]);
+
+  // =========================================================================
+  // FUNÇÕES DE AÇÃO
   // =========================================================================
   const handleUpgradeClick = async (planType: string) => {
     setProcessingCheckout(planType);
@@ -383,17 +594,15 @@ export default function MeuPlano() {
     const { data: { session } } = await supabase.auth.getSession();
     const today = getLocalTodayString();
     
-    const { error } = await supabase.from('daily_logs').upsert({
+    await supabase.from('daily_logs').upsert({
       user_id: session?.user.id,
       date: today,
       meals_checked: newList,
       water_ml: waterCount * 250,
-      mood: currentMood // Evita apagar o humor selecionado no Dashboard
+      mood: currentMood
     }, { onConflict: 'user_id, date' });
 
-    if (error) {
-      toast.error("Erro ao sincronizar check-in.");
-    } else if (!isCompleted) {
+    if (!isCompleted) {
       toast.success(`${mealName} concluído! 👏`);
     }
   };
@@ -410,94 +619,12 @@ export default function MeuPlano() {
       date: today,
       water_ml: newValue * 250,
       meals_checked: completedMeals,
-      mood: currentMood // Evita apagar o humor selecionado no Dashboard
+      mood: currentMood
     }, { onConflict: 'user_id, date' });
   };
 
   // =========================================================================
-  // MEMOS PARA O PLANO E ESTATÍSTICAS
-  // =========================================================================
-  const dayStats = useMemo(() => {
-    if (!mealPlanJSON) return { kcal: 0, p: 0, c: 0, g: 0 };
-    return mealPlanJSON.reduce((acc, meal) => {
-      const opt = meal.options[0]; 
-      return {
-        kcal: acc.kcal + (opt?.kcal || 0),
-        p: acc.p + (opt?.proteina || 0),
-        c: acc.c + (opt?.carbo || 0),
-        g: acc.g + (opt?.gordura || 0)
-      };
-    }, { kcal: 0, p: 0, c: 0, g: 0 });
-  }, [mealPlanJSON]);
-
-  const filterTabs = useMemo(() => {
-    if (!mealPlanJSON) return [];
-    const days = new Set<string>();
-    mealPlanJSON.forEach(meal => {
-      meal.options?.forEach((opt: any) => {
-        const d = opt.day?.trim();
-        if (d && d.toLowerCase() !== 'todos os dias') days.add(d);
-      });
-    });
-    return Array.from(days);
-  }, [mealPlanJSON]);
-
-  const filteredMeals = useMemo(() => {
-    if (!mealPlanJSON) return [];
-    if (selectedDayFilter === 'Todos') return mealPlanJSON;
-
-    return mealPlanJSON.map(meal => {
-      const filteredOptions = meal.options?.filter((opt: any) => {
-        const optDay = opt.day?.trim();
-        return optDay?.toLowerCase() === 'todos os dias' || optDay === selectedDayFilter;
-      }) || [];
-      return { ...meal, options: filteredOptions };
-    }).filter(meal => meal.options.length > 0); 
-  }, [mealPlanJSON, selectedDayFilter]);
-
-  const marketList = useMemo(() => {
-    if (!mealPlanJSON) return { measured: [], others: [] };
-    const map = new Map<string, ParsedIngredient>();
-    const textItems = new Set<string>();
-
-    mealPlanJSON.forEach(meal => {
-      if (meal.options && meal.options.length > 0) {
-        const opt = meal.options[0]; 
-        let localMultiplier = marketMultiplier;
-        const dayStr = opt.day?.trim().toLowerCase();
-        
-        if (dayStr && dayStr !== 'todos os dias' && dayStr !== 'opção') {
-          if (marketMultiplier === 7) localMultiplier = 1;
-          else if (marketMultiplier === 15) localMultiplier = 2;
-          else if (marketMultiplier === 30) localMultiplier = 4;
-          else if (marketMultiplier === 1) localMultiplier = 0; 
-        }
-
-        const parsed = parseDescription(opt.description);
-        parsed.forEach(ing => {
-          if (ing.isTextOnly) {
-            textItems.add(ing.original);
-          } else {
-            const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;
-            if (map.has(key)) {
-              const existing = map.get(key)!;
-              existing.qty += (ing.qty * localMultiplier);
-            } else {
-              map.set(key, { ...ing, qty: ing.qty * localMultiplier });
-            }
-          }
-        });
-      }
-    });
-
-    return {
-      measured: Array.from(map.values()).sort((a,b) => a.name.localeCompare(b.name)),
-      others: Array.from(textItems)
-    };
-  }, [mealPlanJSON, marketMultiplier]);
-
-  // =========================================================================
-  // GERAÇÃO DO TEXTO PARA WHATSAPP / CLIPBOARD DA LISTA DE MERCADO
+  // LISTA DE MERCADO
   // =========================================================================
   const generateShareText = () => {
     let periodText = 'Diário';
@@ -507,29 +634,29 @@ export default function MeuPlano() {
 
     const lines = [];
 
-    lines.push(`\u{1F6D2} *Lista Mercado - Nutri Vanusa*`);
-    lines.push(`\u{1F464} *Paciente:* ${profile?.full_name || 'Paciente'}`);
-    lines.push(`\u{1F4C5} *Período:* ${periodText}`);
+    lines.push(`🛒 *Lista Mercado - Nutri Vanusa*`);
+    lines.push(`👤 *Paciente:* ${profile?.full_name || 'Paciente'}`);
+    lines.push(`📅 *Período:* ${periodText}`);
     lines.push('');
 
     if (marketList.measured.length > 0) {
-      lines.push(`\u{1F4CA} *ITENS COM MEDIDA:*`);
+      lines.push(`📊 *ITENS COM MEDIDA:*`);
       marketList.measured.forEach(item => {
         const qty = Number.isInteger(item.qty) ? item.qty : parseFloat(item.qty.toFixed(2));
-        lines.push(`\u{2705} ${qty} ${item.unit} - ${item.name}`);
+        lines.push(`✅ ${qty} ${item.unit} - ${item.name}`);
       });
       lines.push('');
     }
 
     if (marketList.others.length > 0) {
-      lines.push(`\u{1F7E2} *CONSUMO LIVRE / OUTROS:*`);
+      lines.push(`🟢 *CONSUMO LIVRE / OUTROS:*`);
       marketList.others.forEach(item => {
-        lines.push(`\u{2705} ${item}`);
+        lines.push(`✅ ${item}`);
       });
       lines.push('');
     }
 
-    lines.push(`\u{1F34E} *Foco! Você consegue!* \u{1F4AA}`);
+    lines.push(`🍎 *Foco! Você consegue!* 💪`);
     lines.push(`_Gerado pelo App Meu Plano Alimentar_`);
 
     return lines.join('\n');
@@ -562,7 +689,7 @@ export default function MeuPlano() {
   };
 
   // =========================================================================
-  // GERAÇÃO DE PDF PAGINADO
+  // GERAÇÃO DE PDF
   // =========================================================================
   const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -589,7 +716,11 @@ export default function MeuPlano() {
     const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
 
-    const totalKcal = mealPlanJSON.reduce((acc, meal) => acc + (meal.options[0]?.kcal || 0), 0);
+    const macrosData = calcularMacrosDoCardapio(mealPlanJSON);
+    const totalKcal = macrosData.totalKcal;
+    const totalProtein = macrosData.totalProtein;
+    const totalCarbs = macrosData.totalCarbs;
+    const totalFat = macrosData.totalFat;
 
     const daysMap = new Map<string, any[]>();
     mealPlanJSON.forEach(meal => {
@@ -599,8 +730,9 @@ export default function MeuPlano() {
         daysMap.get(dayName)!.push({
           mealName: meal.name,
           time: meal.time,
-          description: opt.description,
-          kcal: opt.kcal
+          description: buildDescriptionFromFoods(opt),
+          kcal: opt.kcal,
+          macros: opt.macros || { p: 0, c: 0, g: 0 }
         });
       });
     });
@@ -615,7 +747,7 @@ export default function MeuPlano() {
     try {
       logoBase64 = await getBase64ImageFromUrl('/images/logo-vanusa.png');
     } catch (error) {
-      console.warn("Logo não encontrada em /images/logo-vanusa.png");
+      console.warn("Logo não encontrada");
     }
 
     const printHeaderAndFooter = () => {
@@ -660,8 +792,15 @@ export default function MeuPlano() {
       doc.setTextColor(100, 100, 100);
       doc.text("BASE DIÁRIA:", pageWidth - margin - 52, currentY);
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(234, 88, 12); 
-      doc.text(`~${totalKcal} kcal`, pageWidth - margin, currentY, { align: "right" });
+      doc.setTextColor(234, 88, 12);
+      doc.text(`~${Math.round(totalKcal)} kcal`, pageWidth - margin, currentY, { align: "right" });
+      
+      currentY += 5;
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      const macroText = `P: ${Math.round(totalProtein)}g | C: ${Math.round(totalCarbs)}g | G: ${Math.round(totalFat)}g`;
+      doc.text(macroText, pageWidth - margin - doc.getTextWidth(macroText), currentY);
 
       currentY += 6;
       doc.setDrawColor(230, 230, 230);
@@ -693,23 +832,30 @@ export default function MeuPlano() {
 
       const mealsForDay = daysMap.get(day) || [];
       mealsForDay.forEach(meal => {
-        if (y > pageHeight - 40) { doc.addPage(); y = printHeaderAndFooter(); }
+        if (y > pageHeight - 50) { 
+          doc.addPage(); 
+          y = printHeaderAndFooter();
+          doc.setFillColor(26, 58, 42); 
+          doc.rect(margin, y, pageWidth - (margin * 2), 12, 'F');
+          doc.text(titleText, pageWidth / 2, y + 8, { align: "center", charSpace: 1 });
+          y += 20;
+        }
 
         doc.setFillColor(245, 248, 246); 
-        doc.rect(margin, y - 6, pageWidth - (margin * 2), 10, 'F');
+        doc.rect(margin, y - 6, pageWidth - (margin * 2), 12, 'F');
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(26, 58, 42);
         doc.text(`${meal.mealName.toUpperCase()} - ${meal.time}`, margin + 3, y + 1);
         
-        if (meal.kcal > 0) {
-          doc.setFontSize(9);
-          doc.setTextColor(234, 88, 12);
-          doc.text(`~${meal.kcal} kcal`, pageWidth - margin - 3, y + 1, { align: "right" });
-        }
-        y += 10;
+        const macroX = pageWidth - margin - 70;
+        doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`${Math.round(meal.kcal || 0)} kcal | P: ${Math.round(meal.macros?.p || 0)}g | C: ${Math.round(meal.macros?.c || 0)}g | G: ${Math.round(meal.macros?.g || 0)}g`, macroX, y + 1);
+        
+        y += 12;
 
-        doc.setFontSize(10);
+        doc.setFontSize(9.5);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(50, 50, 50);
         const maxWidth = pageWidth - (margin * 2);
@@ -723,7 +869,7 @@ export default function MeuPlano() {
   };
 
   // =========================================================================
-  // ESTADO DE CARREGAMENTO
+  // RENDER
   // =========================================================================
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50 flex-col gap-4">
@@ -780,32 +926,19 @@ export default function MeuPlano() {
 
             {hasAnyPlan && filterTabs.length > 0 && (
               <>
-                {/* 
-                  ============================================================
-                  CARD DE VISÃO GERAL DE METAS (MACROS DIÁRIOS E ÁGUA)
-                  ============================================================ 
-                */}
-                <section className="bg-white rounded-[2.5rem] p-6 border border-stone-100 shadow-sm animate-fade-in-up">
-                  <div className="grid grid-cols-4 gap-2 mb-6 text-center">
-                    <div className="bg-orange-50 p-3 rounded-2xl border border-orange-100">
-                      <p className="text-[10px] font-black text-orange-400 uppercase">Kcal</p>
-                      <p className="text-lg font-black text-orange-700">~{dayStats.kcal}</p>
-                    </div>
-                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
-                      <p className="text-[10px] font-black text-stone-400 uppercase">Prot</p>
-                      <p className="text-lg font-black text-stone-700">{dayStats.p}g</p>
-                    </div>
-                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
-                      <p className="text-[10px] font-black text-stone-400 uppercase">Carb</p>
-                      <p className="text-lg font-black text-stone-700">{dayStats.c}g</p>
-                    </div>
-                    <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100">
-                      <p className="text-[10px] font-black text-stone-400 uppercase">Gord</p>
-                      <p className="text-lg font-black text-stone-700">{dayStats.g}g</p>
-                    </div>
-                  </div>
+                {/* CARD DE MACROS */}
+                <section className="animate-fade-in-up">
+                  <MacroCard 
+                    totalKcal={macros.totalKcal}
+                    totalProtein={macros.totalProtein}
+                    totalCarbs={macros.totalCarbs}
+                    totalFat={macros.totalFat}
+                    macrosPorRefeicao={macros.macrosPorRefeicao}
+                  />
+                </section>
 
-                  {/* CONTADOR DE ÁGUA INTEGRADO */}
+                {/* CONTADOR DE ÁGUA */}
+                <div className="bg-white rounded-[2rem] p-6 border border-stone-100 shadow-sm animate-fade-in-up">
                   <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="bg-blue-500 p-2.5 rounded-xl text-white shadow-md">
@@ -813,7 +946,7 @@ export default function MeuPlano() {
                       </div>
                       <div>
                         <h3 className="font-black text-blue-900 leading-tight text-base">{waterCount * 250} <span className="text-xs">ml</span></h3>
-                        <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Meta: {profile?.meta_agua || 2500}ml</p>
+                        <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Meta: 2500ml</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -821,7 +954,7 @@ export default function MeuPlano() {
                       <button onClick={() => updateWater(1)} className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold hover:bg-blue-700 transition-colors shadow-md active:scale-95"><Plus size={16} /></button>
                     </div>
                   </div>
-                </section>
+                </div>
 
                 {/* FILTROS DE DIAS */}
                 <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-2 pt-2 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
@@ -862,10 +995,8 @@ export default function MeuPlano() {
               </div>
             ) : (
               <>
-                {/* BOTÕES DE AÇÕES (PDF, MERCADO, TODAS AS SUBSTITUIÇÕES) */}
+                {/* BOTÕES DE AÇÕES */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                  
-                  {/* BOTÃO PDF INTELIGENTE */}
                   <button 
                     onClick={() => {
                       if (planoPDF && finalPdfUrl !== '#') {
@@ -888,50 +1019,45 @@ export default function MeuPlano() {
                     <p className="text-xs text-nutri-100 font-medium">Baixar versão PDF</p>
                   </button>
 
-                  {/* BOTÃO MERCADO */}
-                  {mealPlanJSON && mealPlanJSON.length > 0 && (
-                    <button 
-                      onClick={() => setIsMarketModalOpen(true)}
-                      className="w-full flex flex-col justify-center text-left bg-emerald-700 text-white p-6 rounded-[2rem] shadow-xl shadow-emerald-700/20 hover:bg-emerald-800 transition-all group active:scale-[0.98]"
-                    >
-                      <div className="flex justify-between items-center w-full">
-                        <div className="bg-white/10 p-3 rounded-2xl text-white">
-                          <ShoppingCart size={20} />
-                        </div>
-                        <div className="bg-white text-emerald-700 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
-                          <ChevronRight size={16} />
-                        </div>
+                  <button 
+                    onClick={() => setIsMarketModalOpen(true)}
+                    className="w-full flex flex-col justify-center text-left bg-emerald-700 text-white p-6 rounded-[2rem] shadow-xl shadow-emerald-700/20 hover:bg-emerald-800 transition-all group active:scale-[0.98]"
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <div className="bg-white/10 p-3 rounded-2xl text-white">
+                        <ShoppingCart size={20} />
                       </div>
-                      <p className="font-bold text-lg mt-4 mb-0.5">Lista de Mercado</p>
-                      <p className="text-xs text-emerald-100 font-medium">Calcular compras</p>
-                    </button>
-                  )}
+                      <div className="bg-white text-emerald-700 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                    <p className="font-bold text-lg mt-4 mb-0.5">Lista de Mercado</p>
+                    <p className="text-xs text-emerald-100 font-medium">Calcular compras</p>
+                  </button>
 
-                  {/* BOTÃO TODAS AS SUBSTITUIÇÕES */}
-                  {mealPlanJSON && mealPlanJSON.length > 0 && (
-                    <button 
-                      onClick={() => setIsSubstitutionsModalOpen(true)}
-                      className="w-full flex flex-col justify-center text-left bg-orange-600 text-white p-6 rounded-[2rem] shadow-xl shadow-orange-600/20 hover:bg-orange-700 transition-all group active:scale-[0.98]"
-                    >
-                      <div className="flex justify-between items-center w-full">
-                        <div className="bg-white/10 p-3 rounded-2xl text-white">
-                          <ArrowLeftRight size={20} />
-                        </div>
-                        <div className="bg-white text-orange-600 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
-                          <Search size={16} />
-                        </div>
+                  <button 
+                    onClick={() => setIsSubstitutionsModalOpen(true)}
+                    className="w-full flex flex-col justify-center text-left bg-orange-600 text-white p-6 rounded-[2rem] shadow-xl shadow-orange-600/20 hover:bg-orange-700 transition-all group active:scale-[0.98]"
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <div className="bg-white/10 p-3 rounded-2xl text-white">
+                        <ArrowLeftRight size={20} />
                       </div>
-                      <p className="font-bold text-lg mt-4 mb-0.5">Todas as Trocas</p>
-                      <p className="text-xs text-orange-100 font-medium">Lista geral completa</p>
-                    </button>
-                  )}
+                      <div className="bg-white text-orange-600 p-2 rounded-xl group-hover:-translate-y-1 transition-transform">
+                        <Search size={16} />
+                      </div>
+                    </div>
+                    <p className="font-bold text-lg mt-4 mb-0.5">Todas as Trocas</p>
+                    <p className="text-xs text-orange-100 font-medium">Lista geral completa</p>
+                  </button>
                 </div>
 
-                {/* LISTAGEM DAS REFEIÇÕES COM CHECK-IN E SUBSTITUIÇÃO CONTEXTUAL */}
+                {/* LISTAGEM DAS REFEIÇÕES */}
                 {filteredMeals && filteredMeals.length > 0 && (
                   <div className="space-y-6">
                     {filteredMeals.map((refeicao: any, idx: number) => {
                       const isCompleted = completedMeals.includes(refeicao.name);
+                      const option = refeicao.options?.[0] ?? null;
 
                       return (
                         <div key={refeicao.id || idx} className={`bg-white rounded-[2.5rem] shadow-sm border transition-all duration-500 overflow-hidden animate-fade-in-up ${isCompleted ? 'border-emerald-200 bg-emerald-50/30' : 'border-stone-100'}`} style={{ animationDelay: `${idx * 0.1}s` }}>
@@ -949,6 +1075,28 @@ export default function MeuPlano() {
                                   <h3 className={`text-xl font-bold ${isCompleted ? 'text-emerald-900 line-through opacity-70' : 'text-stone-900'}`}>{refeicao.name}</h3>
                                 </div>
                               </div>
+                              {option && (
+                                <div className="flex gap-1.5 flex-wrap">
+                                  {option.kcal > 0 && (
+                                    <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">
+                                      ~{option.kcal} kcal
+                                    </span>
+                                  )}
+                                  {option.macros && (
+                                    <>
+                                      <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-md text-[10px] font-bold">
+                                        P: {option.macros.p}g
+                                      </span>
+                                      <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-bold">
+                                        C: {option.macros.c}g
+                                      </span>
+                                      <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md text-[10px] font-bold">
+                                        G: {option.macros.g}g
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {!isCompleted && (
@@ -963,29 +1111,22 @@ export default function MeuPlano() {
                                       }`}>
                                         {opcao.day || 'Opção'}
                                       </span>
-                                      
-                                      <div className="flex gap-1.5 flex-wrap ml-auto">
-                                        {opcao.kcal > 0 && (
-                                          <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide">
-                                            ~{opcao.kcal} kcal
-                                          </span>
-                                        )}
-                                        {opcao.carbo !== undefined && (
-                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Carboidratos">C: {opcao.carbo}g</span>
-                                        )}
-                                        {opcao.proteina !== undefined && (
-                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Proteínas">P: {opcao.proteina}g</span>
-                                        )}
-                                        {opcao.gordura !== undefined && (
-                                          <span className="bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md text-[10px] font-bold" title="Gorduras">G: {opcao.gordura}g</span>
-                                        )}
-                                      </div>
                                     </div>
                                     
-                                    <p className="text-stone-700 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">
-                                      {/* AQUI ESTÁ A MÁGICA: Passamos o setContextualCategory para abrir o modal de troca */}
-                                      {renderDescriptionWithTooltips(opcao.description, setContextualCategory)}
-                                    </p>
+                                    <div className="text-stone-700 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">
+                                      {opcao.foodItems && Array.isArray(opcao.foodItems) && opcao.foodItems.length > 0 ? (
+                                        <ul className="list-disc pl-5 space-y-1">
+                                          {opcao.foodItems.map((food: any, fIdx: number) => (
+                                            <li key={fIdx}>
+                                              {renderDescriptionWithTooltips(food.name, setContextualCategory)} 
+                                              {food.kcal ? ` (${food.kcal} kcal)` : ''}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p>{renderDescriptionWithTooltips(buildDescriptionFromFoods(opcao), setContextualCategory)}</p>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -1020,10 +1161,6 @@ export default function MeuPlano() {
           </div>
         )}
       </div>
-
-      {/* =========================================================================
-          MODAIS 
-          ========================================================================= */}
 
       {/* MODAL DA LISTA DE MERCADO */}
       {isMarketModalOpen && (
@@ -1160,7 +1297,7 @@ export default function MeuPlano() {
         </div>
       )}
 
-      {/* MODAL DE SUBSTITUIÇÃO CONTEXTUAL (Abre ao clicar no alimento do cardápio) */}
+      {/* MODAL DE SUBSTITUIÇÃO CONTEXTUAL */}
       {contextualCategory && selectedContextualGroup && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 md:p-8 animate-fade-in">
           <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] md:max-h-[90vh] animate-slide-up">

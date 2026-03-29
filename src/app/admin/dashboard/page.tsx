@@ -8,7 +8,7 @@ import {
   Edit2, Save, X, TrendingUp, AlertCircle, Bell, BellRing, 
   Activity, Target, Eye, UserPlus, Clock, ChevronRight, Star,
   DollarSign, FileText, Calendar, Link2, Copy, Check, ExternalLink, 
-  Utensils, CheckCircle2, Settings
+  Utensils, CheckCircle2, Settings, Trash2
 } from 'lucide-react';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder'; 
@@ -16,6 +16,9 @@ import ChatAssistant from '@/components/ChatAssistant';
 import Link from 'next/link';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
+
+// Importação do motor metabólico centralizado
+import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
 
 // =========================================================================
 // INTERFACES E TIPAGENS
@@ -36,6 +39,13 @@ interface Patient {
   daysSinceLast?: number;
   isNew?: boolean;
   todayLog?: { water_ml: number; mood: string } | null;
+  peso?: number | null;
+  weight?: number | null;
+  altura?: number | null;
+  height?: number | null;
+  bf?: number | null;
+  massa_magra?: number | null;
+  leanMass?: number | null;
 }
 
 interface Lead {
@@ -89,31 +99,38 @@ const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
 };
 
 // =========================================================================
-// HOOK DE LÓGICA E ESTADO (Separation of Concerns)
+// HOOK DE LÓGICA E ESTADO
 // =========================================================================
 function useAdminDashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  // Estados Base
   const [patients, setPatients] = useState<Patient[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]); 
   const [loading, setLoading] = useState(true);
   
-  // Estados de UI e Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [lastSeenNewPatientTime, setLastSeenNewPatientTime] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'pacientes' | 'leads' | 'agenda' | 'financeiro'>('pacientes');
   
-  // Modais e Edição
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   const [evalModalOpen, setEvalModalOpen] = useState<{isOpen: boolean, data: any, name: string}>({ isOpen: false, data: null, name: '' });
-  const [dietModalOpen, setDietModalOpen] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
   
-  // Financeiro e Settings
+  const [dietModalOpen, setDietModalOpen] = useState<{
+    isOpen: boolean, 
+    id: string, 
+    name: string,
+    targetRecommendation: any | null
+  }>({ 
+    isOpen: false, 
+    id: '', 
+    name: '',
+    targetRecommendation: null 
+  });
+  
   const [premiumPrice, setPremiumPrice] = useState('297.00');
   const [mealPlanPrice, setMealPlanPrice] = useState('147.00');
   const [consultationPrice, setConsultationPrice] = useState('197.00');
@@ -121,7 +138,6 @@ function useAdminDashboard() {
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // IA e Chatbot Stats
   const [usageStats, setUsageStats] = useState<Record<string, number>>({});
   const [todayTotalMessages, setTodayTotalMessages] = useState(0);
 
@@ -133,7 +149,6 @@ function useAdminDashboard() {
     account_type: 'free'
   });
 
-  // Efeitos Principais
   useEffect(() => {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -149,7 +164,6 @@ function useAdminDashboard() {
     if (savedTime) setLastSeenNewPatientTime(parseInt(savedTime, 10));
   }, [router, supabase]);
 
-  // Função de Busca de Dados
   async function fetchAdminData() {
     setLoading(true);
     try {
@@ -161,11 +175,21 @@ function useAdminDashboard() {
         if (settings.calendly_url) setCalendlyUrl(settings.calendly_url);
       }
 
+      // 1. Busca os Perfis (data_nascimento e sexo estão aqui)
       const { data: profiles, error: pError } = await supabase.from('profiles').select('*');
       if (pError) throw pError;
 
       const { data: evals } = await supabase.from('evaluations').select('user_id, answers');
-      const { data: checkins } = await supabase.from('checkins').select('user_id, created_at').order('created_at', { ascending: false });
+      
+      const { data: checkins } = await supabase
+        .from('checkins')
+        .select('user_id, created_at, peso, altura')
+        .order('created_at', { ascending: false });
+
+      const { data: antropometria } = await supabase
+        .from('anthropometry')
+        .select('user_id, measurement_date, weight, height')
+        .order('measurement_date', { ascending: false });
       
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       const { data: logs } = await supabase.from('daily_logs').select('user_id, water_ml, mood').eq('date', todayStr);
@@ -173,6 +197,9 @@ function useAdminDashboard() {
       const combined = profiles?.map(profile => {
         const userCheckins = checkins?.filter(c => c.user_id === profile.id);
         const lastCheckin = userCheckins && userCheckins.length > 0 ? userCheckins[0] : null;
+
+        const userAntro = antropometria?.filter(a => a.user_id === profile.id);
+        const lastAntro = userAntro && userAntro.length > 0 ? userAntro[0] : null;
         
         let isLate = false;
         let daysSinceLast = 0;
@@ -202,7 +229,9 @@ function useAdminDashboard() {
           isLate,
           daysSinceLast,
           isNew,
-          todayLog: patientLog || null
+          todayLog: patientLog || null,
+          peso: lastAntro?.weight || lastCheckin?.peso || null,
+          altura: lastAntro?.height || lastCheckin?.altura || null
         };
       }) as Patient[];
       
@@ -236,14 +265,13 @@ function useAdminDashboard() {
       setTodayTotalMessages(total);
 
     } catch (error) {
-      console.error("Erro ao carregar dados do admin:", error);
+      console.error("Erro ao carregar dados:", error);
       toast.error("Ocorreu um erro ao carregar as informações do painel.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Cálculos Memoizados
   const newPatientsCount = useMemo(() => patients.filter(p => p.isNew).length, [patients]);  
   const activeLeadsCount = useMemo(() => leads.length, [leads]);
   const unseenPatientsCount = useMemo(() => {
@@ -273,7 +301,6 @@ function useAdminDashboard() {
     patients, leads, usageStats, todayTotalMessages
   }), [patients, leads, usageStats, todayTotalMessages]);
 
-  // Ações e Handlers
   const updateProfile = async (id: string) => {
     const updateData = {
       data_nascimento: editForm.data_nascimento?.trim() ? editForm.data_nascimento : null,
@@ -289,7 +316,7 @@ function useAdminDashboard() {
       fetchAdminData();
       toast.success("Perfil do paciente atualizado com sucesso!");
     } else {
-      toast.error("Falha ao atualizar o perfil. Tente novamente.");
+      toast.error("Falha ao atualizar o perfil.");
     }
   };
 
@@ -333,6 +360,59 @@ function useAdminDashboard() {
     }
   };
 
+  const handleDeleteDiet = async (patientId: string) => {
+    if (!window.confirm("Tem certeza que deseja excluir o cardápio atual? Essa ação não pode ser desfeita.")) {
+      return;
+    }
+
+    const toastId = toast.loading("Excluindo dieta...");
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ meal_plan: null, status: 'pendente' })
+        .eq('id', patientId);
+
+      if (error) throw error;
+
+      toast.success("Dieta excluída com sucesso! Agora você pode criar uma nova.", { id: toastId });
+      fetchAdminData(); 
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao excluir a dieta.", { id: toastId });
+    }
+  };
+
+  // 🔥 CÁLCULO CENTRALIZADO (Single Source of Truth) - CORRIGIDO E SIMPLIFICADO
+  const handleOpenDietBuilder = async (p: Patient) => {
+    const toastId = toast.loading("Calculando necessidades metabólicas...");
+
+    try {
+      // Chama a função centralizada que faz exatamente toda a lógica anterior
+      const metabolicData = await getPatientMetabolicData(p.id, {
+        patientId: p.id,
+        weight: p.peso || p.weight || null,
+        height: p.altura || p.height || null,
+        data_nascimento: p.data_nascimento || null,
+        sexo: p.sexo || null,
+        bf: p.bf || null,
+        leanMass: p.massa_magra || p.leanMass || null
+      });
+
+      toast.dismiss(toastId);
+
+      setDietModalOpen({
+        isOpen: true,
+        id: p.id,
+        name: p.full_name,
+        targetRecommendation: metabolicData.recommendation
+      });
+
+    } catch (e) {
+      console.error("Erro ao gerar recomendação no Admin:", e);
+      toast.error("Erro ao calcular dados metabólicos.", { id: toastId });
+    }
+  };
+  
   const handleGeneratePDF = async (patient: Patient) => {
     if (!patient.meal_plan || patient.meal_plan.length === 0) {
       toast.warning("A dieta deste paciente está vazia.");
@@ -340,7 +420,6 @@ function useAdminDashboard() {
     }
 
     const toastId = toast.loading("Gerando PDF, aguarde...");
-    
     try {
       const mealPlanJSON = patient.meal_plan;
       const doc = new jsPDF('p', 'mm', 'a4');
@@ -348,14 +427,25 @@ function useAdminDashboard() {
       const pageHeight = doc.internal.pageSize.height;
       const margin = 20;
 
+      // Cálculos totais com macros
       const totalKcal = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.kcal || 0), 0);
+      const totalProtein = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.p || 0), 0);
+      const totalCarbs = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.c || 0), 0);
+      const totalFat = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.g || 0), 0);
 
       const daysMap = new Map<string, any[]>();
       mealPlanJSON.forEach((meal: any) => {
         meal.options.forEach((opt: any) => {
           const dayName = opt.day?.trim() || "Opção";
           if (!daysMap.has(dayName)) daysMap.set(dayName, []);
-          daysMap.get(dayName)!.push({ mealName: meal.name, time: meal.time, description: opt.description, kcal: opt.kcal });
+          daysMap.get(dayName)!.push({ 
+            mealName: meal.name, 
+            time: meal.time, 
+            description: opt.description,
+            foodItems: opt.foodItems || [],
+            kcal: opt.kcal,
+            macros: opt.macros || { p: 0, c: 0, g: 0 }
+          });
         });
       });
 
@@ -390,6 +480,7 @@ function useAdminDashboard() {
         doc.line(margin, currentY, pageWidth - margin, currentY);
         currentY += 8;
 
+        // Linha do paciente e data
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(100, 100, 100);
@@ -405,14 +496,49 @@ function useAdminDashboard() {
         doc.setTextColor(30, 30, 30);
         doc.text(new Date().toLocaleDateString('pt-BR'), margin + 98, currentY);
 
+        currentY += 6; // Espaço antes da base diária
+
+        // Linha da base diária
+        doc.setFontSize(8);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(100, 100, 100);
-        doc.text("BASE DIÁRIA:", pageWidth - margin - 52, currentY);
+        doc.text("BASE DIÁRIA:", margin, currentY);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(234, 88, 12); 
-        doc.text(`~${totalKcal} kcal`, pageWidth - margin, currentY, { align: "right" });
+        doc.setTextColor(234, 88, 12);
+        doc.text(`~${Math.round(totalKcal)} kcal`, margin + 35, currentY);
+        
+        // Macros totais na mesma linha
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        
+        // Separador
+        doc.setTextColor(150, 150, 150);
+        doc.text("|", margin + 65, currentY);
+        
+        // Proteína (vermelho)
+        doc.setTextColor(239, 68, 68);
+        doc.text(`P: ${Math.round(totalProtein)}g`, margin + 70, currentY);
+        
+        // Separador
+        doc.setTextColor(150, 150, 150);
+        doc.text("|", margin + 95, currentY);
+        
+        // Carboidrato (laranja)
+        doc.setTextColor(245, 158, 11);
+        doc.text(`C: ${Math.round(totalCarbs)}g`, margin + 100, currentY);
+        
+        // Separador
+        doc.setTextColor(150, 150, 150);
+        doc.text("|", margin + 125, currentY);
+        
+        // Gordura (azul)
+        doc.setTextColor(59, 130, 246);
+        doc.text(`G: ${Math.round(totalFat)}g`, margin + 130, currentY);
+        
+        // Reset cor
+        doc.setTextColor(0, 0, 0);
 
-        currentY += 6;
+        currentY += 8;
         doc.setDrawColor(230, 230, 230);
         doc.line(margin, currentY, pageWidth - margin, currentY);
         currentY += 12;
@@ -425,6 +551,12 @@ function useAdminDashboard() {
         doc.text("Plano alimentar individual e intransferível elaborado por Vanusa Zacarias - Nutrição Clínica.", pageWidth / 2, pageHeight - 10, { align: "center" });
 
         return currentY;
+      };
+
+      // Função para formatar a lista de alimentos com bullets
+      const formatFoodList = (foodItems: any[]) => {
+        if (!foodItems || foodItems.length === 0) return '';
+        return foodItems.map(item => `• ${item.name}`).join('\n');
       };
 
       sortedDays.forEach((day, index) => {
@@ -441,31 +573,152 @@ function useAdminDashboard() {
         y += 20;
 
         const mealsForDay = daysMap.get(day) || [];
-        mealsForDay.forEach(meal => {
-          if (y > pageHeight - 40) { doc.addPage(); y = printHeaderAndFooter(); }
+        
+        // Calcula total do dia
+        const dayTotal = {
+          kcal: mealsForDay.reduce((sum, m) => sum + (m.kcal || 0), 0),
+          p: mealsForDay.reduce((sum, m) => sum + (m.macros?.p || 0), 0),
+          c: mealsForDay.reduce((sum, m) => sum + (m.macros?.c || 0), 0),
+          g: mealsForDay.reduce((sum, m) => sum + (m.macros?.g || 0), 0)
+        };
 
-          doc.setFillColor(245, 248, 246); 
-          doc.rect(margin, y - 6, pageWidth - (margin * 2), 10, 'F');
+        mealsForDay.forEach(meal => {
+          if (y > pageHeight - 50) { 
+            doc.addPage(); 
+            y = printHeaderAndFooter(); 
+            doc.setFillColor(26, 58, 42); 
+            doc.rect(margin, y, pageWidth - (margin * 2), 12, 'F');
+            doc.text(titleText, pageWidth / 2, y + 8, { align: "center", charSpace: 1 });
+            y += 20;
+          }
+
+          // Cabeçalho da refeição COM macros na mesma linha
           doc.setFontSize(11);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(26, 58, 42);
-          doc.text(`${meal.mealName.toUpperCase()} - ${meal.time}`, margin + 3, y + 1);
           
-          if (meal.kcal > 0) {
-            doc.setFontSize(9);
-            doc.setTextColor(234, 88, 12);
-            doc.text(`~${meal.kcal} kcal`, pageWidth - margin - 3, y + 1, { align: "right" });
-          }
-          y += 10;
-
-          doc.setFontSize(10);
+          // Nome e horário da refeição
+          const mealTitle = `${meal.mealName.toUpperCase()} - ${meal.time}`;
+          doc.text(mealTitle, margin, y);
+          
+          // Calcular posição das macros (à direita)
+          const macroStartX = pageWidth - margin - 5;
+          
+          // Construir o texto das macros com cores
+          const kcalText = `${Math.round(meal.kcal || 0)} kcal`;
+          const proteinText = `P: ${Math.round(meal.macros?.p || 0)}g`;
+          const carbsText = `C: ${Math.round(meal.macros?.c || 0)}g`;
+          const fatText = `G: ${Math.round(meal.macros?.g || 0)}g`;
+          
+          // Medir larguras para posicionamento
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "bold");
+          
+          const kcalWidth = doc.getTextWidth(kcalText);
+          const proteinWidth = doc.getTextWidth(proteinText);
+          const carbsWidth = doc.getTextWidth(carbsText);
+          const fatWidth = doc.getTextWidth(fatText);
+          const separatorWidth = doc.getTextWidth(" | ");
+          
+          const totalWidth = kcalWidth + separatorWidth + proteinWidth + separatorWidth + carbsWidth + separatorWidth + fatWidth;
+          
+          let currentX = macroStartX - totalWidth;
+          
+          // Calorias (laranja)
+          doc.setTextColor(234, 88, 12);
+          doc.text(kcalText, currentX, y);
+          currentX += kcalWidth + 2;
+          
+          // Separador
+          doc.setTextColor(150, 150, 150);
+          doc.text("|", currentX, y);
+          currentX += separatorWidth;
+          
+          // Proteína (vermelho)
+          doc.setTextColor(239, 68, 68);
+          doc.text(proteinText, currentX, y);
+          currentX += proteinWidth + 2;
+          
+          // Separador
+          doc.setTextColor(150, 150, 150);
+          doc.text("|", currentX, y);
+          currentX += separatorWidth;
+          
+          // Carboidrato (laranja)
+          doc.setTextColor(245, 158, 11);
+          doc.text(carbsText, currentX, y);
+          currentX += carbsWidth + 2;
+          
+          // Separador
+          doc.setTextColor(150, 150, 150);
+          doc.text("|", currentX, y);
+          currentX += separatorWidth;
+          
+          // Gordura (azul)
+          doc.setTextColor(59, 130, 246);
+          doc.text(fatText, currentX, y);
+          
+          // Reset cor
+          doc.setTextColor(0, 0, 0);
+          
+          y += 6;
+          
+          // Lista de alimentos (com bullets)
+          doc.setFontSize(9.5);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(50, 50, 50);
-          const maxWidth = pageWidth - (margin * 2);
-          const splitDesc = doc.splitTextToSize(meal.description, maxWidth);
-          doc.text(splitDesc, margin + 3, y);
-          y += (splitDesc.length * 5) + 6; 
+          
+          let descriptionText = '';
+          if (meal.foodItems && meal.foodItems.length > 0) {
+            descriptionText = formatFoodList(meal.foodItems);
+          } else if (meal.description) {
+            descriptionText = meal.description;
+          }
+          
+          if (descriptionText) {
+            const maxWidth = pageWidth - (margin * 2);
+            const splitDesc = doc.splitTextToSize(descriptionText, maxWidth);
+            doc.text(splitDesc, margin, y);
+            y += (splitDesc.length * 5);
+          } else {
+            y += 2;
+          }
+          
+          // Espaçamento entre refeições
+          y += 6;
         });
+
+        // Rodapé com total do dia
+        if (y < pageHeight - 25) {
+          doc.setDrawColor(230, 230, 230);
+          doc.setFillColor(250, 250, 250);
+          doc.roundedRect(margin, pageHeight - 28, pageWidth - (margin * 2), 18, 3, 3, 'FD');
+          
+          doc.setFontSize(7);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(100, 100, 100);
+          doc.text("TOTAL DO DIA:", margin + 8, pageHeight - 18);
+          
+          // Calorias
+          doc.setFontSize(8);
+          doc.setTextColor(234, 88, 12);
+          doc.text(`${Math.round(dayTotal.kcal)} kcal`, margin + 45, pageHeight - 18);
+          
+          // Proteína
+          doc.setTextColor(239, 68, 68);
+          doc.text(`${Math.round(dayTotal.p)}g P`, margin + 90, pageHeight - 18);
+          
+          // Carboidrato
+          doc.setTextColor(245, 158, 11);
+          doc.text(`${Math.round(dayTotal.c)}g C`, margin + 125, pageHeight - 18);
+          
+          // Gordura
+          doc.setTextColor(59, 130, 246);
+          doc.text(`${Math.round(dayTotal.g)}g G`, margin + 160, pageHeight - 18);
+          
+          // Reset cor
+          doc.setTextColor(0, 0, 0);
+        }
       });
 
       const pdfUrl = doc.output('bloburl');
@@ -473,18 +726,19 @@ function useAdminDashboard() {
       toast.success("PDF gerado com sucesso!", { id: toastId });
 
     } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
       toast.error("Ocorreu um erro ao gerar o PDF.", { id: toastId });
     }
   };
 
   return {
     state: { loading, patients, activeTab, searchTerm, showOnlyNew, unseenPatientsCount, todayTotalMessages, usageStats, filteredPatients, editingId, editForm, evalModalOpen, activeLeadsCount, filteredLeads, copiedLink, calendlyUrl, premiumPrice, mealPlanPrice, consultationPrice, isSavingPrice, dietModalOpen, selectedPatient, adminContext, statusFilter },
-    actions: { setActiveTab, handleBellClick, handleLogout, setSearchTerm, setStatusFilter, setEditingId, setEditForm, updateProfile, setEvalModalOpen, setDietModalOpen, setSelectedPatient, copyToClipboard, setPremiumPrice, setMealPlanPrice, setConsultationPrice, setCalendlyUrl, handleSaveSettings, handleGeneratePDF, fetchAdminData }
+    actions: { setActiveTab, handleBellClick, handleLogout, setSearchTerm, setStatusFilter, setEditingId, setEditForm, updateProfile, setEvalModalOpen, setDietModalOpen, setSelectedPatient, copyToClipboard, setPremiumPrice, setMealPlanPrice, setConsultationPrice, setCalendlyUrl, handleSaveSettings, handleGeneratePDF, fetchAdminData, handleDeleteDiet, handleOpenDietBuilder }
   };
 }
 
 // =========================================================================
-// COMPONENTE PRINCIPAL (UI PURO)
+// COMPONENTE PRINCIPAL (UI)
 // =========================================================================
 export default function AdminDashboard() {
   const { state, actions } = useAdminDashboard();
@@ -684,18 +938,41 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="pt-5 border-t border-stone-100 flex items-center justify-between flex-wrap gap-3 mt-auto">
+                        
                         <div className="flex gap-2 w-full sm:w-auto">
-                          <button onClick={() => actions.setDietModalOpen({ isOpen: true, id: p.id, name: p.full_name })} className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${isDietReady ? 'bg-stone-100 text-stone-700' : 'bg-nutri-900 text-white'}`}>
-                            <Utensils size={16} /> {isDietReady ? 'Editar Dieta' : 'Montar Dieta'}
+                          {/* BOTÃO DINÂMICO: MONTAR OU EDITAR */}
+                          <button 
+                            onClick={() => actions.handleOpenDietBuilder(p)} 
+                            className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${isDietReady ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' : 'bg-nutri-900 text-white hover:bg-nutri-800 shadow-md'}`}
+                          >
+                            <Utensils size={16} /> {isDietReady ? 'Editar Cardápio' : 'Montar Dieta'}
                           </button>
+                          
                           {isDietReady && (
-                            <button onClick={() => actions.handleGeneratePDF(p)} className="px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center gap-2"><FileText size={16} /> PDF</button>
+                            <>
+                              <button 
+                                onClick={() => actions.handleGeneratePDF(p)} 
+                                title="Gerar PDF"
+                                className="px-3 py-2.5 bg-rose-600 text-white rounded-xl flex items-center justify-center transition-all hover:bg-rose-700 active:scale-95 shadow-md"
+                              >
+                                <FileText size={16} />
+                              </button>
+                              
+                              <button 
+                                onClick={() => actions.handleDeleteDiet(p.id)} 
+                                title="Excluir Dieta / Nova Dieta"
+                                className="px-3 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl flex items-center justify-center transition-all hover:bg-red-100 active:scale-95 shadow-sm"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
                           )}
                         </div>
+
                         <div className="flex gap-2 w-full sm:w-auto justify-end">
-                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-stone-50 text-stone-400'}`}><BellRing size={18} /></a>
-                          <button onClick={() => actions.setSelectedPatient({ id: p.id, name: p.full_name })} className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200"><Activity size={18} /></button>
-                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200"><MessageCircle size={18} /></a>
+                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' : 'bg-stone-50 text-stone-400 hover:bg-stone-100'}`}><BellRing size={18} /></a>
+                          <button onClick={() => actions.setSelectedPatient({ id: p.id, name: p.full_name })} className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"><Activity size={18} /></button>
+                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"><MessageCircle size={18} /></a>
                         </div>
                       </div>
                     </div>
@@ -738,7 +1015,18 @@ export default function AdminDashboard() {
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div><h2 className="text-2xl font-bold flex items-center gap-3"><Calendar className="text-blue-500" /> Consultas</h2></div>
             <div className="flex items-center gap-3 w-full md:w-auto">
-              <button onClick={actions.copyToClipboard} className="flex-1 flex items-center justify-center gap-2 bg-stone-50 border border-stone-200 px-5 py-3.5 rounded-xl font-bold text-sm">
+              
+              {/* 🔥 NOVO BOTÃO DE VER AGENDAMENTOS RESTAURADO */}
+              <a 
+                href="https://calendly.com/app/scheduled_events/user/me" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="flex-1 flex items-center justify-center gap-2 bg-nutri-900 hover:bg-nutri-800 text-white px-5 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 whitespace-nowrap"
+              >
+                <ExternalLink size={18} /> Ver Agendamentos
+              </a>
+
+              <button onClick={actions.copyToClipboard} className="flex-1 flex items-center justify-center gap-2 bg-stone-50 border border-stone-200 px-5 py-3.5 rounded-xl font-bold text-sm transition-all hover:bg-stone-100 active:scale-95">
                 {state.copiedLink ? <Check size={18} className="text-green-600" /> : <Copy size={18} className="text-stone-400" />} {state.copiedLink ? 'Copiado!' : 'Copiar Link'}
               </button>
             </div>
@@ -780,7 +1068,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* MODAIS GLOBAIS */}
+      {/* MODAL DE AVALIAÇÃO */}
       {state.evalModalOpen.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/70 p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-2xl flex flex-col max-h-[90vh]">
@@ -794,18 +1082,25 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* MODAL DE DIETA ATUALIZADO */}
       {state.dietModalOpen.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/80 p-4 overflow-y-auto">
           <div className="w-full max-w-4xl relative my-auto">
-            <button onClick={() => { actions.setDietModalOpen({ isOpen: false, id: '', name: '' }); actions.fetchAdminData(); }} className="absolute -top-14 right-0 text-white p-3"><X size={24} /></button>
-            <DietBuilder patientId={state.dietModalOpen.id} patientName={state.dietModalOpen.name} onClose={() => { actions.setDietModalOpen({ isOpen: false, id: '', name: '' }); actions.fetchAdminData(); }} />
+            <button onClick={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} className="absolute -top-14 right-0 text-white p-3"><X size={24} /></button>
+            
+            <DietBuilder 
+              patientId={state.dietModalOpen.id} 
+              patientName={state.dietModalOpen.name} 
+              onClose={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
+              targetRecommendation={state.dietModalOpen.targetRecommendation} 
+            />
+
           </div>
         </div>
       )}
 
       <ClinicalDataModal isOpen={!!state.selectedPatient} onClose={() => actions.setSelectedPatient(null)} patientId={state.selectedPatient?.id || ''} patientName={state.selectedPatient?.name || ''} />
       
-      {/* SEU CHATBOT MANTIDO AQUI NO FINAL DO ARQUIVO: */}
       <ChatAssistant adminContext={state.adminContext} />
 
     </main>

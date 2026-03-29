@@ -18,6 +18,7 @@ const supabaseAdmin = createClient(
 // ==========================================
 // 🛠️ FUNÇÕES AUXILIARES
 // ==========================================
+
 function isComplexRequest(message: string, hasImage: boolean): boolean {
   const msg = message.toLowerCase();
   if (hasImage) return true;
@@ -32,15 +33,112 @@ function normalizeString(str: string): string {
 }
 
 // ==========================================
-// 🛠️ CONSTRUTOR DE CONTEXTO ADMIN
+// 🧮 FUNÇÃO PARA CALCULAR MACROS DO CARDÁPIO
 // ==========================================
+
+interface MacroPorRefeicao {
+  nome: string;
+  horario: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+interface MacrosDiarios {
+  totalKcal: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+}
+
+function calcularMacrosDoCardapio(mealPlan: any[]): {
+  macrosDiarios: MacrosDiarios | null;
+  macrosPorRefeicao: MacroPorRefeicao[];
+} {
+  if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
+    return {
+      macrosDiarios: null,
+      macrosPorRefeicao: []
+    };
+  }
+
+  const macrosPorRefeicao: MacroPorRefeicao[] = [];
+  let totalKcal = 0;
+  let totalProtein = 0;
+  let totalCarbs = 0;
+  let totalFat = 0;
+
+  for (const meal of mealPlan) {
+    // Pega a primeira opção (opção padrão)
+    const option = meal.options?.[0];
+    if (option) {
+      const kcal = option.kcal || 0;
+      const protein = option.macros?.p || 0;
+      const carbs = option.macros?.c || 0;
+      const fat = option.macros?.g || 0;
+
+      totalKcal += kcal;
+      totalProtein += protein;
+      totalCarbs += carbs;
+      totalFat += fat;
+
+      macrosPorRefeicao.push({
+        nome: meal.name || 'Refeição',
+        horario: meal.time || '--:--',
+        kcal,
+        protein,
+        carbs,
+        fat
+      });
+    }
+  }
+
+  return {
+    macrosDiarios: {
+      totalKcal,
+      totalProtein,
+      totalCarbs,
+      totalFat
+    },
+    macrosPorRefeicao
+  };
+}
+
+// ==========================================
+// 🛠️ CONSTRUTOR DE CONTEXTO ADMIN (ATUALIZADO COM MACROS)
+// ==========================================
+
 function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: string): string {
   const patientsResumo = adminData?.patients?.map((p: any) => {
     const isDietReady = p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
     const aguaHoje = p.todayLog?.water_ml ? `${p.todayLog.water_ml}ml` : '0ml';
     const humorHoje = p.todayLog?.mood || 'Não registrou';
+    const kcalHoje = p.todayLog?.activity_kcal ? `${p.todayLog.activity_kcal} kcal gastas` : '0 kcal';
+    
+    // CALCULA MACROS DETALHADOS DO PACIENTE
+    const macros = calcularMacrosDoCardapio(p.meal_plan || []);
+    
+    let macrosText = '';
+    if (macros.macrosDiarios) {
+      macrosText = `\n    📊 MACROS DIÁRIOS: ${macros.macrosDiarios.totalKcal}kcal | P:${macros.macrosDiarios.totalProtein}g | C:${macros.macrosDiarios.totalCarbs}g | G:${macros.macrosDiarios.totalFat}g`;
+      
+      // ADICIONA MACROS POR REFEIÇÃO SE EXISTIREM
+      if (macros.macrosPorRefeicao.length > 0) {
+        macrosText += `\n    🍽️ MACROS POR REFEIÇÃO:`;
+        macros.macrosPorRefeicao.forEach(ref => {
+          macrosText += `\n       - ${ref.nome} (${ref.horario}): ${ref.kcal}kcal | P:${ref.protein}g | C:${ref.carbs}g | G:${ref.fat}g`;
+        });
+      }
+    }
 
-    return `- Nome: ${p.full_name || 'Desconhecido'} | Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} | Atrasado: ${p.isLate ? 'Sim' : 'Não'} | Meta: ${p.meta_peso ? `${p.meta_peso}kg` : 'N/A'} | Água: ${aguaHoje} | Humor: ${humorHoje}`;
+    return `- Nome: ${p.full_name || 'Desconhecido'} 
+    Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} 
+    Atrasado: ${p.isLate ? 'Sim' : 'Não'} 
+    Meta: ${p.meta_peso ? `${p.meta_peso}kg` : 'N/A'} 
+    Água: ${aguaHoje} 
+    Humor: ${humorHoje} 
+    Atividade: ${kcalHoje}${macrosText}`;
   }).join('\n') || 'Nenhum paciente cadastrado.';
 
   const leadsResumo = adminData?.leads?.map((l: any) => 
@@ -69,8 +167,36 @@ ${deepContext ? `\n🔍 DADOS CLÍNICOS PROFUNDOS ENCONTRADOS NO BANCO DE DADOS:
 REGRAS:
 - Dirija-se a ela como "Vanusa" ou "Nutri".
 - Analise os dados profundamente quando solicitado.
+- Ao analisar os diários (daily_logs), preste atenção aos campos 'activities' (exercícios feitos) e 'activity_kcal' (gasto calórico do dia).
+- **IMPORTANTE**: Os macros nutricionais (calorias, proteínas, carboidratos, gorduras) já estão disponíveis no resumo de cada paciente, tanto os totais diários quanto os detalhados por refeição.
+- Quando perguntar sobre calorias ou macros de um paciente específico, utilize os dados de "MACROS DIÁRIOS" e "MACROS POR REFEIÇÃO" que estão no resumo.
+- Se o paciente tiver o cardápio pronto, você terá acesso a todos os valores nutricionais por refeição.
 `.trim();
 }
+
+// ==========================================
+// 📝 FUNÇÃO PARA FORMATAR CARDÁPIO
+// ==========================================
+
+function formatarCardapio(mealPlan: any[]): string {
+  if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
+    return 'Cardápio ainda não elaborado.';
+  }
+
+  return mealPlan.map((meal: any) => {
+    const option = meal.options?.[0];
+    if (!option) return `- ${meal.time} | ${meal.name}: Sem descrição`;
+    
+    const kcal = option.kcal || 0;
+    const macros = option.macros || { p: 0, c: 0, g: 0 };
+    
+    return `- ${meal.time} | ${meal.name}: ${option.description || 'Sem descrição'} (${kcal} kcal | P:${macros.p}g | C:${macros.c}g | G:${macros.g}g)`;
+  }).join('\n');
+}
+
+// ==========================================
+// 🌐 MAIN POST FUNCTION
+// ==========================================
 
 export async function POST(req: Request) {
   try {
@@ -101,8 +227,7 @@ export async function POST(req: Request) {
     if (isAdmin) {
       console.log(`[API Nutri Assistant] Iniciando verificação de Admin. UserId recebido:`, userId);
 
-      // 1. CAMADA DE SEGURANÇA: Retiramos o .single() para evitar o erro de coerção JSON.
-      // Solicitamos um array com limite de 1.
+      // 1. CAMADA DE SEGURANÇA
       const { data: profilesData, error: profileError } = await supabaseAdmin
         .from('profiles')
         .select('role') 
@@ -115,29 +240,26 @@ export async function POST(req: Request) {
         }, { status: 403 });
       }
 
-      // Extraímos o primeiro item do array de forma segura
       const userProfile = profilesData && profilesData.length > 0 ? profilesData[0] : null;
 
       if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'nutricionista')) {
         return NextResponse.json({ 
-          reply: `Acesso negado. Perfil não encontrado ou sem permissão de administrador. (UserId buscado: ${userId})` 
+          reply: `Acesso negado. Perfil não encontrado ou sem permissão de administrador.` 
         }, { status: 403 });
       }
 
       let deepContext = '';
       const normalizedMsg = normalizeString(safeMessage);
       
-      // 2. IDENTIFICAÇÃO DE PACIENTE (Mais Robusta)
+      // 2. IDENTIFICAÇÃO DE PACIENTE
       const mentionedPatient = adminData?.patients?.find((p: any) => {
         if (!p.full_name) return false;
         const patientNameParts = normalizeString(p.full_name).split(' ');
         const firstName = patientNameParts[0];
-        
-        // Ex: Procura o primeiro nome se ele for maior que 2 letras
         return firstName.length > 2 && normalizedMsg.includes(firstName);
       });
 
-      // 3. BUSCA DE DADOS LIMITADA (Evitar consumo excessivo de tokens)
+      // 3. BUSCA DE DADOS PROFUNDOS
       if (mentionedPatient) {
         const targetId = mentionedPatient.id;
 
@@ -152,7 +274,6 @@ export async function POST(req: Request) {
           supabaseAdmin.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(3)
         ]);
 
-        // Tratamento de erros das queries (opcional, apenas para log)
         if (antro.error || logs.error) console.error("Erro ao buscar contexto profundo:", antro.error || logs.error);
 
         deepContext = `
@@ -191,7 +312,7 @@ export async function POST(req: Request) {
 
       const adminReply = result.response.text();
 
-      // 4. SALVAR HISTÓRICO DO ADMIN (Background Task)
+      // 4. SALVAR HISTÓRICO DO ADMIN
       (async () => {
         try {
           await supabaseAdmin.from('ai_messages').insert({ 
@@ -211,7 +332,7 @@ export async function POST(req: Request) {
     // ⚡ FLUXO PADRÃO (PACIENTE)
     // ==========================================
 
-    // 1. CACHE C/ CONSUMO DE LIMITE
+    // 1. CACHE
     if (!image && safeMessage) {
       const cached = await getCachedResponse(userId, safeMessage);
 
@@ -265,23 +386,26 @@ export async function POST(req: Request) {
       }, { status: 200 });
     }
 
-    // 3. BUSCAR DADOS DO PACIENTE
+    // 3. BUSCAR DADOS DO PACIENTE (INCLUINDO MEAL_PLAN PARA MACROS)
     const [profileRes, dailyLogRes, evalRes, qfaRes, antroRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan').eq('id', userId).limit(1),
-      supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood').eq('user_id', userId).eq('date', todayStr).limit(1),
+      supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood, activities, activity_kcal').eq('user_id', userId).eq('date', todayStr).limit(1),
       supabaseAdmin.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('anthropometry').select('weight, waist, measurement_date').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2)
     ]);
 
-    // Otimização e prevenção do mesmo erro de JSON (.single()) nos dados do paciente
     const profile = profileRes.data?.[0];
     const dailyLog = dailyLogRes.data?.[0];
     const evaluation = evalRes.data?.[0];
     const qfa = qfaRes.data?.[0];
     const antro = antroRes.data;
 
-    // 4. PROCESSAMENTO DE CONTEXTO
+    // 4. CALCULAR MACROS DO CARDÁPIO
+    const mealPlan = profile?.meal_plan;
+    const { macrosDiarios, macrosPorRefeicao } = calcularMacrosDoCardapio(mealPlan || []);
+
+    // 5. PROCESSAMENTO DE CONTEXTO
     const nomePaciente = profile?.full_name?.split(' ')[0] || 'Paciente';
     const objetivoPrincipal = evaluation?.answers?.["0"] || 'Não informado';
     const rotinaSono = evaluation?.answers?.["3"] || '';
@@ -294,13 +418,7 @@ export async function POST(req: Request) {
         .map(([alimento]) => alimento.replace(/_/g, ' '));
     }
 
-    let cardapioFormatado = 'Cardápio ainda não elaborado.';
-    if (profile?.meal_plan && Array.isArray(profile.meal_plan)) {
-      cardapioFormatado = profile.meal_plan.map((meal: any) => {
-        const opcao = meal.options?.[0];
-        return `- ${meal.time} | ${meal.name}: ${opcao?.description || 'Sem descrição'} (${opcao?.kcal || 0} kcal)`;
-      }).join('\n');
-    }
+    const cardapioFormatado = formatarCardapio(mealPlan || []);
 
     let evolucaoTxt = 'Iniciando acompanhamento.';
     if (antro && antro.length === 2) {
@@ -314,8 +432,14 @@ export async function POST(req: Request) {
     const humorHoje = dailyLog?.mood || 'Não registrado';
     const aguaHoje = dailyLog?.water_ml || 0;
     const refeicoesFeitas = dailyLog?.meals_checked?.length || 0;
+    const activityKcal = dailyLog?.activity_kcal || 0;
+    
+    let atividadesHojeFormatadas = 'Nenhuma atividade registrada hoje.';
+    if (dailyLog?.activities && Array.isArray(dailyLog.activities) && dailyLog.activities.length > 0) {
+      atividadesHojeFormatadas = dailyLog.activities.map((a: any) => `- ${a.name} (${a.duration} min)`).join('\n');
+    }
 
-    // 5. CONTEXTO INTELIGENTE + RAG VETORIAL
+    // 6. CONTEXTO INTELIGENTE COM MACROS
     const baseContext = buildContext(safeMessage, {
       nomePaciente,
       objetivoPrincipal,
@@ -328,8 +452,12 @@ export async function POST(req: Request) {
       humorHoje,
       aguaHoje,
       refeicoesFeitas,
+      atividadesHojeFormatadas,
+      activityKcal,
       todayStr,
-      hasImage: !!image
+      hasImage: !!image,
+      macrosDiarios: macrosDiarios || undefined,
+      macrosPorRefeicao
     });
 
     const summary = await getUserSummary(userId);
@@ -341,7 +469,10 @@ export async function POST(req: Request) {
       msgLower.includes('trocar') ||
       msgLower.includes('emagrec') ||
       msgLower.includes('não consegui') ||
-      msgLower.includes('nao consegui');
+      msgLower.includes('nao consegui') ||
+      msgLower.includes('caloria') ||
+      msgLower.includes('proteina') ||
+      msgLower.includes('carbo');
 
     const semanticMemory = (shouldUseMemory && safeMessage) 
       ? await getSemanticMemories(userId, safeMessage) 
@@ -355,8 +486,8 @@ ${summary ? `RESUMO DO COMPORTAMENTO DO PACIENTE:\n${summary}\n` : ''}
 ${semanticMemory || ''}
     `.trim();
 
-    // 6. MODELO HÍBRIDO E LOGGING
-    const useComplexModel = isComplexRequest(safeMessage, !!image);
+    // 7. MODELO HÍBRIDO
+    const useComplexModel = isComplexRequest(safeMessage, !!image) || macrosDiarios !== null;
     const modelName = useComplexModel ? "gemini-2.5-flash" : "gemini-2.5-flash-lite";
     const remainingReal = Math.max(rate.remaining - 1, 0);
 
@@ -385,10 +516,9 @@ ${semanticMemory || ''}
     const reply = result.response.text();
     if (!reply) return NextResponse.json({ reply: "Pode repetir?" }, { status: 200 });
 
-    // 7. SALVAR HISTÓRICO E RAG EM BACKGROUND
+    // 8. SALVAR HISTÓRICO E RAG EM BACKGROUND
     if (userId) {
       const questionText = safeMessage || 'Enviou uma imagem';
-      // Aqui usamos data[0] em vez de single() para manter o padrão seguro e evitar bugs no insert
       const { data: insertedMsgs, error: insertError } = await supabaseAdmin
         .from('ai_messages')
         .insert({ user_id: userId, question: questionText, answer: reply })
