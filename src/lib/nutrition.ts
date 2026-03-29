@@ -138,11 +138,27 @@ export function generateRecommendation({
     }
   }
 
-  // 🔥 7. TRAVA FISIOLÓGICA TMB MIN
-  const minCalories = Math.round(tmb * 0.8);
+  // Inicialização da lista de alertas movida para cá para capturar os alertas fisiológicos
+  const alertsList: string[] = [];
+
+  // 🔥 7. TRAVA FISIOLÓGICA INTELIGENTE (CORRIGIDO)
+  
+  // Ajuste baseado em contexto
+  const isSedentary = avgActivity < 150;
+
+  // Piso mais conservador para sedentários
+  const tmbFactor = isSedentary ? 1.0 : 0.95;
+
+  const minCalories = Math.round(tmb * tmbFactor);
+
   if (calories < minCalories) {
     calories = minCalories;
-    strategy += ' | Piso metabólico aplicado';
+    strategy += ' | Proteção metabólica aplicada';
+  }
+
+  // Alerta de segurança metabólica adicionado aqui
+  if (calories <= tmb * 1.02) {
+    alertsList.push('Calorias muito próximas da TMB. Monitorar adaptação metabólica.');
   }
 
   // =======================================================================
@@ -178,7 +194,6 @@ export function generateRecommendation({
 
   // 🔥 8. ALERTAS CLÍNICOS AVANÇADOS (Formatados Corretamente)
   const activityPerKg = avgActivity / weight;
-  const alertsList: string[] = [];
 
   if (activityPerKg < 1) {
     if (goal === 'perda de gordura') alertsList.push('Baixa atividade para emagrecimento. Aumentar NEAT (passos/dia) é prioridade.');
