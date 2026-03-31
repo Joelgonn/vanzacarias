@@ -175,7 +175,7 @@ function useAdminDashboard() {
         if (settings.calendly_url) setCalendlyUrl(settings.calendly_url);
       }
 
-      // 1. Busca os Perfis (data_nascimento e sexo estão aqui)
+      // 1. Busca os Perfis
       const { data: profiles, error: pError } = await supabase.from('profiles').select('*');
       if (pError) throw pError;
 
@@ -314,7 +314,7 @@ function useAdminDashboard() {
     if (!error) {
       setEditingId(null);
       fetchAdminData();
-      toast.success("Perfil do paciente atualizado com sucesso!");
+      toast.success("Perfil atualizado com sucesso!");
     } else {
       toast.error("Falha ao atualizar o perfil.");
     }
@@ -330,7 +330,7 @@ function useAdminDashboard() {
     };
 
     const { error } = await supabase.from('system_settings').update(updatePayload).eq('id', 1);
-    if (!error) toast.success("Configurações do sistema salvas com sucesso!");
+    if (!error) toast.success("Configurações salvas com sucesso!");
     else toast.error("Erro ao salvar as configurações.");
     setIsSavingPrice(false);
   };
@@ -339,7 +339,7 @@ function useAdminDashboard() {
     if(!calendlyUrl) return toast.warning("Não há link configurado para copiar.");
     navigator.clipboard.writeText(calendlyUrl);
     setCopiedLink(true);
-    toast.success("Link da agenda copiado!");
+    toast.success("Link copiado para a área de transferência!");
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
@@ -374,7 +374,7 @@ function useAdminDashboard() {
 
       if (error) throw error;
 
-      toast.success("Dieta excluída com sucesso! Agora você pode criar uma nova.", { id: toastId });
+      toast.success("Dieta excluída. Pronto para criar uma nova.", { id: toastId });
       fetchAdminData(); 
     } catch (error) {
       console.error(error);
@@ -382,12 +382,10 @@ function useAdminDashboard() {
     }
   };
 
-  // 🔥 CÁLCULO CENTRALIZADO (Single Source of Truth) - CORRIGIDO E SIMPLIFICADO
   const handleOpenDietBuilder = async (p: Patient) => {
-    const toastId = toast.loading("Calculando necessidades metabólicas...");
+    const toastId = toast.loading("Calculando metabolismo e necessidades...");
 
     try {
-      // Chama a função centralizada que faz exatamente toda a lógica anterior
       const metabolicData = await getPatientMetabolicData(p.id, {
         patientId: p.id,
         weight: p.peso || p.weight || null,
@@ -408,8 +406,8 @@ function useAdminDashboard() {
       });
 
     } catch (e) {
-      console.error("Erro ao gerar recomendação no Admin:", e);
-      toast.error("Erro ao calcular dados metabólicos.", { id: toastId });
+      console.error("Erro ao gerar recomendação:", e);
+      toast.error("Erro ao calcular dados. Verifique o cadastro.", { id: toastId });
     }
   };
   
@@ -419,7 +417,7 @@ function useAdminDashboard() {
       return;
     }
 
-    const toastId = toast.loading("Gerando PDF, aguarde...");
+    const toastId = toast.loading("Gerando PDF...");
     try {
       const mealPlanJSON = patient.meal_plan;
       const doc = new jsPDF('p', 'mm', 'a4');
@@ -496,7 +494,7 @@ function useAdminDashboard() {
         doc.setTextColor(30, 30, 30);
         doc.text(new Date().toLocaleDateString('pt-BR'), margin + 98, currentY);
 
-        currentY += 6; // Espaço antes da base diária
+        currentY += 6; 
 
         // Linha da base diária
         doc.setFontSize(8);
@@ -507,35 +505,27 @@ function useAdminDashboard() {
         doc.setTextColor(234, 88, 12);
         doc.text(`~${Math.round(totalKcal)} kcal`, margin + 35, currentY);
         
-        // Macros totais na mesma linha
         doc.setFontSize(7);
         doc.setFont("helvetica", "normal");
         
-        // Separador
         doc.setTextColor(150, 150, 150);
         doc.text("|", margin + 65, currentY);
         
-        // Proteína (vermelho)
         doc.setTextColor(239, 68, 68);
         doc.text(`P: ${Math.round(totalProtein)}g`, margin + 70, currentY);
         
-        // Separador
         doc.setTextColor(150, 150, 150);
         doc.text("|", margin + 95, currentY);
         
-        // Carboidrato (laranja)
         doc.setTextColor(245, 158, 11);
         doc.text(`C: ${Math.round(totalCarbs)}g`, margin + 100, currentY);
         
-        // Separador
         doc.setTextColor(150, 150, 150);
         doc.text("|", margin + 125, currentY);
         
-        // Gordura (azul)
         doc.setTextColor(59, 130, 246);
         doc.text(`G: ${Math.round(totalFat)}g`, margin + 130, currentY);
         
-        // Reset cor
         doc.setTextColor(0, 0, 0);
 
         currentY += 8;
@@ -553,7 +543,6 @@ function useAdminDashboard() {
         return currentY;
       };
 
-      // Função para formatar a lista de alimentos com bullets
       const formatFoodList = (foodItems: any[]) => {
         if (!foodItems || foodItems.length === 0) return '';
         return foodItems.map(item => `• ${item.name}`).join('\n');
@@ -574,7 +563,6 @@ function useAdminDashboard() {
 
         const mealsForDay = daysMap.get(day) || [];
         
-        // Calcula total do dia
         const dayTotal = {
           kcal: mealsForDay.reduce((sum, m) => sum + (m.kcal || 0), 0),
           p: mealsForDay.reduce((sum, m) => sum + (m.macros?.p || 0), 0),
@@ -592,25 +580,20 @@ function useAdminDashboard() {
             y += 20;
           }
 
-          // Cabeçalho da refeição COM macros na mesma linha
           doc.setFontSize(11);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(26, 58, 42);
           
-          // Nome e horário da refeição
           const mealTitle = `${meal.mealName.toUpperCase()} - ${meal.time}`;
           doc.text(mealTitle, margin, y);
           
-          // Calcular posição das macros (à direita)
           const macroStartX = pageWidth - margin - 5;
           
-          // Construir o texto das macros com cores
           const kcalText = `${Math.round(meal.kcal || 0)} kcal`;
           const proteinText = `P: ${Math.round(meal.macros?.p || 0)}g`;
           const carbsText = `C: ${Math.round(meal.macros?.c || 0)}g`;
           const fatText = `G: ${Math.round(meal.macros?.g || 0)}g`;
           
-          // Medir larguras para posicionamento
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
           
@@ -624,46 +607,36 @@ function useAdminDashboard() {
           
           let currentX = macroStartX - totalWidth;
           
-          // Calorias (laranja)
           doc.setTextColor(234, 88, 12);
           doc.text(kcalText, currentX, y);
           currentX += kcalWidth + 2;
           
-          // Separador
           doc.setTextColor(150, 150, 150);
           doc.text("|", currentX, y);
           currentX += separatorWidth;
           
-          // Proteína (vermelho)
           doc.setTextColor(239, 68, 68);
           doc.text(proteinText, currentX, y);
           currentX += proteinWidth + 2;
           
-          // Separador
           doc.setTextColor(150, 150, 150);
           doc.text("|", currentX, y);
           currentX += separatorWidth;
           
-          // Carboidrato (laranja)
           doc.setTextColor(245, 158, 11);
           doc.text(carbsText, currentX, y);
           currentX += carbsWidth + 2;
           
-          // Separador
           doc.setTextColor(150, 150, 150);
           doc.text("|", currentX, y);
           currentX += separatorWidth;
           
-          // Gordura (azul)
           doc.setTextColor(59, 130, 246);
           doc.text(fatText, currentX, y);
           
-          // Reset cor
           doc.setTextColor(0, 0, 0);
-          
           y += 6;
           
-          // Lista de alimentos (com bullets)
           doc.setFontSize(9.5);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(50, 50, 50);
@@ -684,11 +657,9 @@ function useAdminDashboard() {
             y += 2;
           }
           
-          // Espaçamento entre refeições
           y += 6;
         });
 
-        // Rodapé com total do dia
         if (y < pageHeight - 25) {
           doc.setDrawColor(230, 230, 230);
           doc.setFillColor(250, 250, 250);
@@ -699,24 +670,19 @@ function useAdminDashboard() {
           doc.setTextColor(100, 100, 100);
           doc.text("TOTAL DO DIA:", margin + 8, pageHeight - 18);
           
-          // Calorias
           doc.setFontSize(8);
           doc.setTextColor(234, 88, 12);
           doc.text(`${Math.round(dayTotal.kcal)} kcal`, margin + 45, pageHeight - 18);
           
-          // Proteína
           doc.setTextColor(239, 68, 68);
           doc.text(`${Math.round(dayTotal.p)}g P`, margin + 90, pageHeight - 18);
           
-          // Carboidrato
           doc.setTextColor(245, 158, 11);
           doc.text(`${Math.round(dayTotal.c)}g C`, margin + 125, pageHeight - 18);
           
-          // Gordura
           doc.setTextColor(59, 130, 246);
           doc.text(`${Math.round(dayTotal.g)}g G`, margin + 160, pageHeight - 18);
           
-          // Reset cor
           doc.setTextColor(0, 0, 0);
         }
       });
@@ -744,106 +710,170 @@ export default function AdminDashboard() {
   const { state, actions } = useAdminDashboard();
 
   if (state.loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="animate-spin text-nutri-800" size={48} />
-        <p className="text-stone-500 font-medium animate-pulse">Carregando painel...</p>
+    <div className="min-h-screen flex items-center justify-center bg-stone-50/50">
+      <div className="flex flex-col items-center gap-5">
+        <div className="p-4 bg-white rounded-2xl shadow-sm border border-stone-100">
+          <Loader2 className="animate-spin text-nutri-700" size={36} />
+        </div>
+        <p className="text-stone-500 font-medium tracking-wide animate-pulse">Sincronizando sistema...</p>
       </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-24 lg:pt-28 font-sans text-stone-800">
+    <main className="min-h-screen bg-[#F8F9FA] p-3 sm:p-4 md:p-8 lg:p-10 pt-20 lg:pt-28 font-sans text-stone-800 selection:bg-nutri-200">
       
-      {/* HEADER */}
-      <header className="flex flex-col gap-6 mb-8 bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 transition-all">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-nutri-900 tracking-tight">Painel Administrativo</h1>
-            <p className="text-stone-500 text-sm mt-1">Gestão de Pacientes, Consultas & Captação</p>
+      {/* HEADER COMPACTO E PREMIUM NO MOBILE */}
+      <header className="flex flex-col gap-4 md:gap-6 mb-5 md:mb-8 bg-white p-4 sm:p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] border border-stone-100/80 backdrop-blur-xl transition-all">
+        <div className="flex justify-between items-center gap-3">
+          <div className="flex-1">
+            <h1 className="text-xl md:text-3xl font-extrabold text-stone-900 tracking-tight leading-none">Painel Administrativo</h1>
+            <p className="hidden md:block text-stone-500 text-sm mt-1.5 font-medium">Gestão inteligente de pacientes, agendas e resultados</p>
           </div>
           
-          <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
             <button 
               onClick={actions.handleBellClick}
               title={state.showOnlyNew ? "Remover filtro" : "Filtrar novos pacientes"}
-              className={`relative group p-2.5 rounded-full transition-all duration-300 ${state.showOnlyNew ? 'bg-nutri-100 shadow-inner' : 'hover:bg-stone-100 hover:-translate-y-0.5'}`}
+              className={`relative flex items-center justify-center h-10 w-10 md:h-11 md:w-11 rounded-xl transition-all duration-300 ${
+                state.showOnlyNew 
+                  ? 'bg-nutri-50 text-nutri-700 ring-1 ring-nutri-200' 
+                  : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200/60'
+              }`}
             >
-              <Bell size={22} className={`transition-colors ${state.unseenPatientsCount > 0 ? 'text-nutri-800 animate-pulse' : state.showOnlyNew ? 'text-nutri-800' : 'text-stone-400 group-hover:text-stone-600'}`} />
+              <Bell size={20} className={state.unseenPatientsCount > 0 ? 'animate-pulse text-nutri-600' : ''} />
               {state.unseenPatientsCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white">{state.unseenPatientsCount}</span>
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                  {state.unseenPatientsCount}
+                </span>
               )}
             </button>
 
-            <button onClick={actions.handleLogout} title="Sair do Sistema" className="flex items-center gap-2 text-red-600 bg-red-50 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-red-100 hover:-translate-y-0.5 transition-all active:scale-95">
-              <LogOut size={16} strokeWidth={2.5} /> Sair
+            <button 
+              onClick={actions.handleLogout} 
+              className="flex items-center justify-center gap-2 text-rose-600 bg-rose-50/80 w-10 h-10 md:w-auto md:px-5 md:h-11 rounded-xl font-semibold text-sm hover:bg-rose-100 hover:text-rose-700 transition-all active:scale-[0.98]"
+              title="Sair do sistema"
+            >
+              <LogOut size={18} /> <span className="hidden md:inline">Sair</span>
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-stone-100">
+        {/* FILTROS E BUSCA (Lado a Lado no Mobile) */}
+        <div className="flex flex-row gap-2 md:gap-4 pt-4 md:pt-6 border-t border-stone-100/80">
           <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={18} />
+            <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-nutri-700 transition-colors" size={18} />
             <input 
               type="text" 
-              placeholder={state.activeTab === 'pacientes' ? "Buscar paciente por nome..." : state.activeTab === 'leads' ? "Buscar lead por nome..." : "Buscar..."}
-              className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-stone-200 focus:border-nutri-800 focus:ring-4 focus:ring-nutri-800/10 outline-none transition-all font-medium text-stone-700 bg-stone-50 focus:bg-white"
+              placeholder={state.activeTab === 'pacientes' ? "Buscar nome..." : state.activeTab === 'leads' ? "Buscar lead..." : "Buscar..."}
+              className="w-full pl-9 md:pl-12 pr-3 md:pr-4 h-10 md:h-12 rounded-xl border border-stone-200 bg-stone-50/50 hover:bg-white focus:bg-white focus:border-nutri-400 focus:ring-4 focus:ring-nutri-50 outline-none transition-all font-medium text-sm md:text-base text-stone-700 placeholder:text-stone-400 shadow-sm"
               onChange={(e) => actions.setSearchTerm(e.target.value)}
             />
           </div>
           {state.activeTab === 'pacientes' && (
-            <div className="relative group min-w-[200px]">
-              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={18} />
-              <select className="w-full pl-11 pr-10 py-3.5 rounded-2xl border border-stone-200 bg-stone-50 focus:bg-white outline-none focus:border-nutri-800 focus:ring-4 focus:ring-nutri-800/10 transition-all font-medium text-stone-700 appearance-none cursor-pointer" onChange={(e) => actions.setStatusFilter(e.target.value)}>
-                <option value="todos">Todos os status</option>
-                <option value="pendente">Dieta Pendente</option>
-                <option value="plano_liberado">Plano Liberado</option>
+            <div className="relative group w-[130px] md:min-w-[240px]">
+              <Filter className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-nutri-700 transition-colors pointer-events-none" size={18} />
+              <select 
+                className="w-full px-3 md:pl-11 md:pr-10 h-10 md:h-12 rounded-xl border border-stone-200 bg-stone-50/50 hover:bg-white focus:bg-white outline-none focus:border-nutri-400 focus:ring-4 focus:ring-nutri-50 transition-all font-medium text-xs md:text-sm text-stone-700 appearance-none cursor-pointer shadow-sm" 
+                onChange={(e) => actions.setStatusFilter(e.target.value)}
+              >
+                <option value="todos">Status</option>
+                <option value="pendente">Pendente</option>
+                <option value="plano_liberado">Liberado</option>
               </select>
+              <ChevronRight className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-stone-400 rotate-90 pointer-events-none" size={14} />
             </div>
           )}
         </div>
       </header>
 
-      {/* ABAS */}
-      <div className="flex gap-4 mb-8 overflow-x-auto scrollbar-hide pb-2 px-1">
-        <button onClick={() => actions.setActiveTab('pacientes')} className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold transition-all duration-300 whitespace-nowrap active:scale-95 ${state.activeTab === 'pacientes' ? 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 translate-y-0' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50 hover:-translate-y-0.5 shadow-sm'}`}>
-          <Users size={18} /> Meus Pacientes ({state.patients.length})
+      {/* ABAS PREMIUM (Segmented Control Style - Mais finas no mobile) */}
+      <div className="flex gap-1.5 md:gap-2 mb-6 md:mb-8 overflow-x-auto scrollbar-hide p-1 md:p-1.5 bg-white rounded-xl md:rounded-2xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.03)] border border-stone-100/80 w-max max-w-full">
+        <button 
+          onClick={() => actions.setActiveTab('pacientes')} 
+          className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 h-9 md:h-11 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm transition-all duration-300 whitespace-nowrap ${
+            state.activeTab === 'pacientes' 
+              ? 'bg-nutri-800 text-white shadow-md' 
+              : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+          }`}
+        >
+          <Users size={16} /> Pacientes <span className="opacity-80 text-[10px] md:text-xs ml-0.5">({state.patients.length})</span>
         </button>
-        <button onClick={() => actions.setActiveTab('leads')} className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold transition-all duration-300 whitespace-nowrap active:scale-95 ${state.activeTab === 'leads' ? 'bg-nutri-900 text-white shadow-lg shadow-nutri-900/20 translate-y-0' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50 hover:-translate-y-0.5 shadow-sm'}`}>
-          <Target size={18} /> Oportunidades 
-          {state.activeLeadsCount > 0 && <span className={`ml-1.5 px-2 py-0.5 rounded-lg text-xs ${state.activeTab === 'leads' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>{state.activeLeadsCount}</span>}
+        <button 
+          onClick={() => actions.setActiveTab('leads')} 
+          className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 h-9 md:h-11 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm transition-all duration-300 whitespace-nowrap ${
+            state.activeTab === 'leads' 
+              ? 'bg-nutri-800 text-white shadow-md' 
+              : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+          }`}
+        >
+          <Target size={16} /> Leads 
+          {state.activeLeadsCount > 0 && (
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold ${state.activeTab === 'leads' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {state.activeLeadsCount}
+            </span>
+          )}
         </button>
-        <button onClick={() => actions.setActiveTab('agenda')} className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold transition-all duration-300 whitespace-nowrap active:scale-95 ${state.activeTab === 'agenda' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 translate-y-0' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50 hover:-translate-y-0.5 shadow-sm'}`}>
-          <Calendar size={18} /> Minha Agenda
+        <button 
+          onClick={() => actions.setActiveTab('agenda')} 
+          className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 h-9 md:h-11 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm transition-all duration-300 whitespace-nowrap ${
+            state.activeTab === 'agenda' 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+          }`}
+        >
+          <Calendar size={16} /> Agenda
         </button>
-        <button onClick={() => actions.setActiveTab('financeiro')} className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold transition-all duration-300 whitespace-nowrap active:scale-95 ${state.activeTab === 'financeiro' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20 translate-y-0' : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50 hover:-translate-y-0.5 shadow-sm'}`}>
-          <Settings size={18} /> Configurações
+        <button 
+          onClick={() => actions.setActiveTab('financeiro')} 
+          className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 h-9 md:h-11 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm transition-all duration-300 whitespace-nowrap ${
+            state.activeTab === 'financeiro' 
+              ? 'bg-stone-800 text-white shadow-md' 
+              : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+          }`}
+        >
+          <Settings size={16} /> Configs
         </button>
       </div>
 
       {/* TELA DE PACIENTES */}
       {state.activeTab === 'pacientes' && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-in-up">
-            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
-              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1"><MessageCircle size={14} className="text-nutri-800" /> Mensagens Hoje</p>
-              <p className="text-3xl font-extrabold text-nutri-900">{state.todayTotalMessages}</p>
-            </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
-              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1"><Users size={14} className="text-nutri-800" /> Pacientes Ativos</p>
-              <p className="text-3xl font-extrabold text-nutri-900">{Object.keys(state.usageStats).length}</p>
-            </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm flex flex-col justify-center">
-              <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest flex items-center gap-2 mb-1"><Activity size={14} className="text-nutri-800" /> Média por Paciente</p>
-              <p className="text-3xl font-extrabold text-nutri-900">{Object.keys(state.usageStats).length > 0 ? Math.round(state.todayTotalMessages / Object.keys(state.usageStats).length) : 0}</p>
+          {/* ESTATÍSTICAS (WIDGET UNIFICADO NO MOBILE) */}
+          <div className="bg-white rounded-2xl md:rounded-3xl border border-stone-100 shadow-sm mb-6 md:mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden">
+            <div className="grid grid-cols-3 divide-x divide-stone-100">
+              <div className="p-3 md:p-6 text-center md:text-left flex flex-col md:justify-center hover:bg-stone-50/50 transition-colors">
+                <p className="text-[9px] md:text-[11px] text-stone-400 uppercase font-bold tracking-widest flex items-center justify-center md:justify-start gap-1 md:gap-2 mb-1 md:mb-2">
+                  <MessageCircle size={12} className="text-nutri-600 hidden md:block" /> Msgs Hoje
+                </p>
+                <p className="text-xl md:text-4xl font-extrabold text-stone-900 tracking-tight">{state.todayTotalMessages}</p>
+              </div>
+              <div className="p-3 md:p-6 text-center md:text-left flex flex-col md:justify-center hover:bg-stone-50/50 transition-colors">
+                <p className="text-[9px] md:text-[11px] text-stone-400 uppercase font-bold tracking-widest flex items-center justify-center md:justify-start gap-1 md:gap-2 mb-1 md:mb-2">
+                  <Users size={12} className="text-nutri-600 hidden md:block" /> Ativos
+                </p>
+                <p className="text-xl md:text-4xl font-extrabold text-stone-900 tracking-tight">{Object.keys(state.usageStats).length}</p>
+              </div>
+              <div className="p-3 md:p-6 text-center md:text-left flex flex-col md:justify-center hover:bg-stone-50/50 transition-colors">
+                <p className="text-[9px] md:text-[11px] text-stone-400 uppercase font-bold tracking-widest flex items-center justify-center md:justify-start gap-1 md:gap-2 mb-1 md:mb-2">
+                  <Activity size={12} className="text-nutri-600 hidden md:block" /> Média
+                </p>
+                <p className="text-xl md:text-4xl font-extrabold text-stone-900 tracking-tight">
+                  {Object.keys(state.usageStats).length > 0 ? Math.round(state.todayTotalMessages / Object.keys(state.usageStats).length) : 0}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+          {/* GRID DE PACIENTES */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 animate-in fade-in duration-700">
             {state.filteredPatients.length === 0 ? (
-              <div className="col-span-full bg-white p-12 rounded-[2.5rem] shadow-sm border border-stone-100 flex flex-col items-center justify-center text-center">
-                <Users size={48} className="text-stone-300 mb-4" />
-                <h3 className="text-xl font-bold text-stone-800 mb-2">Nenhum paciente encontrado</h3>
+              <div className="col-span-full bg-white p-10 md:p-16 rounded-[2rem] shadow-sm border border-stone-100 border-dashed flex flex-col items-center justify-center text-center">
+                <div className="bg-stone-50 p-6 rounded-full mb-6">
+                  <Users size={48} className="text-stone-300" />
+                </div>
+                <h3 className="text-xl font-bold text-stone-800 mb-2 tracking-tight">Nenhum paciente encontrado</h3>
+                <p className="text-stone-500 font-medium">Tente ajustar seus filtros ou termos de busca.</p>
               </div>
             ) : (
               state.filteredPatients.map((p) => {
@@ -852,131 +882,195 @@ export default function AdminDashboard() {
                 const isHeavyUser = usage >= 20;
 
                 return (
-                <div key={p.id} className={`bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border flex flex-col justify-between transition-all duration-300 ${p.isNew ? 'border-nutri-300 ring-2 ring-nutri-50' : p.isLate ? 'border-amber-200 ring-2 ring-amber-50' : isDietReady ? 'border-green-100/50 bg-green-50/5' : 'border-stone-100'}`}>
-                  {state.editingId === p.id ? (
-                    <div className="space-y-4 animate-fade-in">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Nascimento</label>
-                          <input type="date" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1" defaultValue={p.data_nascimento} onChange={e => actions.setEditForm({...state.editForm, data_nascimento: e.target.value})} />
+                <div 
+                  key={p.id} 
+                  className={`bg-white rounded-2xl md:rounded-3xl shadow-sm border flex flex-col justify-between transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative overflow-hidden ${
+                    p.isNew 
+                      ? 'border-nutri-300 ring-4 ring-nutri-50' 
+                      : p.isLate 
+                        ? 'border-amber-200 ring-4 ring-amber-50' 
+                        : isDietReady 
+                          ? 'border-emerald-100 bg-gradient-to-br from-white to-emerald-50/10' 
+                          : 'border-stone-100'
+                  }`}
+                >
+                  <div className={`h-1.5 w-full ${p.isNew ? 'bg-nutri-400' : p.isLate ? 'bg-amber-400' : isDietReady ? 'bg-emerald-400' : 'bg-transparent'}`} />
+
+                  <div className="p-5 md:p-8 flex flex-col h-full">
+                    {state.editingId === p.id ? (
+                      // FORMULÁRIO DE EDIÇÃO PREMIUM
+                      <div className="space-y-4 md:space-y-5 animate-in fade-in zoom-in-95 duration-300">
+                        <div className="flex justify-between items-center mb-2 border-b border-stone-100 pb-3 md:pb-4">
+                          <h4 className="font-bold text-stone-800 text-sm md:text-base">Editar Perfil</h4>
+                          <button onClick={() => actions.setEditingId(null)} className="p-1.5 text-stone-400 hover:bg-stone-100 rounded-full transition-colors"><X size={18} /></button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 md:gap-4">
+                          <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider">Nascimento</label>
+                            <input type="date" className="w-full h-10 md:h-11 px-3 mt-1.5 border border-stone-200 rounded-lg md:rounded-xl font-medium text-xs md:text-sm focus:ring-2 focus:ring-nutri-100 focus:border-nutri-400 outline-none transition-all" defaultValue={p.data_nascimento} onChange={e => actions.setEditForm({...state.editForm, data_nascimento: e.target.value})} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider">Meta (kg)</label>
+                            <input type="number" step="0.1" placeholder="Ex: 65.5" className="w-full h-10 md:h-11 px-3 mt-1.5 border border-stone-200 rounded-lg md:rounded-xl font-medium text-xs md:text-sm focus:ring-2 focus:ring-nutri-100 focus:border-nutri-400 outline-none transition-all" defaultValue={p.meta_peso || ''} onChange={e => actions.setEditForm({...state.editForm, meta_peso: e.target.value})} />
+                          </div>
                         </div>
                         <div>
-                          <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Meta (kg)</label>
-                          <input type="number" step="0.1" className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1" defaultValue={p.meta_peso || ''} onChange={e => actions.setEditForm({...state.editForm, meta_peso: e.target.value})} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Perfil Clínico</label>
-                        <select className="w-full p-3 border border-stone-200 rounded-xl font-medium text-sm mt-1" defaultValue={p.tipo_perfil} onChange={e => actions.setEditForm({...state.editForm, tipo_perfil: e.target.value})}>
-                          <option value="adulto">Adulto</option>
-                          <option value="atleta">Atleta</option>
-                          <option value="crianca">Criança</option>
-                          <option value="idoso">Idoso</option>
-                        </select>
-                      </div>
-                      <div className="space-y-3 pt-4 border-t border-stone-100">
-                        <div>
-                          <label className="text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center gap-1 mb-1"><Star size={12}/> Acesso no App</label>
-                          <select className="w-full p-3 border border-green-200 bg-green-50 rounded-xl font-bold text-sm text-green-900" defaultValue={p.account_type || 'free'} onChange={e => actions.setEditForm({...state.editForm, account_type: e.target.value})}>
-                            <option value="free">Básico (Apenas Check-in)</option>
-                            <option value="premium">Premium (Acesso Total Liberado)</option>
+                          <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider">Perfil Clínico</label>
+                          <select className="w-full h-10 md:h-11 px-3 mt-1.5 border border-stone-200 rounded-lg md:rounded-xl font-medium text-xs md:text-sm focus:ring-2 focus:ring-nutri-100 focus:border-nutri-400 outline-none transition-all bg-white" defaultValue={p.tipo_perfil} onChange={e => actions.setEditForm({...state.editForm, tipo_perfil: e.target.value})}>
+                            <option value="adulto">Adulto</option>
+                            <option value="atleta">Atleta</option>
+                            <option value="crianca">Criança</option>
+                            <option value="idoso">Idoso</option>
                           </select>
                         </div>
-                      </div>
-                      <div className="flex gap-3 pt-4 border-t border-stone-100 mt-2">
-                        <button onClick={() => actions.updateProfile(p.id)} className="bg-nutri-900 text-white px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold"><Save size={18}/> Salvar</button>
-                        <button onClick={() => actions.setEditingId(null)} className="bg-stone-100 text-stone-600 px-4 py-3 rounded-xl flex-1 flex items-center justify-center gap-2 font-bold"><X size={18}/> Cancelar</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col h-full animate-fade-in">
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start mb-6">
-                          <div className="flex flex-col">
-                            <Link href={`/admin/paciente/${p.id}/historico`} className="group font-extrabold text-lg flex items-center gap-2 text-stone-900 hover:text-nutri-800">
-                              <Users size={18} className="text-nutri-800" /> {p.full_name || 'Sem nome'}
-                              <span title={p.account_type === 'premium' ? "Premium" : "Free"}><Star size={14} className={p.account_type === 'premium' ? "text-amber-500 fill-amber-500" : "text-stone-300"} /></span>
-                            </Link>
-                            {p.isNew ? <span className="flex items-center gap-1.5 text-[10px] text-nutri-700 font-bold uppercase mt-1.5"><Bell size={12} className="animate-pulse" /> Novo Paciente</span> 
-                            : p.isLate && <span className="flex items-center gap-1.5 text-[10px] text-amber-600 font-bold uppercase mt-1.5"><AlertCircle size={12} /> Atrasado</span>}
-                          </div>
-                          <div className="flex flex-col items-end gap-3">
-                            <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase font-black flex items-center gap-1.5 ${isDietReady ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {isDietReady ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />} {isDietReady ? 'Dieta Pronta' : 'Pendente'}
-                            </span>
-                            <button onClick={() => { actions.setEditingId(p.id); actions.setEditForm({ data_nascimento: p.data_nascimento || '', sexo: p.sexo || '', tipo_perfil: p.tipo_perfil || 'adulto', meta_peso: p.meta_peso ? p.meta_peso.toString() : '', account_type: p.account_type || 'free'}); }} className="p-2 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-nutri-800"><Edit2 size={16} /></button>
-                          </div>
+                        <div className="p-3 md:p-4 bg-emerald-50/50 rounded-xl md:rounded-2xl border border-emerald-100/50">
+                          <label className="text-[10px] md:text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                            <Star size={14}/> Nível de Acesso
+                          </label>
+                          <select className="w-full h-10 md:h-11 px-3 border border-emerald-200 bg-white rounded-lg md:rounded-xl font-semibold text-xs md:text-sm text-emerald-900 focus:ring-2 focus:ring-emerald-100 outline-none transition-all" defaultValue={p.account_type || 'free'} onChange={e => actions.setEditForm({...state.editForm, account_type: e.target.value})}>
+                            <option value="free">Básico (Check-in)</option>
+                            <option value="premium">Premium (Completo)</option>
+                          </select>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-4 mb-6 bg-stone-50/80 p-4 rounded-2xl border border-stone-100 text-center">
-                          <div><p className="text-[10px] text-stone-400 uppercase font-black mb-1">Perfil</p><p className="text-sm font-bold text-stone-700 capitalize">{p.tipo_perfil || 'Não def.'}</p></div>
-                          <div><p className="text-[10px] text-stone-400 uppercase font-black mb-1">Meta</p><p className="text-sm font-bold text-stone-700">{p.meta_peso ? `${p.meta_peso} kg` : '---'}</p></div>
-                        </div>
-
-                        {p.evaluation ? (
-                          <button onClick={() => actions.setEvalModalOpen({ isOpen: true, data: p.evaluation?.answers, name: p.full_name })} className="w-full flex items-center justify-between bg-nutri-50/50 hover:bg-nutri-50 transition-colors p-4 rounded-2xl mb-4 group text-left border border-nutri-100/50">
-                            <div className="flex-1 pr-4">
-                              <p className="font-bold text-nutri-900 mb-1.5 text-[10px] uppercase flex items-center gap-1.5"><Eye size={14}/> Avaliação Respondida</p>
-                              <p className="line-clamp-1 text-xs text-stone-600 italic">"{Object.values(p.evaluation.answers)[0] as string}"</p>
-                            </div>
-                            <ChevronRight size={16} className="text-nutri-800 opacity-40 group-hover:opacity-100" />
-                          </button>
-                        ) : (
-                          <div className="text-xs text-stone-400 font-medium italic mb-4 bg-stone-50 p-4 rounded-2xl text-center border border-dashed border-stone-200 flex items-center justify-center gap-2"><FileText size={14}/> Sem avaliação</div>
-                        )}
-
-                        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-6">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black text-stone-400 uppercase">Uso do Chat</span>
-                            {isHeavyUser && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-0.5 rounded-md">Alto uso ⚠️</span>}
-                          </div>
-                          <div className="mt-2"><span className="text-xl font-extrabold text-nutri-900">{usage} msgs</span></div>
-                          <div className="w-full bg-stone-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${isHeavyUser ? 'bg-red-500' : 'bg-nutri-800'}`} style={{ width: `${Math.min(100, (usage / 25) * 100)}%` }} />
-                          </div>
+                        <div className="flex pt-2">
+                          <button onClick={() => actions.updateProfile(p.id)} className="bg-stone-900 hover:bg-stone-800 text-white h-11 md:h-12 w-full rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition-all active:scale-[0.98] shadow-sm"><Save size={18}/> Salvar Dados</button>
                         </div>
                       </div>
-
-                      <div className="pt-5 border-t border-stone-100 flex items-center justify-between flex-wrap gap-3 mt-auto">
-                        
-                        <div className="flex gap-2 w-full sm:w-auto">
-                          {/* BOTÃO DINÂMICO: MONTAR OU EDITAR */}
-                          <button 
-                            onClick={() => actions.handleOpenDietBuilder(p)} 
-                            className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${isDietReady ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' : 'bg-nutri-900 text-white hover:bg-nutri-800 shadow-md'}`}
-                          >
-                            <Utensils size={16} /> {isDietReady ? 'Editar Cardápio' : 'Montar Dieta'}
-                          </button>
+                    ) : (
+                      // VISUALIZAÇÃO DO CARD DO PACIENTE
+                      <div className="flex flex-col h-full animate-in fade-in duration-300">
+                        <div className="flex-1">
                           
-                          {isDietReady && (
-                            <>
-                              <button 
-                                onClick={() => actions.handleGeneratePDF(p)} 
-                                title="Gerar PDF"
-                                className="px-3 py-2.5 bg-rose-600 text-white rounded-xl flex items-center justify-center transition-all hover:bg-rose-700 active:scale-95 shadow-md"
-                              >
-                                <FileText size={16} />
-                              </button>
+                          {/* Cabeçalho do Card */}
+                          <div className="flex justify-between items-start mb-5 md:mb-6">
+                            <div className="flex flex-col">
+                              <Link href={`/admin/paciente/${p.id}/historico`} className="group">
+                                <h3 className="font-extrabold text-base md:text-lg flex items-center gap-2 text-stone-900 group-hover:text-nutri-600 transition-colors tracking-tight">
+                                  {p.full_name || 'Sem nome'}
+                                  {p.account_type === 'premium' && (
+                                    <span title="Conta Premium" className="flex items-center shrink-0">
+                                      <Star size={16} className="text-amber-400 fill-amber-400" />
+                                    </span>
+                                  )}
+                                </h3>
+                              </Link>
                               
-                              <button 
-                                onClick={() => actions.handleDeleteDiet(p.id)} 
-                                title="Excluir Dieta / Nova Dieta"
-                                className="px-3 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl flex items-center justify-center transition-all hover:bg-red-100 active:scale-95 shadow-sm"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </>
+                              <div className="flex flex-wrap items-center gap-2 mt-1.5 md:mt-2">
+                                {p.isNew && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 md:px-2 py-0.5 rounded-md bg-nutri-100 text-nutri-700 text-[9px] md:text-[10px] font-bold uppercase tracking-wider">
+                                    <Bell size={10} className="animate-pulse" /> Novo
+                                  </span>
+                                )}
+                                {p.isLate && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 md:px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[9px] md:text-[10px] font-bold uppercase tracking-wider">
+                                    <AlertCircle size={10} /> Ausente
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded-md md:rounded-lg text-[9px] md:text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 border ${isDietReady ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                {isDietReady ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />} 
+                                <span className="hidden sm:inline">{isDietReady ? 'Dieta Pronta' : 'Pendente'}</span>
+                              </span>
+                              <button onClick={() => { actions.setEditingId(p.id); actions.setEditForm({ data_nascimento: p.data_nascimento || '', sexo: p.sexo || '', tipo_perfil: p.tipo_perfil || 'adulto', meta_peso: p.meta_peso ? p.meta_peso.toString() : '', account_type: p.account_type || 'free'}); }} className="p-1.5 md:p-2 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-nutri-600 transition-colors bg-stone-50"><Edit2 size={14} /></button>
+                            </div>
+                          </div>
+
+                          {/* Info Box */}
+                          <div className="grid grid-cols-2 gap-2 md:gap-3 mb-5 md:mb-6">
+                            <div className="bg-stone-50 p-2 md:p-3 rounded-xl md:rounded-2xl border border-stone-100/80 text-center">
+                              <p className="text-[9px] md:text-[10px] text-stone-400 uppercase font-bold tracking-wider mb-0.5">Perfil</p>
+                              <p className="text-xs md:text-sm font-semibold text-stone-700 capitalize">{p.tipo_perfil || 'Não def.'}</p>
+                            </div>
+                            <div className="bg-stone-50 p-2 md:p-3 rounded-xl md:rounded-2xl border border-stone-100/80 text-center">
+                              <p className="text-[9px] md:text-[10px] text-stone-400 uppercase font-bold tracking-wider mb-0.5">Meta</p>
+                              <p className="text-xs md:text-sm font-semibold text-stone-700">{p.meta_peso ? `${p.meta_peso} kg` : 'N/A'}</p>
+                            </div>
+                          </div>
+
+                          {/* Avaliação */}
+                          {p.evaluation ? (
+                            <button onClick={() => actions.setEvalModalOpen({ isOpen: true, data: p.evaluation?.answers, name: p.full_name })} className="w-full flex items-center justify-between bg-white border border-nutri-100 hover:border-nutri-300 hover:shadow-md transition-all p-3 md:p-4 rounded-xl md:rounded-2xl mb-5 md:mb-6 group text-left relative overflow-hidden">
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-nutri-400 group-hover:bg-nutri-500 transition-colors" />
+                              <div className="flex-1 pr-3 pl-2">
+                                <p className="font-bold text-nutri-700 mb-0.5 md:mb-1 text-[10px] md:text-[11px] uppercase tracking-wider flex items-center gap-1.5"><Eye size={12} className="md:w-3.5 md:h-3.5"/> Avaliação Inicial</p>
+                                <p className="line-clamp-1 text-xs md:text-sm font-medium text-stone-500 italic">"{Object.values(p.evaluation.answers)[0] as string}"</p>
+                              </div>
+                              <ChevronRight size={16} className="text-nutri-400 group-hover:text-nutri-600 transition-colors transform group-hover:translate-x-1" />
+                            </button>
+                          ) : (
+                            <div className="text-xs md:text-sm text-stone-400 font-medium mb-5 md:mb-6 bg-stone-50 p-3 md:p-4 rounded-xl md:rounded-2xl text-center border border-dashed border-stone-200 flex flex-col items-center justify-center gap-1.5">
+                              <FileText size={16} className="text-stone-300 md:w-5 md:h-5" />
+                              <p>Sem avaliação preenchida</p>
+                            </div>
                           )}
+
+                          {/* Chat Usage Stats */}
+                          <div className="mb-6 md:mb-8">
+                            <div className="flex justify-between items-end mb-1.5 md:mb-2">
+                              <span className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider">Interações IA</span>
+                              <span className="text-base md:text-lg font-extrabold text-stone-800">{usage} <span className="text-[10px] md:text-xs font-medium text-stone-400">msgs hoje</span></span>
+                            </div>
+                            <div className="w-full bg-stone-100 h-1.5 md:h-2 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-1000 ease-out ${isHeavyUser ? 'bg-rose-500' : 'bg-nutri-500'}`} style={{ width: `${Math.min(100, (usage / 25) * 100)}%` }} />
+                            </div>
+                            {isHeavyUser && <p className="text-[9px] md:text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1"><AlertCircle size={10}/> Alto volume de interação</p>}
+                          </div>
                         </div>
 
-                        <div className="flex gap-2 w-full sm:w-auto justify-end">
-                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' : 'bg-stone-50 text-stone-400 hover:bg-stone-100'}`}><BellRing size={18} /></a>
-                          <button onClick={() => actions.setSelectedPatient({ id: p.id, name: p.full_name })} className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"><Activity size={18} /></button>
-                          <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"><MessageCircle size={18} /></a>
+                        {/* Ações Inferiores Premium */}
+                        <div className="pt-4 md:pt-5 border-t border-stone-100 flex flex-col xl:flex-row items-center justify-between gap-3 mt-auto">
+                          
+                          <div className="flex gap-2 w-full xl:w-auto">
+                            <button 
+                              onClick={() => actions.handleOpenDietBuilder(p)} 
+                              className={`flex-1 xl:flex-none px-4 md:px-5 h-10 md:h-11 rounded-lg md:rounded-xl text-xs md:text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                                isDietReady 
+                                  ? 'bg-stone-100 text-stone-700 hover:bg-stone-200 border border-transparent' 
+                                  : 'bg-nutri-800 text-white hover:bg-nutri-700 shadow-md shadow-nutri-800/20'
+                              }`}
+                            >
+                              <Utensils size={16} /> {isDietReady ? 'Editar Dieta' : 'Montar Dieta'}
+                            </button>
+                            
+                            {isDietReady && (
+                              <>
+                                <button 
+                                  onClick={() => actions.handleGeneratePDF(p)} 
+                                  title="Exportar PDF"
+                                  className="w-10 h-10 md:w-11 md:h-11 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-100 rounded-lg md:rounded-xl flex items-center justify-center transition-all active:scale-[0.98] shadow-sm shrink-0"
+                                >
+                                  <FileText size={16} />
+                                </button>
+                                
+                                <button 
+                                  onClick={() => actions.handleDeleteDiet(p.id)} 
+                                  title="Excluir Dieta"
+                                  className="w-10 h-10 md:w-11 md:h-11 bg-stone-50 text-stone-400 hover:bg-rose-50 hover:text-rose-600 border border-stone-200 rounded-lg md:rounded-xl flex items-center justify-center transition-all active:scale-[0.98] shrink-0"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 w-full xl:w-auto justify-end">
+                            <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" title="Cobrar check-in" className={`flex-1 xl:flex-none w-auto xl:w-11 h-10 md:h-11 flex items-center justify-center rounded-lg md:rounded-xl border transition-colors ${p.isLate ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' : 'bg-stone-50 text-stone-400 hover:bg-stone-100 border-stone-200'}`}>
+                              <BellRing size={16} />
+                            </a>
+                            <button onClick={() => actions.setSelectedPatient({ id: p.id, name: p.full_name })} title="Dados Clínicos" className="flex-1 xl:flex-none w-auto xl:w-11 h-10 md:h-11 flex items-center justify-center rounded-lg md:rounded-xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors">
+                              <Activity size={16} />
+                            </button>
+                            <a href={`https://wa.me/55${p.phone?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="flex-1 xl:flex-none w-auto xl:w-11 h-10 md:h-11 flex items-center justify-center rounded-lg md:rounded-xl bg-[#25D366]/10 text-[#25D366] border border-[#25D366]/20 hover:bg-[#25D366]/20 transition-colors">
+                              <MessageCircle size={16} />
+                            </a>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 );
               })
@@ -985,121 +1079,229 @@ export default function AdminDashboard() {
         </>
       )}
 
-      {/* TELA DE LEADS */}
+      {/* TELA DE LEADS (OPORTUNIDADES) */}
       {state.activeTab === 'leads' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
-          {state.filteredLeads.map((lead) => (
-            <div key={lead.id} className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col justify-between hover:shadow-md">
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="font-bold text-lg text-stone-900 flex items-center gap-2"><UserPlus size={18} className="text-amber-500" /> {lead.nome}</h3>
-                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${lead.status === 'concluido' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{lead.status === 'concluido' ? 'Concluído' : 'Abandonou'}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {state.filteredLeads.length === 0 ? (
+             <div className="col-span-full text-center py-20 text-stone-400">Nenhuma oportunidade no momento.</div>
+          ) : (
+            state.filteredLeads.map((lead) => (
+              <div key={lead.id} className="bg-white p-5 md:p-8 rounded-2xl md:rounded-3xl shadow-sm border border-stone-100 flex flex-col justify-between hover:shadow-lg transition-shadow">
+                <div>
+                  <div className="flex justify-between items-start mb-4 md:mb-5">
+                    <h3 className="font-extrabold text-base md:text-lg text-stone-900 flex items-center gap-2 tracking-tight">
+                      <UserPlus size={18} className="text-amber-500" /> {lead.nome}
+                    </h3>
+                    <span className={`px-2.5 md:px-3 py-1 rounded-md md:rounded-lg text-[9px] md:text-[10px] font-bold uppercase tracking-wider ${lead.status === 'concluido' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
+                      {lead.status === 'concluido' ? 'Concluído' : 'Abandonou'}
+                    </span>
+                  </div>
+                  <p className="text-xs md:text-sm font-semibold text-stone-600 mb-5 md:mb-6 flex items-center gap-2 bg-stone-50 w-fit px-3 py-1.5 rounded-lg border border-stone-200">
+                    <MessageCircle size={14} className="text-[#25D366]" /> {lead.whatsapp}
+                  </p>
+                  
+                  <div className="bg-stone-50/50 p-4 md:p-5 rounded-xl md:rounded-2xl border border-stone-100 mb-5 md:mb-6 relative">
+                    <div className="flex justify-between items-center mb-2 md:mb-3">
+                      <span className="text-[10px] md:text-[11px] font-bold uppercase tracking-wider text-stone-500">Progresso do Funil</span>
+                      <span className="text-xs md:text-sm font-extrabold text-nutri-700">{(Object.keys(lead.respostas || {}).length / 10) * 100}%</span>
+                    </div>
+                    <div className="w-full h-2 md:h-2.5 bg-stone-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full" style={{ width: `${(Object.keys(lead.respostas || {}).length / 10) * 100}%` }}></div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm font-bold text-stone-500 mb-6 flex items-center gap-2"><MessageCircle size={14} className="text-[#25D366]" /> {lead.whatsapp}</p>
-                <div className="bg-stone-50 p-5 rounded-2xl border border-stone-100 mb-6 relative overflow-hidden">
-                  <div className="flex justify-between text-[10px] font-black uppercase text-stone-400 mb-3"><span>Progresso</span><span className="text-nutri-800">{(Object.keys(lead.respostas || {}).length / 10) * 100}%</span></div>
-                  <div className="w-full h-2 bg-stone-200 rounded-full"><div className="h-full bg-nutri-800" style={{ width: `${(Object.keys(lead.respostas || {}).length / 10) * 100}%` }}></div></div>
-                </div>
+                <a 
+                  href={`https://wa.me/55${lead.whatsapp?.replace(/\D/g, '')}?text=Olá!`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white h-11 md:h-12 rounded-xl font-bold text-sm transition-all active:scale-[0.98] shadow-sm shadow-[#25D366]/20"
+                >
+                  <MessageCircle size={18} /> Entrar em Contato
+                </a>
               </div>
-              <a href={`https://wa.me/55${lead.whatsapp?.replace(/\D/g, '')}?text=Olá!`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-white py-3.5 rounded-xl font-bold">
-                <MessageCircle size={18} /> Resgatar Contato
-              </a>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
 
       {/* TELA DE AGENDA */}
       {state.activeTab === 'agenda' && (
-        <div className="animate-fade-in-up">
-          <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div><h2 className="text-2xl font-bold flex items-center gap-3"><Calendar className="text-blue-500" /> Consultas</h2></div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              
-              {/* 🔥 NOVO BOTÃO DE VER AGENDAMENTOS RESTAURADO */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="bg-white p-5 md:p-8 rounded-2xl md:rounded-3xl shadow-sm border border-stone-100 mb-5 md:mb-6 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 text-center md:text-left">
+            <div>
+              <h2 className="text-xl md:text-2xl font-extrabold text-stone-900 flex items-center justify-center md:justify-start gap-2 md:gap-3 tracking-tight">
+                <Calendar className="text-blue-500" size={24} /> Minha Agenda
+              </h2>
+              <p className="text-xs md:text-sm text-stone-500 font-medium mt-1">Gerencie seus compromissos e links de marcação.</p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-2 md:gap-3 w-full md:w-auto mt-2 md:mt-0">
               <a 
                 href="https://calendly.com/app/scheduled_events/user/me" 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="flex-1 flex items-center justify-center gap-2 bg-nutri-900 hover:bg-nutri-800 text-white px-5 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 whitespace-nowrap"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white px-5 md:px-6 h-11 md:h-12 rounded-xl font-bold text-xs md:text-sm transition-all shadow-md active:scale-[0.98]"
               >
-                <ExternalLink size={18} /> Ver Agendamentos
+                <ExternalLink size={16} /> Ver Calendário
               </a>
-
-              <button onClick={actions.copyToClipboard} className="flex-1 flex items-center justify-center gap-2 bg-stone-50 border border-stone-200 px-5 py-3.5 rounded-xl font-bold text-sm transition-all hover:bg-stone-100 active:scale-95">
-                {state.copiedLink ? <Check size={18} className="text-green-600" /> : <Copy size={18} className="text-stone-400" />} {state.copiedLink ? 'Copiado!' : 'Copiar Link'}
+              <button 
+                onClick={actions.copyToClipboard} 
+                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border-2 border-stone-200 px-5 md:px-6 h-11 md:h-12 rounded-xl font-bold text-xs md:text-sm text-stone-700 transition-all hover:bg-stone-50 active:scale-[0.98]"
+              >
+                {state.copiedLink ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} className="text-stone-400" />} 
+                {state.copiedLink ? 'Link Copiado!' : 'Copiar Link'}
               </button>
             </div>
           </div>
-          <div className="bg-white rounded-[2.5rem] shadow-sm border border-stone-100 h-[800px] relative overflow-hidden">
-            {state.calendlyUrl ? <iframe src={state.calendlyUrl} width="100%" height="100%" frameBorder="0" className="absolute inset-0 bg-stone-50"></iframe> : <div className="text-center p-8 mt-40">Adicione o link nas Configurações.</div>}
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-stone-100 h-[500px] md:h-[700px] relative overflow-hidden">
+            {state.calendlyUrl ? (
+              <iframe src={state.calendlyUrl} width="100%" height="100%" frameBorder="0" className="absolute inset-0 bg-stone-50"></iframe>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-stone-400 p-6 text-center">
+                <Link2 size={40} className="mb-3 opacity-50" />
+                <p className="font-medium text-sm">Adicione o link do seu Calendly na aba de Configurações.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* TELA DE FINANCEIRO */}
+      {/* TELA DE FINANCEIRO / CONFIGURAÇÕES */}
       {state.activeTab === 'financeiro' && (
-        <div className="max-w-4xl mx-auto animate-fade-in-up bg-white p-8 md:p-12 rounded-[2.5rem] shadow-sm border border-stone-100">
-          <div className="flex items-center gap-5 mb-10 border-b border-stone-100 pb-8"><div className="bg-amber-100 p-4 rounded-3xl text-amber-600"><Settings size={32} /></div><div><h2 className="text-2xl font-bold text-stone-900">Configurações</h2></div></div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div className="bg-stone-50 p-6 rounded-3xl border border-stone-200">
-              <label className="text-xs font-black text-stone-500 uppercase flex items-center gap-2 mb-3"><Star size={16} className="text-amber-500" /> Premium</label>
-              <input type="number" step="0.01" value={state.premiumPrice} onChange={(e) => actions.setPremiumPrice(e.target.value)} className="w-full bg-transparent text-3xl font-extrabold outline-none" />
+        <div className="max-w-4xl mx-auto animate-in fade-in zoom-in-95 duration-500 bg-white p-6 md:p-12 rounded-2xl md:rounded-[2.5rem] shadow-sm border border-stone-100">
+          <div className="flex flex-col sm:flex-row items-center text-center sm:text-left gap-4 md:gap-5 mb-8 md:mb-10 border-b border-stone-100 pb-6 md:pb-8">
+            <div className="bg-stone-100 p-3 md:p-4 rounded-xl md:rounded-2xl text-stone-700">
+              <Settings size={28} />
             </div>
-            <div className="bg-stone-50 p-6 rounded-3xl border border-stone-200">
-              <label className="text-xs font-black text-stone-500 uppercase flex items-center gap-2 mb-3"><FileText size={16} className="text-nutri-800" /> Plano (PDF)</label>
-              <input type="number" step="0.01" value={state.mealPlanPrice} onChange={(e) => actions.setMealPlanPrice(e.target.value)} className="w-full bg-transparent text-3xl font-extrabold outline-none" />
-            </div>
-            <div className="bg-stone-50 p-6 rounded-3xl border border-stone-200">
-              <label className="text-xs font-black text-stone-500 uppercase flex items-center gap-2 mb-3"><Calendar size={16} className="text-blue-500" /> Consulta</label>
-              <input type="number" step="0.01" value={state.consultationPrice} onChange={(e) => actions.setConsultationPrice(e.target.value)} className="w-full bg-transparent text-3xl font-extrabold outline-none" />
+            <div>
+              <h2 className="text-xl md:text-2xl font-extrabold text-stone-900 tracking-tight">Configurações do Sistema</h2>
+              <p className="text-xs md:text-sm text-stone-500 font-medium mt-1">Defina preços base e integrações para captação.</p>
             </div>
           </div>
           
-          <div className="bg-stone-50 p-6 rounded-3xl border border-stone-200 mb-10">
-            <label className="text-xs font-black text-stone-500 uppercase flex items-center gap-2 mb-3"><Link2 size={16} /> URL Calendly</label>
-            <input type="url" value={state.calendlyUrl} onChange={(e) => actions.setCalendlyUrl(e.target.value)} className="w-full bg-transparent text-base font-bold text-stone-800 outline-none border-b-2 border-stone-200 pb-2" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-10">
+            <div className="bg-stone-50/50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 focus-within:ring-2 focus-within:ring-amber-100 focus-within:border-amber-400 transition-all group">
+              <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                <Star size={14} className="text-amber-500" /> Valor Premium
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-base md:text-lg font-bold text-stone-400">R$</span>
+                <input type="number" step="0.01" value={state.premiumPrice} onChange={(e) => actions.setPremiumPrice(e.target.value)} className="w-full bg-transparent text-2xl md:text-3xl font-extrabold text-stone-800 outline-none" />
+              </div>
+            </div>
+            <div className="bg-stone-50/50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 focus-within:ring-2 focus-within:ring-nutri-100 focus-within:border-nutri-400 transition-all group">
+              <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                <FileText size={14} className="text-nutri-600" /> Plano Avulso
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-base md:text-lg font-bold text-stone-400">R$</span>
+                <input type="number" step="0.01" value={state.mealPlanPrice} onChange={(e) => actions.setMealPlanPrice(e.target.value)} className="w-full bg-transparent text-2xl md:text-3xl font-extrabold text-stone-800 outline-none" />
+              </div>
+            </div>
+            <div className="bg-stone-50/50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all group">
+              <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                <Calendar size={14} className="text-blue-500" /> Consulta Direta
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-base md:text-lg font-bold text-stone-400">R$</span>
+                <input type="number" step="0.01" value={state.consultationPrice} onChange={(e) => actions.setConsultationPrice(e.target.value)} className="w-full bg-transparent text-2xl md:text-3xl font-extrabold text-stone-800 outline-none" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-stone-50/50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 mb-8 md:mb-10 focus-within:ring-2 focus-within:ring-stone-200 focus-within:border-stone-400 transition-all group">
+            <label className="text-[10px] md:text-[11px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+              <Link2 size={16} className="text-stone-700" /> URL da sua Agenda Calendly
+            </label>
+            <input 
+              type="url" 
+              placeholder="https://calendly.com/seulink"
+              value={state.calendlyUrl} 
+              onChange={(e) => actions.setCalendlyUrl(e.target.value)} 
+              className="w-full bg-transparent text-base md:text-lg font-medium text-stone-800 outline-none border-b-2 border-stone-200 focus:border-stone-600 pb-2 transition-colors" 
+            />
           </div>
 
-          <button onClick={actions.handleSaveSettings} disabled={state.isSavingPrice} className="w-full md:w-auto px-12 py-4 flex justify-center bg-nutri-900 text-white rounded-2xl font-bold">
-            {state.isSavingPrice ? 'Salvando...' : 'Salvar Configurações'}
-          </button>
+          <div className="flex justify-end">
+            <button 
+              onClick={actions.handleSaveSettings} 
+              disabled={state.isSavingPrice} 
+              className="w-full md:w-auto px-8 md:px-10 h-12 md:h-14 flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl md:rounded-2xl font-bold text-sm md:text-base transition-all active:scale-[0.98] shadow-lg shadow-stone-900/10 disabled:opacity-70"
+            >
+              {state.isSavingPrice ? <><Loader2 size={18} className="animate-spin" /> Salvando...</> : <><Save size={18} /> Salvar Configurações</>}
+            </button>
+          </div>
         </div>
       )}
 
       {/* MODAL DE AVALIAÇÃO */}
       {state.evalModalOpen.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/70 p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl flex flex-col max-h-[90vh]">
-            <div className="flex justify-between p-6 border-b"><h3 className="font-extrabold text-xl">Avaliação de {state.evalModalOpen.name}</h3><button onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '' })}><X size={20} /></button></div>
-            <div className="p-6 overflow-y-auto space-y-6">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300">
+            <div className="flex justify-between items-center p-5 md:p-6 border-b border-stone-100 shrink-0">
+              <div>
+                <h3 className="font-extrabold text-lg md:text-xl text-stone-900 tracking-tight">Avaliação Inicial</h3>
+                <p className="text-xs md:text-sm font-semibold text-stone-500 mt-0.5">{state.evalModalOpen.name}</p>
+              </div>
+              <button onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '' })} className="p-2 bg-stone-50 text-stone-500 hover:bg-stone-100 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            <div className="p-5 md:p-6 overflow-y-auto space-y-3 md:space-y-4 custom-scrollbar">
               {Object.entries(state.evalModalOpen.data || {}).map(([k, v]) => (
-                <div key={k} className="bg-stone-50 p-5 rounded-2xl"><p className="text-[10px] font-black text-nutri-800 uppercase mb-2">{questionTitles[parseInt(k)]}</p><p className="text-sm font-medium">{v as string}</p></div>
+                <div key={k} className="bg-stone-50/80 border border-stone-100 p-4 md:p-5 rounded-2xl">
+                  <p className="text-[10px] md:text-[11px] font-bold text-nutri-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-nutri-100 text-nutri-800 flex items-center justify-center text-[10px] shrink-0">{parseInt(k)+1}</span>
+                    <span className="line-clamp-2 leading-tight">{questionTitles[parseInt(k)]}</span>
+                  </p>
+                  <p className="text-sm font-medium text-stone-800 ml-7 leading-relaxed">{v as string}</p>
+                </div>
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL DE DIETA ATUALIZADO */}
+      {/* MODAL DE DIETA */}
       {state.dietModalOpen.isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/80 p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl relative my-auto">
-            <button onClick={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} className="absolute -top-14 right-0 text-white p-3"><X size={24} /></button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-0 md:p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="w-full max-w-5xl relative my-auto h-full md:h-auto flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="hidden md:flex justify-end mb-4">
+              <button 
+                onClick={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
+                className="bg-white/10 hover:bg-white/20 text-white rounded-full p-3 backdrop-blur-md transition-all"
+              >
+                <X size={24} />
+              </button>
+            </div>
             
-            <DietBuilder 
-              patientId={state.dietModalOpen.id} 
-              patientName={state.dietModalOpen.name} 
-              onClose={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
-              targetRecommendation={state.dietModalOpen.targetRecommendation} 
-            />
-
+            <div className="bg-white md:rounded-[2.5rem] shadow-2xl flex-1 overflow-hidden h-full md:h-auto border border-white/20 flex flex-col">
+              {/* No mobile, botão de fechar interno */}
+              <div className="md:hidden flex justify-between items-center p-4 border-b border-stone-100 bg-white shrink-0">
+                <span className="font-bold text-stone-800">Montar Dieta</span>
+                <button 
+                  onClick={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
+                  className="p-2 bg-stone-100 text-stone-600 rounded-full"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <DietBuilder 
+                  patientId={state.dietModalOpen.id} 
+                  patientName={state.dietModalOpen.name} 
+                  onClose={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
+                  targetRecommendation={state.dietModalOpen.targetRecommendation} 
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      <ClinicalDataModal isOpen={!!state.selectedPatient} onClose={() => actions.setSelectedPatient(null)} patientId={state.selectedPatient?.id || ''} patientName={state.selectedPatient?.name || ''} />
+      <ClinicalDataModal 
+        isOpen={!!state.selectedPatient} 
+        onClose={() => actions.setSelectedPatient(null)} 
+        patientId={state.selectedPatient?.id || ''} 
+        patientName={state.selectedPatient?.name || ''} 
+      />
       
       <ChatAssistant adminContext={state.adminContext} />
 

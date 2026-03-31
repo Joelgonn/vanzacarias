@@ -595,7 +595,7 @@ export default function Dashboard() {
               </div>
               <div className="flex-1">
                 <h3 className="text-base md:text-lg font-bold tracking-tight leading-tight">Avaliação Pendente</h3>
-                <p className="text-rose-100/90 text-xs md:text-sm mt-0.5 line-clamp-1 md:line-clamp-none">Preencha seu Raio-X alimentar.</p>
+                <p className="text-rose-100/90 text-xs md:text-sm mt-0.5 line-clamp-1 md:line-clamp-none">Preencha seu Raio-X alimentar. Assim a Nutri Vanusa poderá criar um plano personalizado para você.</p>
               </div>
               <Link href="/paciente/avaliacao" className="shrink-0 bg-white text-rose-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-50 transition-all shadow-sm">
                 Começar
@@ -612,7 +612,7 @@ export default function Dashboard() {
               </div>
               <div className="flex-1">
                 <p className={`font-bold text-sm md:text-base leading-tight ${trialData.isActive ? 'text-amber-900' : 'text-red-900'}`}>{trialData.isActive ? `${trialData.daysLeft} dias de teste` : 'Teste expirado'}</p>
-                <p className={`text-xs mt-0.5 line-clamp-1 md:line-clamp-none ${trialData.isActive ? 'text-amber-700/80' : 'text-red-700/80'}`}>Desbloqueie o acesso completo.</p>
+                <p className={`text-xs mt-0.5 line-clamp-1 md:line-clamp-none ${trialData.isActive ? 'text-amber-700/80' : 'text-red-700/80'}`}>Desbloqueie o acesso completo... E tenha acesso a todos os recursos exclusivos da Nutri Vanusa.</p>
               </div>
               <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="shrink-0 bg-stone-900 text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-800 transition-all flex items-center gap-1.5 disabled:opacity-70 shadow-md">
                 {processingCheckout ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} Assinar

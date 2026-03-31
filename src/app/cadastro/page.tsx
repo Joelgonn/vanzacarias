@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, User, Loader2, CheckCircle2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -15,6 +15,15 @@ export default function Cadastro() {
   
   const supabase = createClient();
   const router = useRouter();
+
+  // EFEITO PARA AUTO-PREENCHER O NOME
+  useEffect(() => {
+    // Busca o nome salvo na avaliação (se existir)
+    const savedName = localStorage.getItem('lead_nome');
+    if (savedName) {
+      setName(savedName); // Preenche automaticamente o state do nome
+    }
+  }, []);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,14 +47,18 @@ export default function Cadastro() {
       // 2. Resgata os dados temporários do funil (Navegador)
       const savedAnswers = localStorage.getItem('quiz_answers');
       const savedWhatsapp = localStorage.getItem('lead_whatsapp');
+      const savedNascimento = localStorage.getItem('lead_data_nascimento');
+      const savedSexo = localStorage.getItem('lead_sexo');
 
-      // 3. Cria o Perfil Oficial (Já injetando o WhatsApp do Lead)
+      // 3. Cria o Perfil Oficial (Já injetando WhatsApp, Nascimento e Sexo do Lead)
       const { error: profileError } = await supabase.from('profiles').insert([
         { 
           id: data.user.id, 
-          full_name: name, 
+          full_name: name, // Usa o nome (seja o que ele digitou ou o que puxou automaticamente)
           role: 'patient',
-          phone: savedWhatsapp || null // Puxa o telefone que ele digitou no Passo 1 do Quiz
+          phone: savedWhatsapp || null,
+          data_nascimento: savedNascimento || null,
+          sexo: savedSexo || null
         }
       ]);
       
@@ -59,14 +72,18 @@ export default function Cadastro() {
         localStorage.removeItem('quiz_answers');
       }
 
-      // 5. Atualiza o Lead para "Convertido" para limpar a fila de prospecção da Nutri
+      // 5. Atualiza o Lead para "Convertido" para limpar a fila de prospecção da Nutri e limpa o cache
       if (savedWhatsapp) {
         await supabase
           .from('leads_avaliacao')
           .update({ status: 'convertido' })
           .eq('whatsapp', savedWhatsapp);
           
+        // Limpa os dados do localStorage após o uso
         localStorage.removeItem('lead_whatsapp');
+        localStorage.removeItem('lead_data_nascimento');
+        localStorage.removeItem('lead_sexo');
+        localStorage.removeItem('lead_nome');
       }
     }
 
@@ -112,17 +129,38 @@ export default function Cadastro() {
         <form onSubmit={handleRegister} className="space-y-5">
           <div className="relative group">
             <User className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
-            <input type="text" placeholder="Nome Completo" required value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
+            <input 
+              type="text" 
+              placeholder="Nome Completo" 
+              required 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" 
+            />
           </div>
           
           <div className="relative group">
             <Mail className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
-            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
+            <input 
+              type="email" 
+              placeholder="E-mail" 
+              required 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" 
+            />
           </div>
           
           <div className="relative group">
             <Lock className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-800 transition-colors" size={20} />
-            <input type="password" placeholder="Senha" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" />
+            <input 
+              type="password" 
+              placeholder="Senha" 
+              required 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-stone-50/50 hover:bg-stone-50 focus:bg-white focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all text-stone-700" 
+            />
           </div>
           
           <button 

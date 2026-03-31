@@ -263,7 +263,7 @@ export default function PacienteHistoricoAdmin() {
 
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) {
-      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100', icon: null };
+      return { status: 'neutral', text: 'Sem dados', color: 'text-stone-400', bg: 'bg-stone-50/50', border: 'border-stone-100', icon: null };
     }
 
     let status = 'normal';
@@ -330,17 +330,17 @@ export default function PacienteHistoricoAdmin() {
     }
 
     const configs = {
-      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
-      warning: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: <AlertTriangle size={16} className="text-amber-500" /> },
-      danger: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: <AlertCircle size={16} className="text-red-500" /> },
-      neutral: { color: 'text-stone-500', bg: 'bg-stone-50', border: 'border-stone-100', icon: null }
+      normal: { color: 'text-emerald-700', bg: 'bg-emerald-50/80', border: 'border-emerald-200/60', icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
+      warning: { color: 'text-amber-700', bg: 'bg-amber-50/80', border: 'border-amber-200/60', icon: <AlertTriangle size={16} className="text-amber-500" /> },
+      danger: { color: 'text-rose-700', bg: 'bg-rose-50/80', border: 'border-rose-200/60', icon: <AlertCircle size={16} className="text-rose-500" /> },
+      neutral: { color: 'text-stone-500', bg: 'bg-stone-50/50', border: 'border-stone-100', icon: null }
     };
 
     return { ...configs[status as keyof typeof configs], text, status };
   };
 
   const getMoodIcon = (mood: string) => {
-    if (mood === 'feliz') return <div className="bg-green-100 text-green-600 p-2.5 rounded-full shadow-sm"><Smile size={20} strokeWidth={2.5} /></div>;
+    if (mood === 'feliz') return <div className="bg-emerald-100 text-emerald-600 p-2.5 rounded-full shadow-sm"><Smile size={20} strokeWidth={2.5} /></div>;
     if (mood === 'neutro') return <div className="bg-amber-100 text-amber-600 p-2.5 rounded-full shadow-sm"><Meh size={20} strokeWidth={2.5} /></div>;
     if (mood === 'dificil') return <div className="bg-rose-100 text-rose-600 p-2.5 rounded-full shadow-sm"><Frown size={20} strokeWidth={2.5} /></div>;
     return <div className="bg-stone-100 text-stone-400 p-2.5 rounded-full shadow-sm"><Meh size={20} strokeWidth={2.5} /></div>;
@@ -590,7 +590,6 @@ export default function PacienteHistoricoAdmin() {
     let bf: number | null = null;
     let leanMass: number | null = null;
     
-    // Explicitando o tipo da variável para corrigir o erro de inferência estrita do TypeScript
     let heightRaw: string | number | null | undefined = profile?.altura || null;
     
     if (!heightRaw && history.length > 0) {
@@ -677,20 +676,6 @@ export default function PacienteHistoricoAdmin() {
   const masterRecommendation = useMemo(() => {
     if (!tmb || !getVal || !latestMetabolicData.weight) return null;
 
-    console.log("🔍 [HISTORICO] Inputs para generateRecommendation:", {
-      weight: latestMetabolicData.weight,
-      height: latestMetabolicData.height,
-      bf: latestMetabolicData.bf,
-      leanMass: latestMetabolicData.leanMass,
-      tmb,
-      get: getVal,
-      avgActivity: avgActivityKcal,
-      gender: profile?.sexo,
-      weightTrend
-    });
-
-    console.log("🔍 [HISTORICO] tmb:", tmb, "getVal:", getVal, "avgActivity:", avgActivityKcal);
-
     return generateRecommendation({
       weight: latestMetabolicData.weight,
       height: latestMetabolicData.height,
@@ -719,17 +704,17 @@ export default function PacienteHistoricoAdmin() {
     return (
       <div className={`relative overflow-hidden group flex items-center justify-between p-4 rounded-2xl border ${analysis.border} ${analysis.bg} transition-all duration-300 hover:shadow-md`}>
         <div className="relative z-10 flex flex-col">
-          <span className="text-[10px] uppercase font-black text-stone-400 tracking-widest mb-1">{label}</span>
-          <span className={`font-black text-xl tracking-tight ${analysis.color}`}>
-            {value} <span className="text-xs font-bold opacity-60 ml-0.5">{unit}</span>
+          <span className="text-[10px] md:text-xs uppercase font-bold text-stone-500 tracking-wider mb-0.5">{label}</span>
+          <span className={`font-extrabold text-xl md:text-2xl tracking-tight ${analysis.color}`}>
+            {value} <span className="text-[10px] md:text-xs font-bold opacity-60 ml-0.5">{unit}</span>
           </span>
         </div>
-        <div className="relative z-10 flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-white/50">
+        <div className="relative z-10 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full bg-white shadow-sm border border-white/80">
           {analysis.icon}
         </div>
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900 text-white text-xs font-bold px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-20 shadow-xl text-center transform translate-y-1 group-hover:translate-y-0">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-stone-900/90 backdrop-blur-sm text-white text-[10px] md:text-xs font-bold px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-20 shadow-xl text-center transform translate-y-2 group-hover:translate-y-0">
           {analysis.text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900/90"></div>
         </div>
       </div>
     );
@@ -739,28 +724,35 @@ export default function PacienteHistoricoAdmin() {
   // RENDERIZAÇÃO
   // =========================================================================
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="animate-spin text-nutri-800" size={48} />
-        <p className="text-stone-500 font-medium animate-pulse">Carregando prontuário...</p>
+    <div className="min-h-screen flex items-center justify-center bg-stone-50/50">
+      <div className="flex flex-col items-center gap-5">
+        <div className="p-4 bg-white rounded-2xl shadow-sm border border-stone-100">
+          <Loader2 className="animate-spin text-nutri-700" size={36} />
+        </div>
+        <p className="text-stone-500 font-medium tracking-wide animate-pulse">Carregando prontuário...</p>
       </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-16 md:pt-20 lg:pt-24 font-sans text-stone-800">
+    <main className="min-h-screen bg-[#F8F9FA] p-3 sm:p-4 md:p-8 lg:p-10 pt-20 md:pt-24 lg:pt-28 font-sans text-stone-800 selection:bg-nutri-200">
       <div className="max-w-7xl mx-auto w-full">
         
-        {/* NAVEGAÇÃO E HEADER */}
-        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 gap-4 sm:gap-0 animate-fade-in-up">
-          <Link href="/admin/dashboard" className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3.5 rounded-2xl sm:rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 hover:shadow-md active:scale-95 transition-all duration-300">
-            <div className="bg-nutri-50 p-1.5 sm:p-1.5 rounded-xl sm:rounded-full group-hover:bg-nutri-800 transition-colors"><ChevronLeft size={18} className="text-nutri-800 group-hover:text-white" /></div>
-            <span className="text-sm font-bold text-stone-600 group-hover:text-nutri-900">Voltar ao Painel</span>
+        {/* NAVEGAÇÃO E HEADER PREMIUM */}
+        <nav className="flex items-center justify-between mb-6 md:mb-8 gap-3 md:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <Link 
+            href="/admin/dashboard" 
+            className="flex items-center justify-center gap-2 h-10 md:h-12 px-3 md:px-5 bg-white border border-stone-200/80 rounded-xl md:rounded-2xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.04)] hover:border-nutri-300 hover:shadow-md active:scale-[0.98] transition-all duration-300 text-stone-600 hover:text-nutri-700 group shrink-0"
+          >
+            <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+            <span className="hidden sm:inline font-bold text-sm">Painel Principal</span>
           </Link>
-          <div className="text-center sm:text-right w-full sm:w-auto">
-            <p className="text-[10px] text-stone-400 uppercase font-black tracking-widest mb-1">Prontuário Clínico Eletrônico</p>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-nutri-900 flex items-center gap-2 justify-center sm:justify-end tracking-tight">
-              <User size={24} className="text-nutri-800" /> {profile?.full_name}
+          
+          <div className="text-right flex-1 truncate">
+            <p className="text-[10px] md:text-xs text-stone-400 uppercase font-bold tracking-widest mb-0.5">Prontuário Eletrônico</p>
+            <h1 className="text-lg md:text-2xl lg:text-3xl font-extrabold text-stone-900 flex items-center justify-end gap-2 tracking-tight truncate">
+              <User size={20} className="text-nutri-600 hidden sm:block" /> 
+              <span className="truncate">{profile?.full_name}</span>
             </h1>
           </div>
         </nav>
@@ -768,47 +760,48 @@ export default function PacienteHistoricoAdmin() {
         {/* =========================================================================
             LINHA SUPERIOR DE DASHBOARD (Resumo, Metabolismo, Alertas)
             ========================================================================= */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-6 md:mb-8 animate-fade-in-up">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8 animate-in fade-in duration-700">
           
-          <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow h-full min-h-[320px]">
+          {/* WIDGET: RESUMO DO PACIENTE */}
+          <section className="bg-white p-5 md:p-8 rounded-3xl shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow h-full min-h-[300px]">
             <div>
-              <h2 className="text-lg md:text-xl font-bold mb-6 border-b border-stone-100 pb-4 text-stone-900 flex items-center gap-2">
-                <BookOpen size={20} className="text-nutri-800" /> Resumo do Paciente
+              <h2 className="text-base md:text-lg font-bold mb-4 md:mb-6 border-b border-stone-100 pb-3 text-stone-900 flex items-center gap-2 tracking-tight">
+                <BookOpen size={18} className="text-nutri-600" /> Resumo Clínico
               </h2>
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Idade e Biotipo</p>
-                    <p className="font-extrabold text-stone-700 text-lg flex items-center gap-2">
-                      {patientAge !== null ? `${patientAge} anos` : <span className="text-red-500 text-sm flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg"><AlertCircle size={14}/> Faltando</span>} 
-                      <span className="text-stone-300">|</span>
-                      <span className="capitalize">{profile?.sexo || 'Indefinido'}</span>
+              <div className="space-y-4 md:space-y-5">
+                
+                <div className="flex justify-between items-center bg-stone-50/50 p-3 rounded-2xl border border-stone-100/80">
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Idade / Sexo</p>
+                    <p className="font-extrabold text-stone-800 text-sm md:text-base flex items-center gap-1.5">
+                      {patientAge !== null ? `${patientAge} anos` : <span className="text-rose-500 text-[10px] flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-md"><AlertCircle size={12}/> Info. ausente</span>} 
+                      <span className="text-stone-300 font-normal">|</span>
+                      <span className="capitalize">{profile?.sexo || 'N/D'}</span>
                     </p>
                   </div>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Perfil Definido</p>
-                  <div><span className="font-bold text-nutri-900 uppercase bg-nutri-50 px-3 py-1.5 rounded-lg text-sm tracking-wider border border-nutri-100">{profile?.tipo_perfil || 'Não definido'}</span></div>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Perfil</p>
+                    <span className="font-bold text-nutri-700 uppercase bg-nutri-50 px-2.5 py-1 rounded-lg text-[10px] tracking-wider border border-nutri-100">{profile?.tipo_perfil || 'Não definido'}</span>
+                  </div>
                 </div>
                 
-                <div className="flex justify-between items-end border-t border-stone-50 pt-4">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Meta de Peso</p>
-                    <p className="font-extrabold text-stone-700 text-lg">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'N/D'}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1 p-3 rounded-2xl bg-stone-50/50 border border-stone-100/80 text-center">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Meta de Peso</p>
+                    <p className="font-extrabold text-stone-700 text-lg md:text-xl">{profile?.meta_peso ? `${profile.meta_peso} kg` : 'N/A'}</p>
                   </div>
-                  <div className="flex flex-col gap-1 text-right">
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">Último Peso</p>
-                    <p className="font-extrabold text-emerald-600 text-lg">{latestMetabolicData.weight ? `${latestMetabolicData.weight} kg` : 'N/D'}</p>
+                  <div className="flex flex-col gap-1 p-3 rounded-2xl bg-emerald-50/30 border border-emerald-100/50 text-center">
+                    <p className="text-[10px] text-emerald-600/70 uppercase tracking-widest font-bold">Último Peso</p>
+                    <p className="font-extrabold text-emerald-600 text-lg md:text-xl">{latestMetabolicData.weight ? `${latestMetabolicData.weight} kg` : 'N/A'}</p>
                   </div>
                 </div>
                 
                 {projectionDate && projectionDate !== "Estagnado ou Subindo" && (
-                  <div className="bg-gradient-to-br from-nutri-50 to-white p-4 rounded-2xl border border-nutri-200 mt-2 flex items-center gap-4 shadow-sm">
-                    <div className="bg-nutri-100 p-2 rounded-xl shrink-0"><Target className="text-nutri-700" size={20} /></div>
+                  <div className="bg-gradient-to-r from-nutri-50/80 to-white p-3 md:p-4 rounded-2xl border border-nutri-100 mt-2 flex items-center gap-3 shadow-sm">
+                    <div className="bg-white shadow-sm p-2 rounded-xl border border-nutri-50 shrink-0"><Target className="text-nutri-600" size={18} /></div>
                     <div>
-                      <p className="text-[9px] font-black text-nutri-700 uppercase tracking-widest mb-0.5">GPS da Meta de Peso</p>
-                      <p className="text-base font-black text-nutri-900 leading-tight">Previsão: {projectionDate}</p>
+                      <p className="text-[9px] font-bold text-nutri-600 uppercase tracking-widest mb-0.5">GPS da Meta</p>
+                      <p className="text-sm md:text-base font-extrabold text-stone-800 leading-tight">Atingir em: {projectionDate}</p>
                     </div>
                   </div>
                 )}
@@ -816,7 +809,7 @@ export default function PacienteHistoricoAdmin() {
             </div>
           </section>
 
-          {/* 🔥 AQUI PASSAMOS AS PROPS RECALCULADAS PARA O FILHO */}
+          {/* 🔥 WIDGET METABÓLICO */}
           <MetabolicSummary 
             weight={latestMetabolicData.weight}
             height={latestMetabolicData.height}
@@ -825,7 +818,6 @@ export default function PacienteHistoricoAdmin() {
             bf={latestMetabolicData.bf}
             leanMass={latestMetabolicData.leanMass}
             dailyLogs={dailyLogs}
-            // Novas Props da Fonte Única de Verdade
             tmb={tmb}
             tmbMethod={tmbMethod}
             getVal={getVal}
@@ -833,55 +825,59 @@ export default function PacienteHistoricoAdmin() {
             recommendation={masterRecommendation}
           />
 
+          {/* WIDGET: RADAR CLÍNICO */}
           <section 
             onClick={() => setIsRadarExpanded(true)}
-            className="bg-stone-900 text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group flex flex-col h-full min-h-[320px] border border-stone-800 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+            className="bg-stone-900 text-white p-5 md:p-8 rounded-3xl shadow-xl relative overflow-hidden group flex flex-col h-full min-h-[300px] border border-stone-800 transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl cursor-pointer"
           >
-            <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl transition-opacity group-hover:opacity-10 duration-700"></div>
+            <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl transition-opacity group-hover:opacity-10 duration-700 pointer-events-none"></div>
             
             <div className="flex items-center justify-between relative z-10">
               <div className="flex flex-col">
-                <h2 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                  <Zap size={18} className="text-amber-400 fill-amber-400/20" /> Radar Clínico AI
+                <h2 className="text-[10px] md:text-xs font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                  <Zap size={16} className="text-amber-400 fill-amber-400/20" /> Radar IA
                 </h2>
-                <p className="text-[10px] text-stone-500 font-bold mt-1">Monitoramento ativo</p>
+                <p className="text-[9px] md:text-[10px] text-stone-500 font-bold mt-1 tracking-wider">Monitoramento ativo</p>
+              </div>
+              <div className="p-1.5 bg-white/5 rounded-lg group-hover:bg-white/10 transition-colors">
+                <ChevronRight size={16} className="text-stone-400 group-hover:text-white" />
               </div>
             </div>
             
-            <div className="flex-1 flex flex-col items-center justify-center text-center relative z-10 mt-4">
+            <div className="flex-1 flex flex-col items-center justify-center text-center relative z-10 mt-2">
               {activeAlerts.length > 0 ? (
                 <>
-                  <div className="bg-stone-800/50 p-4 rounded-full mb-4 border border-stone-700">
-                    <Activity size={32} className="text-amber-400" />
+                  <div className="bg-stone-800/80 p-3 md:p-4 rounded-full mb-3 md:mb-4 border border-stone-700/50 shadow-inner">
+                    <Activity size={28} className="text-amber-400" />
                   </div>
-                  <h3 className="text-3xl font-black text-white mb-2">{activeAlerts.length} Alertas</h3>
-                  <p className="text-stone-400 text-sm font-medium">Clique para revisar os insights.</p>
+                  <h3 className="text-2xl md:text-3xl font-black text-white mb-1.5 tracking-tight">{activeAlerts.length} Alertas</h3>
+                  <p className="text-stone-400 text-xs md:text-sm font-medium">Toque para revisar insights.</p>
                   
-                  <div className="flex gap-3 mt-6">
+                  <div className="flex flex-wrap justify-center gap-2 mt-4 md:mt-5 w-full">
                     {dangerCount > 0 && (
-                      <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                        <AlertCircle size={14} /> {dangerCount} Crítico
+                      <div className="bg-rose-500/15 border border-rose-500/20 text-rose-400 px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                        <AlertCircle size={12} /> {dangerCount} Crítico
                       </div>
                     )}
                     {warningCount > 0 && (
-                      <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                        <AlertTriangle size={14} /> {warningCount} Atenção
+                      <div className="bg-amber-500/15 border border-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> {warningCount} Atenção
                       </div>
                     )}
                     {successCount > 0 && (
-                      <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                        <Flame size={14} /> {successCount} Positivo
+                      <div className="bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                        <Flame size={12} /> {successCount} Positivo
                       </div>
                     )}
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="bg-emerald-500/10 p-4 rounded-full mb-4 border border-emerald-500/20">
-                    <CheckCircle2 size={32} className="text-emerald-400" />
+                  <div className="bg-emerald-500/15 p-3 md:p-4 rounded-full mb-3 md:mb-4 border border-emerald-500/20">
+                    <CheckCircle2 size={28} className="text-emerald-400" />
                   </div>
-                  <h3 className="text-2xl font-black text-emerald-400 mb-2">Paciente Estável</h3>
-                  <p className="text-stone-400 text-sm font-medium">Nenhum alerta clínico detectado.</p>
+                  <h3 className="text-xl md:text-2xl font-black text-emerald-400 mb-1.5 tracking-tight">Tudo Estável</h3>
+                  <p className="text-stone-400 text-xs md:text-sm font-medium">Nenhum risco detectado.</p>
                 </>
               )}
             </div>
@@ -891,99 +887,100 @@ export default function PacienteHistoricoAdmin() {
         {/* =========================================================================
             LINHA CENTRAL (GRÁFICO MULTI-LENTES)
             ========================================================================= */}
-        <section className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow mb-6 md:mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
-            <h2 className="text-lg md:text-xl font-bold flex items-center gap-3 text-stone-900 tracking-tight">
-              <div className="bg-nutri-50 p-2 rounded-xl border border-nutri-100">
-                <TrendingUp className="text-nutri-800" size={20} />
+        <section className="bg-white p-5 md:p-8 rounded-3xl shadow-sm border border-stone-100 flex flex-col hover:shadow-md transition-shadow mb-6 md:mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+            <h2 className="text-lg md:text-xl font-bold flex items-center gap-2.5 text-stone-900 tracking-tight">
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
+                <TrendingUp className="text-nutri-700" size={18} />
               </div>
-              Diagnóstico Evolutivo
+              Evolução Gráfica
             </h2>
 
-            <div className="flex bg-stone-50 p-1.5 rounded-2xl w-full md:w-auto border border-stone-100 shadow-inner">
+            {/* SEGMENTED CONTROL PARA GRÁFICO */}
+            <div className="flex bg-stone-100/80 p-1 md:p-1.5 rounded-xl md:rounded-2xl w-full lg:w-auto border border-stone-200/50">
               <button 
                 onClick={() => setActiveLens('medidas')} 
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'medidas' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-3 md:px-5 h-9 md:h-10 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all duration-300 ${activeLens === 'medidas' ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50' : 'text-stone-500 hover:text-stone-700'}`}
               >
-                <Scale size={14} /> Medidas
+                <Scale size={14} className={activeLens === 'medidas' ? 'text-nutri-600' : ''} /> Medidas
               </button>
               <button 
                 onClick={() => setActiveLens('composicao')} 
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'composicao' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-3 md:px-5 h-9 md:h-10 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all duration-300 ${activeLens === 'composicao' ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50' : 'text-stone-500 hover:text-stone-700'}`}
               >
-                <Layers size={14} /> Composição
+                <Layers size={14} className={activeLens === 'composicao' ? 'text-nutri-600' : ''} /> Composição
               </button>
               <button 
                 onClick={() => setActiveLens('metabolico')} 
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeLens === 'metabolico' ? 'bg-white text-nutri-900 shadow-sm border border-stone-200/50' : 'text-stone-400 hover:text-stone-700'}`}
+                className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-3 md:px-5 h-9 md:h-10 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all duration-300 ${activeLens === 'metabolico' ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50' : 'text-stone-500 hover:text-stone-700'}`}
               >
-                <Activity size={14} /> Metabólico
+                <Activity size={14} className={activeLens === 'metabolico' ? 'text-nutri-600' : ''} /> Metabólico
               </button>
             </div>
           </div>
 
-          <div className="h-[400px] w-full -ml-3 sm:ml-0 mt-4">
+          <div className="h-[300px] md:h-[400px] w-full -ml-4 sm:ml-0 mt-2">
             {timelineData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-stone-400 border-2 border-dashed border-stone-100 rounded-3xl bg-stone-50/50">
-                <TrendingUp size={40} className="mb-4 opacity-50" />
-                <p className="font-medium text-sm">Insira dados de peso ou check-ins para visualizar o gráfico evolutivo.</p>
+              <div className="h-full flex flex-col items-center justify-center text-stone-400 border-2 border-dashed border-stone-100 rounded-2xl bg-stone-50/50 p-4 text-center">
+                <TrendingUp size={36} className="mb-3 opacity-40" />
+                <p className="font-medium text-xs md:text-sm">Insira dados de peso ou check-ins para visualizar a evolução.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={timelineData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                <ComposedChart data={timelineData} margin={{ top: 20, right: 0, left: -25, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorAreaWaist" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
                       <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} dy={10} />
+                  <XAxis dataKey="date" tickFormatter={val => new Date(val).toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} stroke="#a8a29e" fontSize={10} axisLine={false} tickLine={false} dy={10} />
                   
-                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} dx={-10} />
-                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={11} axisLine={false} tickLine={false} dx={10} />
+                  <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#a8a29e" fontSize={10} axisLine={false} tickLine={false} dx={-10} />
+                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={10} axisLine={false} tickLine={false} dx={10} />
                   
                   <RechartsTooltip 
                     content={({ active, payload, label }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-stone-900/95 backdrop-blur-md text-white p-5 rounded-2xl shadow-2xl border border-stone-800 pointer-events-none">
-                            <p className="text-xs font-black uppercase tracking-widest text-stone-400 mb-3 border-b border-stone-700/50 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
+                          <div className="bg-white/90 backdrop-blur-xl p-4 md:p-5 rounded-2xl shadow-xl border border-stone-100 pointer-events-none min-w-[180px]">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 border-b border-stone-100 pb-2">{new Date(data.date).toLocaleDateString('pt-BR')}</p>
                             
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                               {activeLens === 'medidas' && (
                                 <>
-                                  {data.peso && <p className="font-medium text-sm flex justify-between gap-6">Peso: <span className="font-black text-emerald-400">{data.peso} kg</span></p>}
-                                  {data.cintura && <p className="font-medium text-sm flex justify-between gap-6">Cintura: <span className="font-black text-indigo-400">{data.cintura} cm</span></p>}
+                                  {data.peso && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">Peso: <span className="font-extrabold text-emerald-600">{data.peso} kg</span></p>}
+                                  {data.cintura && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">Cintura: <span className="font-extrabold text-indigo-600">{data.cintura} cm</span></p>}
                                 </>
                               )}
 
                               {activeLens === 'composicao' && (
                                 <>
-                                  {data.peso && <p className="font-medium text-sm flex justify-between gap-6">Peso Atual: <span className="font-black text-emerald-400">{data.peso} kg</span></p>}
-                                  {data.somatorio_dobras && <p className="font-medium text-sm flex justify-between gap-6">Somatório Dobras: <span className="font-black text-pink-400">{data.somatorio_dobras} mm</span></p>}
-                                  {data.bf && <p className="font-medium text-sm flex justify-between gap-6">% Gordura: <span className="font-black text-amber-400">{data.bf}%</span></p>}
+                                  {data.peso && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">Peso: <span className="font-extrabold text-emerald-600">{data.peso} kg</span></p>}
+                                  {data.somatorio_dobras && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">Dobras: <span className="font-extrabold text-pink-600">{data.somatorio_dobras} mm</span></p>}
+                                  {data.bf && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">% Gordura: <span className="font-extrabold text-amber-500">{data.bf}%</span></p>}
                                 </>
                               )}
 
                               {activeLens === 'metabolico' && (
                                 <>
-                                  {data.cintura && <p className="font-medium text-sm flex justify-between gap-6">Cintura: <span className="font-black text-indigo-400">{data.cintura} cm</span></p>}
-                                  {data.homair && <p className="font-medium text-sm flex justify-between gap-6">Índice HOMA-IR: <span className="font-black text-amber-400">{data.homair}</span></p>}
+                                  {data.cintura && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">Cintura: <span className="font-extrabold text-indigo-600">{data.cintura} cm</span></p>}
+                                  {data.homair && <p className="font-semibold text-xs text-stone-600 flex justify-between gap-4">HOMA-IR: <span className="font-extrabold text-amber-500">{data.homair}</span></p>}
                                 </>
                               )}
                             </div>
 
                             {(data.adesao || data.hasExam) && (
-                              <div className="mt-4 pt-3 border-t border-stone-700/50 space-y-2">
-                                {data.adesao && <p className="text-xs text-stone-300 flex justify-between">Adesão Dieta: <span className="font-black text-white">{data.adesao}/5</span></p>}
-                                {data.hasExam && <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1.5"><Syringe size={14}/> Exame Sangue Relatado</p>}
+                              <div className="mt-3 pt-2 border-t border-stone-100 space-y-1.5">
+                                {data.adesao && <p className="text-[10px] text-stone-500 flex justify-between font-medium">Adesão: <span className="font-bold text-stone-800">{data.adesao}/5</span></p>}
+                                {data.hasExam && <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1"><Syringe size={12}/> Exame Adicionado</p>}
                               </div>
                             )}
                           </div>
@@ -995,27 +992,27 @@ export default function PacienteHistoricoAdmin() {
                   
                   {activeLens === 'medidas' && (
                     <>
-                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="4 4" label={{ position: 'top', value: 'META DE PESO', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold' }} />}
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={{ r: 5, fill: "#6366f1", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 7 }} connectNulls />
+                      {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke="#d6d3d1" strokeDasharray="4 4" label={{ position: 'top', value: 'META', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold' }} />}
+                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls />
+                      <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: "#6366f1", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6 }} connectNulls />
                     </>
                   )}
 
                   {activeLens === 'composicao' && (
                     <>
-                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={{ r: 5, fill: "#ec4899", strokeWidth: 2, stroke: "#fff" }} connectNulls />
+                      <Area type="monotone" yAxisId="left" dataKey="peso" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls />
+                      <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={2.5} dot={{ r: 4, fill: "#ec4899", strokeWidth: 2, stroke: "#fff" }} connectNulls />
                       {timelineData.some(d => d.bf) && (
-                        <Line type="monotone" yAxisId="right" dataKey="bf" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 5, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} connectNulls />
+                        <Line type="monotone" yAxisId="right" dataKey="bf" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="4 4" dot={{ r: 4, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} connectNulls />
                       )}
                     </>
                   )}
 
                   {activeLens === 'metabolico' && (
                     <>
-                      <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="4 4" label={{ position: 'insideTopLeft', value: 'ALERTA HOMA-IR', fill: '#ef4444', fontSize: 9, fontWeight: 'bold' }} />
-                      <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={4} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls />
-                      <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={4} dot={{ r: 6, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 8 }} connectNulls />
+                      <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="4 4" label={{ position: 'insideTopLeft', value: 'ALERTA', fill: '#ef4444', fontSize: 9, fontWeight: 'bold' }} />
+                      <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls />
+                      <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={3} dot={{ r: 5, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 7 }} connectNulls />
                     </>
                   )}
                   
@@ -1023,9 +1020,9 @@ export default function PacienteHistoricoAdmin() {
                     const { cx, cy, payload } = props;
                     if (!payload.hasExam) return <g></g>;
                     return (
-                      <g transform={`translate(${cx - 10},${cy - 28})`} className="cursor-pointer">
-                        <circle cx="10" cy="10" r="14" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" />
-                        <Syringe x="3" y="3" size={14} color="#d97706" />
+                      <g transform={`translate(${cx - 8},${cy - 24})`} className="cursor-pointer">
+                        <circle cx="8" cy="8" r="10" fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.5" />
+                        <Syringe x="2" y="2" size={12} color="#d97706" />
                       </g>
                     );
                   }} />
@@ -1039,82 +1036,108 @@ export default function PacienteHistoricoAdmin() {
         {/* =========================================================================
             SESSÃO INFERIOR: ABAS E TABELAS CLÍNICAS
             ========================================================================= */}
-        <section className="bg-white rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <section className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
           
-          <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 px-2 md:px-6 pt-4 gap-2 scrollbar-hide">
+          {/* ABAS INFERIORES PREMIUM (Scrollável no mobile) */}
+          <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 p-2 md:p-3 gap-1.5 md:gap-2 scrollbar-hide">
             {[
-              { id: 'prontuario', label: 'Prontuário (S.O.A.P)', icon: <BookOpen size={16} /> },
-              { id: 'diario', label: 'Diário no App', icon: <Coffee size={16} /> },
-              { id: 'checkins', label: 'Check-ins Semanais', icon: <CalendarCheck size={16} /> },
-              { id: 'antropometria', label: 'Antropometria', icon: <Ruler size={16} /> },
-              { id: 'dobras', label: 'Dobras & BF%', icon: <Layers size={16} /> },
-              { id: 'bioquimicos', label: 'Exames de Sangue', icon: <Activity size={16} /> }
+              { id: 'prontuario', label: 'S.O.A.P', icon: <BookOpen size={14} /> },
+              { id: 'diario', label: 'Diário', icon: <Coffee size={14} /> },
+              { id: 'checkins', label: 'Check-ins', icon: <CalendarCheck size={14} /> },
+              { id: 'antropometria', label: 'Medidas', icon: <Ruler size={14} /> },
+              { id: 'dobras', label: 'Dobras/BF%', icon: <Layers size={14} /> },
+              { id: 'bioquimicos', label: 'Exames', icon: <Activity size={14} /> }
             ].map(tab => (
               <button 
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)} 
-                className={`flex items-center gap-2 px-6 py-4 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap active:scale-95 ${activeTab === tab.id ? 'border-nutri-800 text-nutri-900 bg-white rounded-t-2xl shadow-sm' : 'border-transparent text-stone-400 hover:text-stone-700 hover:bg-stone-100/50 rounded-t-2xl'}`}
+                className={`flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 h-10 md:h-12 text-[10px] md:text-xs font-bold uppercase tracking-wider rounded-lg md:rounded-xl transition-all whitespace-nowrap active:scale-[0.98] ${
+                  activeTab === tab.id 
+                    ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50' 
+                    : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100/50'
+                }`}
               >
                 {tab.icon} {tab.label}
               </button>
             ))}
           </div>
 
-          <div className="p-6 md:p-8 lg:p-10 min-h-[400px]">
+          <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-h-[400px]">
             
             {/* PRONTUÁRIO S.O.A.P */}
             {activeTab === 'prontuario' && (
-              <div className="animate-fade-in max-w-4xl mx-auto">
-                <h2 className="text-xl md:text-2xl font-bold mb-8 text-stone-900 flex items-center gap-3">
-                  <Stethoscope className="text-nutri-800" size={28} /> Prontuário Clínico
+              <div className="animate-in fade-in duration-300 max-w-4xl mx-auto">
+                <h2 className="text-xl md:text-2xl font-bold mb-6 md:mb-8 text-stone-900 flex items-center gap-2.5 tracking-tight">
+                  <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Stethoscope size={20} /></div> 
+                  Prontuário Eletrônico
                 </h2>
                 
-                <div className="mb-12 bg-white p-6 md:p-8 rounded-[2rem] border border-stone-200 shadow-sm focus-within:ring-4 focus-within:ring-nutri-800/5 transition-all">
-                  <div className="space-y-6">
-                    <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><MessageCircle size={14} className="text-stone-300"/> S - Subjetivo (Relato do Paciente)</label>
-                      <textarea value={soapNote.s} onChange={e => setSoapNote({...soapNote, s: e.target.value})} placeholder="Queixas, sintomas relatados, facilidades e dificuldades percebidas..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
+                {/* FORMULÁRIO SOAP PREMIUM */}
+                <div className="mb-10 bg-white p-5 md:p-8 rounded-[1.5rem] md:rounded-[2rem] border border-stone-200 shadow-sm focus-within:ring-4 focus-within:ring-nutri-50 transition-all">
+                  <div className="space-y-4 md:space-y-5">
+                    <div className="group">
+                      <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-600 transition-colors">
+                        <MessageCircle size={14} className="text-stone-300 group-focus-within:text-nutri-400"/> S - Subjetivo (Relato)
+                      </label>
+                      <textarea value={soapNote.s} onChange={e => setSoapNote({...soapNote, s: e.target.value})} placeholder="Queixas, sintomas relatados, facilidades e dificuldades..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-400 outline-none h-24 resize-none text-sm font-medium bg-stone-50/50 focus:bg-white transition-all shadow-inner focus:shadow-none" />
                     </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><ClipboardList size={14} className="text-stone-300"/> O - Objetivo (Dados Físicos/Exames)</label>
-                      <textarea value={soapNote.o} onChange={e => setSoapNote({...soapNote, o: e.target.value})} placeholder="Sinais clínicos observados, resultados de laboratório, peso atual, medidas..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
+                    <div className="group">
+                      <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-600 transition-colors">
+                        <ClipboardList size={14} className="text-stone-300 group-focus-within:text-nutri-400"/> O - Objetivo (Dados Físicos)
+                      </label>
+                      <textarea value={soapNote.o} onChange={e => setSoapNote({...soapNote, o: e.target.value})} placeholder="Sinais clínicos observados, resultados, medidas..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-400 outline-none h-24 resize-none text-sm font-medium bg-stone-50/50 focus:bg-white transition-all shadow-inner focus:shadow-none" />
                     </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><Brain size={14} className="text-stone-300"/> A - Avaliação (Diagnóstico Nutricional)</label>
-                      <textarea value={soapNote.a} onChange={e => setSoapNote({...soapNote, a: e.target.value})} placeholder="Interpretação do quadro geral, diagnóstico nutricional, evolução..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
+                    <div className="group">
+                      <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-600 transition-colors">
+                        <Brain size={14} className="text-stone-300 group-focus-within:text-nutri-400"/> A - Avaliação (Diagnóstico)
+                      </label>
+                      <textarea value={soapNote.a} onChange={e => setSoapNote({...soapNote, a: e.target.value})} placeholder="Interpretação do quadro geral, diagnóstico nutricional..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-400 outline-none h-24 resize-none text-sm font-medium bg-stone-50/50 focus:bg-white transition-all shadow-inner focus:shadow-none" />
                     </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-xs font-black text-stone-400 uppercase tracking-widest mb-3"><ListChecks size={14} className="text-stone-300"/> P - Plano (Conduta Dietética)</label>
-                      <textarea value={soapNote.p} onChange={e => setSoapNote({...soapNote, p: e.target.value})} placeholder="Conduta, prescrição de dieta/suplementos, metas para a próxima consulta..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-800 outline-none h-24 resize-none text-sm font-medium bg-stone-50 focus:bg-white transition-colors" />
+                    <div className="group">
+                      <label className="flex items-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-600 transition-colors">
+                        <ListChecks size={14} className="text-stone-300 group-focus-within:text-nutri-400"/> P - Plano (Conduta)
+                      </label>
+                      <textarea value={soapNote.p} onChange={e => setSoapNote({...soapNote, p: e.target.value})} placeholder="Conduta, prescrição, metas para a próxima consulta..." className="w-full p-4 rounded-xl border border-stone-200 focus:border-nutri-400 outline-none h-24 resize-none text-sm font-medium bg-stone-50/50 focus:bg-white transition-all shadow-inner focus:shadow-none" />
                     </div>
                   </div>
-                  <div className="flex justify-end mt-8 pt-6 border-t border-stone-100">
-                    <button onClick={handleSaveNote} disabled={savingNote || (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p)} className="bg-nutri-900 text-white px-8 py-3.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-nutri-800 active:scale-95 transition-all shadow-lg shadow-nutri-900/20 disabled:opacity-50 disabled:shadow-none">
+                  <div className="flex justify-end mt-6 pt-5 border-t border-stone-100">
+                    <button 
+                      onClick={handleSaveNote} 
+                      disabled={savingNote || (!soapNote.s && !soapNote.o && !soapNote.a && !soapNote.p)} 
+                      className="w-full sm:w-auto bg-stone-900 text-white px-8 h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-800 active:scale-[0.98] transition-all shadow-md disabled:opacity-50 disabled:shadow-none"
+                    >
                       {savingNote ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Prontuário
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-6 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
+                {/* HISTÓRICO DE ANOTAÇÕES (TIMELINE) */}
+                <div className="space-y-6 md:space-y-8 relative before:absolute before:inset-0 before:ml-[22px] md:before:ml-6 before:-translate-x-px before:h-full before:w-[2px] before:bg-gradient-to-b before:from-stone-200 before:to-transparent">
                   {notes.length === 0 ? (
-                    <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-3xl border-2 border-dashed border-stone-200">Nenhuma anotação médica registrada ainda.</div>
+                    <div className="text-center py-12 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl md:rounded-3xl border-2 border-dashed border-stone-200">Nenhuma anotação registrada ainda.</div>
                   ) : (
                     notes.map((note) => {
                       const formattedContent = note.content.includes('**S') ? (
-                        <div dangerouslySetInnerHTML={{ __html: note.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-nutri-900 block mt-4 mb-1 text-xs uppercase tracking-widest border-b border-stone-100 pb-1">$1</strong>').replace(/\n/g, '<br/>') }} />
+                        <div dangerouslySetInnerHTML={{ __html: note.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-stone-800 block mt-4 mb-1 text-[10px] uppercase tracking-widest border-b border-stone-100 pb-1">$1</strong>').replace(/\n/g, '<br/>') }} />
                       ) : (
                         <p className="whitespace-pre-wrap">{note.content}</p>
                       );
 
                       return (
                         <div key={note.id} className="relative flex items-start group">
-                          <div className="absolute left-0 flex items-center justify-center w-12 h-12 rounded-full bg-stone-50 border-[3px] border-white shadow-sm z-10 text-nutri-800"><BookOpen size={18} /></div>
-                          <div className="ml-16 flex-1 bg-white p-6 md:p-8 rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-all">
-                            <div className="flex justify-between items-center mb-4 border-b border-stone-100 pb-4">
-                              <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}</span>
-                              <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-red-500 bg-stone-50 hover:bg-red-50 p-2 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                          <div className="absolute left-0 flex items-center justify-center w-11 h-11 md:w-12 md:h-12 rounded-full bg-white border-2 border-stone-200 shadow-sm z-10 text-stone-500 group-hover:border-nutri-300 group-hover:text-nutri-600 transition-colors">
+                            <BookOpen size={16} />
+                          </div>
+                          <div className="ml-14 md:ml-16 flex-1 bg-white p-5 md:p-7 rounded-2xl md:rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-all">
+                            <div className="flex justify-between items-start md:items-center mb-4 border-b border-stone-100 pb-3 md:pb-4">
+                              <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
+                                {new Date(note.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })} <span className="opacity-50 mx-1">•</span> {new Date(note.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute:'2-digit' })}
+                              </span>
+                              <button onClick={() => handleDeleteNote(note.id)} className="text-stone-300 hover:text-rose-500 bg-stone-50 hover:bg-rose-50 p-1.5 md:p-2 rounded-lg transition-colors shrink-0 ml-2">
+                                <Trash2 size={14} />
+                              </button>
                             </div>
-                            <div className="text-stone-700 leading-relaxed text-sm font-medium">
+                            <div className="text-stone-600 leading-relaxed text-xs md:text-sm font-medium">
                               {formattedContent}
                             </div>
                           </div>
@@ -1126,69 +1149,80 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* DIÁRIO */}
+            {/* DIÁRIO NO APP (WIDGETS) */}
             {activeTab === 'diario' && (
-              <div className="animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+              <div className="animate-in fade-in duration-300">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-8 gap-2 md:gap-4">
                   <div>
-                    <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2"><Coffee className="text-nutri-800" /> Diário de Rotina</h2>
-                    <p className="text-sm text-stone-500 mt-1 font-medium">Histórico diário de ingestão de água, humor, atividades e refeições.</p>
+                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
+                      <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Coffee size={18} /></div>
+                      Diário do Paciente
+                    </h2>
+                    <p className="text-xs md:text-sm text-stone-500 mt-1 font-medium">Registro diário de água, humor, refeições e treino.</p>
                   </div>
                 </div>
+
                 {dailyLogs.length === 0 ? (
-                  <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center justify-center">
-                    <Coffee size={48} className="mb-4 text-stone-300" />
-                    <p>O paciente ainda não possui registros no diário.</p>
+                  <div className="text-center py-16 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl md:rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center justify-center">
+                    <Coffee size={40} className="mb-3 text-stone-300 opacity-50" />
+                    <p>Sem registros no diário no momento.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                     {dailyLogs.map((log) => {
                       const mealCount = Array.isArray(log.meals_checked) ? log.meals_checked.length : 0;
                       return (
-                        <div key={log.id} className="bg-white p-6 rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-all relative group">
-                          <div className="flex justify-between items-center mb-6 border-b border-stone-100 pb-4">
+                        <div key={log.id} className="bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-all relative flex flex-col">
+                          <div className="flex justify-between items-center mb-5 border-b border-stone-100 pb-4">
                             <div>
-                              <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Data</p>
-                              <h3 className="font-bold text-stone-800">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
+                              <p className="text-[9px] md:text-[10px] font-bold uppercase text-stone-400 tracking-widest mb-0.5">Data</p>
+                              <h3 className="font-extrabold text-stone-800 text-sm md:text-base">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
                             </div>
                             <div title={`Humor: ${log.mood || 'Não informado'}`}>{getMoodIcon(log.mood)}</div>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50 flex flex-col justify-center items-center text-center">
-                              <Droplets size={20} className="text-blue-500 mb-2" />
-                              <p className="text-2xl font-black text-blue-900">{log.water_ml || 0} <span className="text-xs font-bold text-blue-600">ml</span></p>
-                              <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-1">Água Ingerida</p>
+                          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4">
+                            {/* Água */}
+                            <div className="bg-blue-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-blue-100/50 flex flex-col justify-center items-center text-center">
+                              <Droplets size={18} className="text-blue-500 mb-1.5" />
+                              <p className="text-xl md:text-2xl font-black text-blue-900 tracking-tight">{log.water_ml || 0} <span className="text-[10px] font-bold text-blue-500">ml</span></p>
+                              <p className="text-[9px] md:text-[10px] font-bold text-blue-400/80 uppercase tracking-widest mt-1">Hidratação</p>
                             </div>
-                            <div className="bg-stone-50/50 p-4 rounded-2xl border border-stone-200/50 flex flex-col justify-center items-center text-center">
-                              <Check size={20} className="text-emerald-500 mb-2" />
-                              <p className="text-2xl font-black text-stone-900">{mealCount}</p>
-                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mt-1">Refeições Feitas</p>
+                            {/* Refeições */}
+                            <div className="bg-emerald-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-emerald-100/50 flex flex-col justify-center items-center text-center">
+                              <Check size={18} className="text-emerald-500 mb-1.5" />
+                              <p className="text-xl md:text-2xl font-black text-emerald-900 tracking-tight">{mealCount}</p>
+                              <p className="text-[9px] md:text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest mt-1">Refeições</p>
                             </div>
                           </div>
 
+                          {/* Exercício */}
                           {(log.activity_kcal && log.activity_kcal > 0) ? (
-                            <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100/50 flex justify-between items-center text-left">
+                            <div className="bg-orange-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-orange-100/50 flex justify-between items-center text-left">
                                <div>
-                                 <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Gasto Calórico</p>
-                                 <p className="text-lg font-black text-orange-900">{log.activity_kcal} <span className="text-xs font-bold text-orange-600">kcal</span></p>
+                                 <p className="text-[9px] md:text-[10px] font-bold text-orange-500/80 uppercase tracking-widest mb-0.5">Treino (Gasto)</p>
+                                 <p className="text-lg md:text-xl font-black text-orange-900 tracking-tight">{log.activity_kcal} <span className="text-[10px] font-bold text-orange-600">kcal</span></p>
                                </div>
-                               <Flame size={24} className="text-orange-400" />
+                               <div className="bg-white p-2 rounded-lg shadow-sm border border-orange-100/50">
+                                 <Flame size={20} className="text-orange-500" />
+                               </div>
                             </div>
                           ) : (
-                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex items-center justify-center">
-                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Sem atividades registradas</p>
+                            <div className="bg-stone-50/80 p-3 md:p-4 rounded-xl md:rounded-2xl border border-stone-100 flex items-center justify-center h-full">
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5"><Activity size={12}/> Sem Treino</p>
                             </div>
                           )}
 
                           {mealCount > 0 && (
-                            <div className="mt-5 pt-5 border-t border-stone-100">
-                              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3">Checklist do dia:</p>
-                              <ul className="flex flex-wrap gap-2">
+                            <div className="mt-4 md:mt-5 pt-4 border-t border-stone-100">
+                              <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-2.5">Refeições checadas:</p>
+                              <div className="flex flex-wrap gap-1.5">
                                 {log.meals_checked.map((meal: string, idx: number) => (
-                                  <li key={idx} className="bg-stone-100 text-stone-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-stone-200/50">{meal}</li>
+                                  <span key={idx} className="bg-stone-100/80 text-stone-600 text-[9px] md:text-[10px] font-bold px-2 py-1 rounded-md border border-stone-200/50 truncate max-w-full">
+                                    {meal}
+                                  </span>
                                 ))}
-                              </ul>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1199,36 +1233,41 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* CHECK-INS */}
+            {/* CHECK-INS SEMANAIS (Tabela Responsiva) */}
             {activeTab === 'checkins' && (
-              <div className="animate-fade-in">
-                <h2 className="text-xl font-bold mb-6 text-stone-900 flex items-center gap-2"><CalendarCheck className="text-nutri-800" /> Relatos Semanais</h2>
-                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
-                  <table className="w-full text-left border-collapse min-w-[800px] bg-white">
+              <div className="animate-in fade-in duration-300">
+                <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-6 text-stone-900 flex items-center gap-2.5 tracking-tight">
+                  <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><CalendarCheck size={18} /></div>
+                  Histórico de Check-ins
+                </h2>
+                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
+                  <table className="w-full text-left border-collapse min-w-[700px]">
                     <thead className="bg-stone-50/80">
                       <tr>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data do Relato</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Peso Registrado</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Nota Adesão</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Humor da Semana</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Comentários e Queixas</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 whitespace-nowrap">Data</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Peso</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 text-center">Adesão</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 text-center">Humor</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Comentários</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
                       {history.length === 0 && (
-                        <tr><td colSpan={5} className="text-center py-10 text-stone-400 font-medium italic">Nenhum check-in registrado.</td></tr>
+                        <tr><td colSpan={5} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhum check-in registrado.</td></tr>
                       )}
                       {history.slice().reverse().map((item) => (
                         <tr key={item.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-5 px-6 font-bold text-stone-800 text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR', {day: '2-digit', month: 'long', year: 'numeric'})}</td>
-                          <td className="py-5 px-6 font-extrabold text-sm text-nutri-800">{item.peso} kg</td>
-                          <td className="py-5 px-6 text-sm">
-                            <span className={`px-3 py-1.5 rounded-xl text-xs font-black tracking-widest border ${item.adesao_ao_plano >= 4 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{item.adesao_ao_plano} / 5</span>
+                          <td className="py-4 px-5 font-bold text-stone-800 text-xs md:text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4 px-5 font-extrabold text-xs md:text-sm text-emerald-600">{item.peso} kg</td>
+                          <td className="py-4 px-5 text-xs text-center">
+                            <span className={`inline-flex px-2 py-1 rounded-lg font-bold tracking-wider border ${item.adesao_ao_plano >= 4 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                              {item.adesao_ao_plano}/5
+                            </span>
                           </td>
-                          <td className="py-5 px-6 font-bold text-sm text-stone-500 flex items-center gap-2">
-                            {item.humor_semanal} / 5
+                          <td className="py-4 px-5 font-bold text-xs text-stone-500 text-center">
+                            {item.humor_semanal}/5
                           </td>
-                          <td className="py-5 px-6 text-sm text-stone-600 font-medium leading-relaxed max-w-xs truncate" title={item.comentarios}>{item.comentarios || '-'}</td>
+                          <td className="py-4 px-5 text-xs text-stone-600 font-medium max-w-[200px] truncate" title={item.comentarios}>{item.comentarios || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1237,38 +1276,39 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* ANTROPOMETRIA */}
+            {/* ANTROPOMETRIA (Tabela Responsiva) */}
             {activeTab === 'antropometria' && (
-              <div className="animate-fade-in">
-                <h2 className="text-xl font-bold mb-6 text-stone-900 flex items-center gap-2"><Ruler className="text-nutri-800" /> Circunferências e Medidas Físicas</h2>
-                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
-                  <table className="w-full text-left min-w-[1000px] bg-white">
+              <div className="animate-in fade-in duration-300">
+                <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-6 text-stone-900 flex items-center gap-2.5 tracking-tight">
+                  <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Ruler size={18} /></div>
+                  Circunferências
+                </h2>
+                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
+                  <table className="w-full text-left min-w-[800px]">
                     <thead className="bg-stone-50/80">
                       <tr>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Peso</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Altura</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Cintura</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Quadril</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Braço</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Panturrilha</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Pescoço</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Data</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Peso</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Cintura</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Quadril</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Braço</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Pant.</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Pesc.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
                       {antroData.length === 0 && (
-                        <tr><td colSpan={8} className="text-center py-10 text-stone-400 font-medium italic">Nenhuma medida cadastrada.</td></tr>
+                        <tr><td colSpan={7} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhuma medida cadastrada.</td></tr>
                       )}
                       {antroData.map(i => (
                         <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-5 px-6 font-bold text-sm text-stone-800">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                          <td className="py-5 px-6 font-extrabold text-sm text-nutri-800">{i.weight ? `${i.weight} kg` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.height ? `${i.height} m` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.waist ? `${i.waist} cm` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.hip ? `${i.hip} cm` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.arm ? `${i.arm} cm` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.calf ? `${i.calf} cm` : '-'}</td>
-                          <td className="py-5 px-6 font-medium text-sm text-stone-600">{i.neck ? `${i.neck} cm` : '-'}</td>
+                          <td className="py-4 px-5 font-bold text-xs md:text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4 px-4 font-extrabold text-xs md:text-sm text-emerald-600">{i.weight ? `${i.weight} kg` : '-'}</td>
+                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.waist ? `${i.waist}` : '-'}</td>
+                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.hip ? `${i.hip}` : '-'}</td>
+                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.arm ? `${i.arm}` : '-'}</td>
+                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.calf ? `${i.calf}` : '-'}</td>
+                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.neck ? `${i.neck}` : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1279,19 +1319,20 @@ export default function PacienteHistoricoAdmin() {
 
             {/* DOBRAS E COMPOSIÇÃO: Redesenhado Hermético e Comparativo Avançado */}
             {activeTab === 'dobras' && (
-              <div className="animate-fade-in">
+              <div className="animate-in fade-in duration-300">
                 {skinfoldsData.length > 0 && timelineData.length > 0 && (
-                  <div className="bg-stone-900 rounded-[2rem] p-6 md:p-8 mb-8 text-white flex flex-col gap-6 shadow-2xl relative overflow-hidden">
+                  <div className="bg-stone-900 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 mb-6 md:mb-8 text-white flex flex-col gap-5 md:gap-6 shadow-xl relative overflow-hidden border border-stone-800">
                     <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl pointer-events-none"></div>
 
                     <div className="relative z-10">
-                      <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-1 flex items-center gap-2">
-                        <Layers size={14}/> Composição Corporal (Jackson & Pollock)
+                      <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-1 flex items-center gap-1.5">
+                        <Layers size={14}/> Composição Corporal 
+                        <span className="hidden sm:inline">(Jackson & Pollock)</span>
                       </h3>
-                      <p className="text-sm font-medium text-stone-400">
+                      <p className="text-xs md:text-sm font-medium text-stone-400 mt-1.5">
                         {patientAge !== null 
-                          ? `Protocolo de 7 dobras. Calculado para a idade biológica de ${patientAge} anos (${profile?.sexo || 'Indefinido'}).`
-                          : <span className="text-red-300 flex items-center gap-1 font-bold"><AlertCircle size={14}/> Preencha a data de nascimento no perfil para calcular a gordura.</span>
+                          ? `Protocolo 7 dobras. Idade: ${patientAge} anos (${profile?.sexo || 'Indefinido'}).`
+                          : <span className="text-rose-300 flex items-center gap-1 font-bold text-xs"><AlertCircle size={12}/> Idade ausente no perfil.</span>
                         }
                       </p>
                     </div>
@@ -1301,10 +1342,8 @@ export default function PacienteHistoricoAdmin() {
                       const s1 = parseFloat(latestSkin.triceps?.toString()||"0") + parseFloat(latestSkin.biceps?.toString()||"0") + parseFloat(latestSkin.subscapular?.toString()||"0") + parseFloat(latestSkin.suprailiac?.toString()||"0") + parseFloat(latestSkin.abdominal?.toString()||"0") + parseFloat(latestSkin.thigh?.toString()||"0") + parseFloat(latestSkin.calf?.toString()||"0");
                       const currentPoint = timelineData.slice().reverse().find(t => t.somatorio_dobras === parseFloat(s1.toFixed(1)));
                       
-                      // Buscando os dados da primeira avaliação para "Início"
                       const initialPoint = timelineData.find(t => t.bf !== null && t.bf !== undefined);
 
-                      // Calculando a Meta do IMC se existir meta de peso
                       let targetImc: string | null = null;
                       const defaultHeightRaw = antroData.find(a => a.height)?.height || profile?.altura || null;
                       const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw.toString()) : null;
@@ -1315,19 +1354,15 @@ export default function PacienteHistoricoAdmin() {
 
                       if (currentPoint && currentPoint.bf && patientAge !== null) {
                         
-                        // Funções auxiliares para cálculo de evolução (Deltas)
                         const getDelta = (current: number, initial: number) => (current - initial).toFixed(1);
                         const renderDelta = (delta: string, reverseColors = false) => {
                           const val = parseFloat(delta);
                           if (isNaN(val) || val === 0) return <span className="text-stone-500">Mantido</span>;
                           const isPositive = val > 0;
                           
-                          // Lógica de cores:
-                          // reverseColors = false (Padrão): Verde se for positivo (ex: Massa magra)
-                          // reverseColors = true: Verde se for negativo (ex: Gordura, IMC)
-                          let colorClass = isPositive ? 'text-emerald-400' : 'text-red-400';
+                          let colorClass = isPositive ? 'text-emerald-400' : 'text-rose-400';
                           if (reverseColors) {
-                            colorClass = isPositive ? 'text-red-400' : 'text-emerald-400';
+                            colorClass = isPositive ? 'text-rose-400' : 'text-emerald-400';
                           }
 
                           return (
@@ -1338,92 +1373,70 @@ export default function PacienteHistoricoAdmin() {
                         };
 
                         return (
-                          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 w-full relative z-10 border-t border-white/10 pt-6">
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 w-full relative z-10 border-t border-white/10 pt-5">
                             
                             {/* CARD IMC */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-200/50 mb-2">Índice Clínico</span>
-                              <div className="flex items-baseline">
-                                <span className="text-4xl font-black text-cyan-400 tracking-tight">{currentPoint.imc || '-'}</span>
-                                <span className="text-sm font-bold text-cyan-400/50 ml-1.5 uppercase tracking-wider">IMC</span>
+                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
+                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-cyan-200/50 mb-1.5">Índice IMC</span>
+                              <div className="flex items-baseline mb-3">
+                                <span className="text-2xl md:text-3xl font-black text-cyan-400 tracking-tight">{currentPoint.imc || '-'}</span>
                               </div>
-                              <div className="mt-auto pt-4 flex flex-col gap-1 text-[10px] font-black tracking-widest uppercase text-stone-500">
+                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
                                 {initialPoint?.imc && (
                                   <>
-                                    <span className="flex items-center justify-between border-b border-white/5 pb-1">
-                                      Início: <strong className="text-cyan-100/70">{initialPoint.imc}</strong>
-                                    </span>
-                                    <span className="flex items-center justify-between border-b border-white/5 pb-1 mt-1">
-                                      Evolução: {renderDelta(getDelta(currentPoint.imc!, initialPoint.imc), true)}
-                                    </span>
+                                    <span className="flex justify-between">Início: <span className="text-cyan-100/70">{initialPoint.imc}</span></span>
+                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.imc!, initialPoint.imc), true)}</span>
                                   </>
-                                )}
-                                {targetImc && (
-                                  <span className="flex items-center justify-between pt-1 mt-1">
-                                    Alvo: <strong className="text-cyan-400">{targetImc}</strong>
-                                  </span>
                                 )}
                               </div>
                             </div>
 
                             {/* CARD GORDURA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-200/50 mb-2">% de Gordura</span>
-                              <div className="flex items-baseline">
-                                <span className="text-4xl font-black text-amber-400 tracking-tight">{currentPoint.bf}</span>
-                                <span className="text-sm font-bold text-amber-400/50 ml-1.5 uppercase tracking-wider">%</span>
+                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
+                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-amber-200/50 mb-1.5">% Gordura</span>
+                              <div className="flex items-baseline mb-3">
+                                <span className="text-2xl md:text-3xl font-black text-amber-400 tracking-tight">{currentPoint.bf}</span>
+                                <span className="text-xs font-bold text-amber-400/50 ml-1 uppercase">%</span>
                               </div>
-                              <div className="mt-auto pt-4 flex flex-col gap-1 text-[10px] font-black tracking-widest uppercase text-stone-500">
+                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
                                 {initialPoint?.bf && (
                                   <>
-                                    <span className="flex items-center justify-between border-b border-white/5 pb-1">
-                                      Início: <strong className="text-amber-100/70">{initialPoint.bf}%</strong>
-                                    </span>
-                                    <span className="flex items-center justify-between pt-1 mt-1">
-                                      Evolução: {renderDelta(getDelta(currentPoint.bf, initialPoint.bf), true)}%
-                                    </span>
+                                    <span className="flex justify-between">Início: <span className="text-amber-100/70">{initialPoint.bf}%</span></span>
+                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.bf, initialPoint.bf), true)}%</span>
                                   </>
                                 )}
                               </div>
                             </div>
 
                             {/* CARD MASSA MAGRA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-200/50 mb-2">Massa Magra</span>
-                              <div className="flex items-baseline">
-                                <span className="text-4xl font-black text-emerald-400 tracking-tight">{currentPoint.leanMass}</span>
-                                <span className="text-sm font-bold text-emerald-400/50 ml-1.5 uppercase tracking-wider">kg</span>
+                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
+                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-emerald-200/50 mb-1.5">Massa Magra</span>
+                              <div className="flex items-baseline mb-3">
+                                <span className="text-2xl md:text-3xl font-black text-emerald-400 tracking-tight">{currentPoint.leanMass}</span>
+                                <span className="text-xs font-bold text-emerald-400/50 ml-1 uppercase">kg</span>
                               </div>
-                              <div className="mt-auto pt-4 flex flex-col gap-1 text-[10px] font-black tracking-widest uppercase text-stone-500">
+                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
                                 {initialPoint?.leanMass && (
                                   <>
-                                    <span className="flex items-center justify-between border-b border-white/5 pb-1">
-                                      Início: <strong className="text-emerald-100/70">{initialPoint.leanMass} kg</strong>
-                                    </span>
-                                    <span className="flex items-center justify-between pt-1 mt-1">
-                                      Evolução: {renderDelta(getDelta(currentPoint.leanMass!, initialPoint.leanMass))} kg
-                                    </span>
+                                    <span className="flex justify-between">Início: <span className="text-emerald-100/70">{initialPoint.leanMass}</span></span>
+                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.leanMass!, initialPoint.leanMass))} kg</span>
                                   </>
                                 )}
                               </div>
                             </div>
 
                             {/* CARD MASSA GORDA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-rose-200/50 mb-2">Massa Gorda</span>
-                              <div className="flex items-baseline">
-                                <span className="text-4xl font-black text-rose-400 tracking-tight">{currentPoint.fatMass}</span>
-                                <span className="text-sm font-bold text-rose-400/50 ml-1.5 uppercase tracking-wider">kg</span>
+                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
+                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-rose-200/50 mb-1.5">Massa Gorda</span>
+                              <div className="flex items-baseline mb-3">
+                                <span className="text-2xl md:text-3xl font-black text-rose-400 tracking-tight">{currentPoint.fatMass}</span>
+                                <span className="text-xs font-bold text-rose-400/50 ml-1 uppercase">kg</span>
                               </div>
-                              <div className="mt-auto pt-4 flex flex-col gap-1 text-[10px] font-black tracking-widest uppercase text-stone-500">
+                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
                                 {initialPoint?.fatMass && (
                                   <>
-                                    <span className="flex items-center justify-between border-b border-white/5 pb-1">
-                                      Início: <strong className="text-rose-100/70">{initialPoint.fatMass} kg</strong>
-                                    </span>
-                                    <span className="flex items-center justify-between pt-1 mt-1">
-                                      Evolução: {renderDelta(getDelta(currentPoint.fatMass!, initialPoint.fatMass), true)} kg
-                                    </span>
+                                    <span className="flex justify-between">Início: <span className="text-rose-100/70">{initialPoint.fatMass}</span></span>
+                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.fatMass!, initialPoint.fatMass), true)} kg</span>
                                   </>
                                 )}
                               </div>
@@ -1432,33 +1445,32 @@ export default function PacienteHistoricoAdmin() {
                           </div>
                         )
                       }
-                      return <p className="text-sm font-bold text-amber-300 italic mt-4 bg-amber-900/40 p-4 rounded-xl border border-amber-500/30">O peso do paciente deve ser atualizado na mesma data das dobras para liberar este painel.</p>;
+                      return <p className="text-xs md:text-sm font-bold text-amber-300 italic mt-4 bg-amber-900/30 p-4 rounded-xl border border-amber-500/20">O peso do paciente deve ser atualizado na mesma data das dobras para cálculo da composição.</p>;
                     })()}
                   </div>
                 )}
 
-                <div className="overflow-x-auto rounded-[2rem] border border-stone-200 shadow-sm scrollbar-hide">
-                  <table className="w-full text-left min-w-[1100px] bg-white">
+                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
+                  <table className="w-full text-left min-w-[900px]">
                     <thead className="bg-stone-50/80">
                       <tr>
-                        <th className="py-5 px-6 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Data</th>
-                        <th className="py-5 px-6 text-[10px] text-stone-800 uppercase font-black tracking-widest border-b border-stone-200">Somatório</th>
-                        <th className="py-5 px-4 text-[10px] text-cyan-600 uppercase font-black tracking-widest border-b border-stone-200">IMC</th>
-                        <th className="py-5 px-4 text-[10px] text-amber-500 uppercase font-black tracking-widest border-b border-stone-200">% Gordura</th>
-                        <th className="py-5 px-4 text-[10px] text-emerald-600 uppercase font-black tracking-widest border-b border-stone-200">M. Magra</th>
-                        <th className="py-5 px-4 text-[10px] text-rose-500 uppercase font-black tracking-widest border-b border-stone-200">M. Gorda</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest pl-6 border-l border-stone-200 border-b">Tric.</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Bic.</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Sub.</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Supra.</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Abd.</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Coxa</th>
-                        <th className="py-5 px-4 text-[10px] text-stone-400 uppercase font-black tracking-widest border-b border-stone-200">Pant.</th>
+                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 whitespace-nowrap">Data</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-800 uppercase font-bold tracking-widest border-b border-stone-200">Soma</th>
+                        <th className="py-4 px-4 text-[10px] text-cyan-600 uppercase font-bold tracking-widest border-b border-stone-200">IMC</th>
+                        <th className="py-4 px-4 text-[10px] text-amber-500 uppercase font-bold tracking-widest border-b border-stone-200">BF%</th>
+                        <th className="py-4 px-4 text-[10px] text-emerald-600 uppercase font-bold tracking-widest border-b border-stone-200">M. Magra</th>
+                        <th className="py-4 px-4 text-[10px] text-stone-400 uppercase font-bold tracking-widest pl-5 border-l border-stone-200 border-b">Tri</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Bic</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Sub</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Sup</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Abd</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Cox</th>
+                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Pan</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
                       {skinfoldsData.length === 0 && (
-                        <tr><td colSpan={13} className="text-center py-10 text-stone-400 font-medium italic">Nenhum protocolo de dobras cadastrado.</td></tr>
+                        <tr><td colSpan={12} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhum protocolo cadastrado.</td></tr>
                       )}
                       {skinfoldsData.map(i => {
                          const sum = parseFloat(i.triceps?.toString()||"0") + parseFloat(i.biceps?.toString()||"0") + parseFloat(i.subscapular?.toString()||"0") + parseFloat(i.suprailiac?.toString()||"0") + parseFloat(i.abdominal?.toString()||"0") + parseFloat(i.thigh?.toString()||"0") + parseFloat(i.calf?.toString()||"0");
@@ -1469,23 +1481,21 @@ export default function PacienteHistoricoAdmin() {
                          const bf = tPoint?.bf;
                          const imc = tPoint?.imc;
                          const mMag = tPoint?.leanMass;
-                         const mGorda = tPoint?.fatMass;
 
                          return (
                           <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
-                            <td className="py-4 px-6 font-bold text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                            <td className="py-4 px-6 font-black text-nutri-900 text-sm bg-stone-50/50">{sum > 0 ? sum.toFixed(1) : '-'}</td>
-                            <td className="py-4 px-4 font-extrabold text-cyan-600 text-sm">{imc ? imc : '-'}</td>
-                            <td className="py-4 px-4 font-extrabold text-amber-500 text-sm">{bf ? `${bf}%` : '-'}</td>
-                            <td className="py-4 px-4 font-extrabold text-emerald-600 text-sm">{mMag ? `${mMag} kg` : '-'}</td>
-                            <td className="py-4 px-4 font-extrabold text-rose-500 text-sm">{mGorda ? `${mGorda} kg` : '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500 pl-6 border-l border-stone-100">{i.triceps || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.biceps || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.subscapular || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.suprailiac || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.abdominal || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.thigh || '-'}</td>
-                            <td className="py-4 px-4 font-medium text-sm text-stone-500">{i.calf || '-'}</td>
+                            <td className="py-3 px-5 font-bold text-xs md:text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
+                            <td className="py-3 px-4 font-black text-stone-700 text-xs md:text-sm bg-stone-50/30">{sum > 0 ? sum.toFixed(1) : '-'}</td>
+                            <td className="py-3 px-4 font-extrabold text-cyan-600 text-xs md:text-sm">{imc ? imc : '-'}</td>
+                            <td className="py-3 px-4 font-extrabold text-amber-500 text-xs md:text-sm">{bf ? `${bf}%` : '-'}</td>
+                            <td className="py-3 px-4 font-extrabold text-emerald-600 text-xs md:text-sm">{mMag ? `${mMag}kg` : '-'}</td>
+                            <td className="py-3 px-4 font-medium text-xs text-stone-500 pl-5 border-l border-stone-100">{i.triceps || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.biceps || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.subscapular || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.suprailiac || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.abdominal || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.thigh || '-'}</td>
+                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.calf || '-'}</td>
                           </tr>
                          )
                       })}
@@ -1497,66 +1507,69 @@ export default function PacienteHistoricoAdmin() {
 
             {/* BIOQUÍMICOS */}
             {activeTab === 'bioquimicos' && (
-              <div className="animate-fade-in space-y-12">
+              <div className="animate-in fade-in duration-300 space-y-8 md:space-y-10">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                    <Activity className="text-nutri-800" /> Resultados Laboratoriais
+                  <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
+                    <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Activity size={18} /></div>
+                    Exames de Sangue
                   </h2>
-                  <div className="flex gap-4 text-[10px] font-black uppercase text-stone-500 bg-stone-50 px-4 py-2 rounded-xl border border-stone-200">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm"></span> Ideal</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm"></span> Atenção</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm"></span> Risco Clínico</span>
+                  <div className="flex gap-3 md:gap-4 text-[9px] md:text-[10px] font-bold uppercase text-stone-500 bg-stone-50 px-3 md:px-4 py-2 rounded-lg md:rounded-xl border border-stone-200/80 shrink-0">
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-emerald-500 shadow-sm"></span> Normal</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-amber-400 shadow-sm"></span> Atenção</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500 shadow-sm"></span> Risco</span>
                   </div>
                 </div>
 
                 {bioData.length === 0 ? (
-                  <div className="text-center py-16 text-stone-400 font-medium italic bg-stone-50/50 rounded-[2.5rem] border-2 border-dashed border-stone-200">
-                    <Syringe size={48} className="mx-auto mb-4 text-stone-300" />
-                    Nenhum exame de sangue ou biomarcador cadastrado para este paciente.
+                  <div className="text-center py-16 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl md:rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center">
+                    <Syringe size={40} className="mb-3 text-stone-300 opacity-50" />
+                    <p>Nenhum biomarcador cadastrado para este paciente.</p>
                   </div>
                 ) : (
                   bioData.map((item) => {
                     const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose) * parseFloat(item.insulin)) / 405).toFixed(2) : null;
 
                     return (
-                      <div key={item.id} className="bg-white rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                        <div className="bg-stone-50 px-6 md:px-8 py-5 border-b border-stone-200 flex items-center justify-between">
-                          <span className="font-extrabold text-nutri-900 text-sm uppercase tracking-wider">Data do Exame: {new Date(item.exam_date).toLocaleDateString('pt-BR')}</span>
+                      <div key={item.id} className="bg-white rounded-3xl md:rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                        <div className="bg-stone-50/80 px-5 md:px-8 py-4 border-b border-stone-200">
+                          <span className="font-extrabold text-stone-800 text-xs md:text-sm uppercase tracking-wider flex items-center gap-2">
+                            <CalendarCheck size={16} className="text-nutri-600" /> Coleta: {new Date(item.exam_date).toLocaleDateString('pt-BR')}
+                          </span>
                         </div>
                         
-                        <div className="p-6 md:p-8 space-y-10">
+                        <div className="p-5 md:p-8 space-y-8 md:space-y-10">
                           
                           {(item.glucose || item.insulin || item.hba1c) && (
-                            <div className="border-b border-stone-100 pb-10">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Eixo Glicêmico</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                                <ExamBadge label="Glicose Jejum" value={item.glucose} unit="mg/dL" type="glucose" />
-                                <ExamBadge label="Insulina Basal" value={item.insulin} unit="µUI/mL" type="insulin" />
-                                <ExamBadge label="Hemoglobina G." value={item.hba1c} unit="%" type="hba1c" />
-                                <ExamBadge label="Índice HOMA-IR" value={homaIr} unit="" type="homair" />
+                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
+                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Eixo Glicêmico</h3>
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+                                <ExamBadge label="Glicose" value={item.glucose} unit="mg/dL" type="glucose" />
+                                <ExamBadge label="Insulina" value={item.insulin} unit="µUI/mL" type="insulin" />
+                                <ExamBadge label="HbA1c" value={item.hba1c} unit="%" type="hba1c" />
+                                <ExamBadge label="HOMA-IR" value={homaIr} unit="" type="homair" />
                               </div>
                             </div>
                           )}
 
                           {(item.total_cholesterol || item.hdl || item.ldl || item.triglycerides) && (
-                            <div className="border-b border-stone-100 pb-10">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Perfil Lipídico</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                                <ExamBadge label="Colesterol Total" value={item.total_cholesterol} unit="mg/dL" type="total_cholesterol" />
-                                <ExamBadge label="Colesterol HDL" value={item.hdl} unit="mg/dL" type="hdl" />
-                                <ExamBadge label="Colesterol LDL" value={item.ldl} unit="mg/dL" type="ldl" />
+                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
+                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Perfil Lipídico</h3>
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+                                <ExamBadge label="Col. Total" value={item.total_cholesterol} unit="mg/dL" type="total_cholesterol" />
+                                <ExamBadge label="HDL" value={item.hdl} unit="mg/dL" type="hdl" />
+                                <ExamBadge label="LDL" value={item.ldl} unit="mg/dL" type="ldl" />
                                 <ExamBadge label="Triglicerídeos" value={item.triglycerides} unit="mg/dL" type="triglycerides" />
                               </div>
                             </div>
                           )}
 
                           {(item.ferritin || item.pcr || item.tgp || item.creatinine || item.urea) && (
-                            <div className="border-b border-stone-100 pb-10">
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Fígado, Rins & Inflamação</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-                                <ExamBadge label="Ferritina Sérica" value={item.ferritin} unit="ng/mL" type="ferritin" />
-                                <ExamBadge label="Prot. C Reativa" value={item.pcr} unit="mg/dL" type="pcr" />
-                                <ExamBadge label="TGP (Fígado)" value={item.tgp} unit="U/L" type="tgp" />
+                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
+                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Órgãos & Inflamação</h3>
+                              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-5">
+                                <ExamBadge label="Ferritina" value={item.ferritin} unit="ng/mL" type="ferritin" />
+                                <ExamBadge label="PCR" value={item.pcr} unit="mg/dL" type="pcr" />
+                                <ExamBadge label="TGP" value={item.tgp} unit="U/L" type="tgp" />
                                 <ExamBadge label="Creatinina" value={item.creatinine} unit="mg/dL" type="creatinine" />
                                 <ExamBadge label="Ureia" value={item.urea} unit="mg/dL" type="urea" />
                               </div>
@@ -1564,12 +1577,12 @@ export default function PacienteHistoricoAdmin() {
                           )}
 
                           {(item.vitamin_d || item.vitamin_b12 || item.tsh || item.iron) && (
-                            <div>
-                              <h3 className="text-xs font-black uppercase text-stone-400 mb-6 tracking-[0.15em] flex items-center gap-2"><ChevronRight size={16} className="text-nutri-400"/> Vitaminas & Hormônios</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                                <ExamBadge label="Vitamina D (25 OH)" value={item.vitamin_d} unit="ng/mL" type="vitamin_d" />
-                                <ExamBadge label="Vitamina B12" value={item.vitamin_b12} unit="pg/mL" type="vitamin_b12" />
-                                <ExamBadge label="Hormônio TSH" value={item.tsh} unit="µUI/mL" type="tsh" />
+                            <div className="pb-2">
+                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Vitaminas & Tireoide</h3>
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+                                <ExamBadge label="Vit. D (25OH)" value={item.vitamin_d} unit="ng/mL" type="vitamin_d" />
+                                <ExamBadge label="Vit. B12" value={item.vitamin_b12} unit="pg/mL" type="vitamin_b12" />
+                                <ExamBadge label="TSH" value={item.tsh} unit="µUI/mL" type="tsh" />
                                 <ExamBadge label="Ferro Sérico" value={item.iron} unit="µg/dL" type="iron" />
                               </div>
                             </div>
@@ -1586,42 +1599,42 @@ export default function PacienteHistoricoAdmin() {
           </div>
         </section>
 
-        {/* MODAL DE RADAR EXPANDIDO */}
+        {/* MODAL DE RADAR EXPANDIDO (PREMIUM GLASS) */}
         {isRadarExpanded && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-stone-950/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-stone-900 border border-stone-800 w-full max-w-4xl max-h-[85vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col">
-              <div className="p-8 border-b border-stone-800 flex items-center justify-between bg-stone-900/50 shrink-0">
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/70 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-stone-900 border border-stone-800 w-full max-w-3xl max-h-[85vh] sm:max-h-[80vh] rounded-t-[2.5rem] sm:rounded-[3rem] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300">
+              <div className="p-6 md:p-8 border-b border-stone-800 flex items-center justify-between bg-stone-900 shrink-0">
                 <div>
-                  <h2 className="text-2xl font-black text-white flex items-center gap-3">
-                    <Zap className="text-amber-400" size={28} /> Insights do Radar Clínico
+                  <h2 className="text-xl md:text-2xl font-black text-white flex items-center gap-2.5 tracking-tight">
+                    <Zap className="text-amber-400" size={24} /> Radar IA
                   </h2>
-                  <p className="text-stone-400 font-medium mt-1">Análise completa baseada nos dados de {profile?.full_name}</p>
+                  <p className="text-[10px] md:text-xs text-stone-400 font-medium mt-1">Insights detectados no perfil</p>
                 </div>
                 <button 
                   onClick={() => setIsRadarExpanded(false)}
-                  className="bg-stone-800 hover:bg-red-500/20 hover:text-red-400 p-3 rounded-2xl text-stone-400 transition-all"
+                  className="bg-stone-800 hover:bg-stone-700 w-10 h-10 rounded-full text-stone-400 flex items-center justify-center transition-all"
                 >
-                  <AlertCircle size={24} className="rotate-45" />
+                  <AlertCircle size={20} className="rotate-45" />
                 </button>
               </div>
               
-              <div className="p-8 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 custom-scrollbar">
+              <div className="p-6 md:p-8 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 custom-scrollbar bg-stone-950/30">
                 {activeAlerts.map(alert => {
                   const isContacted = contactedAlerts.has(alert.id);
                   
                   return (
-                    <div key={alert.id} className={`p-6 rounded-3xl border flex flex-col justify-between transition-colors ${
-                      alert.type === 'danger' ? 'bg-red-500/10 border-red-500/20' : 
-                      alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 
-                      'bg-emerald-500/10 border-emerald-500/20'
+                    <div key={alert.id} className={`p-5 rounded-3xl border flex flex-col justify-between transition-colors relative overflow-hidden ${
+                      alert.type === 'danger' ? 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/40' : 
+                      alert.type === 'warning' ? 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40' : 
+                      'bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/40'
                     }`}>
-                       <div className="flex items-start gap-4 mb-6">
-                          <div className={`p-3 rounded-2xl ${
-                            alert.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
+                       <div className="flex items-start gap-3 mb-5 relative z-10">
+                          <div className={`p-2.5 rounded-2xl shrink-0 ${
+                            alert.type === 'danger' ? 'bg-rose-500/20 text-rose-400' : 
                             alert.type === 'warning' ? 'bg-amber-500/20 text-amber-400' : 
                             'bg-emerald-500/20 text-emerald-400'
                           }`}> {alert.icon} </div>
-                          <h4 className="text-sm font-bold text-white mt-1 leading-relaxed">{alert.text}</h4>
+                          <h4 className="text-sm font-semibold text-stone-200 mt-1 leading-snug">{alert.text}</h4>
                        </div>
                        
                        {alert.waLink && (
@@ -1630,14 +1643,14 @@ export default function PacienteHistoricoAdmin() {
                             target="_blank" 
                             rel="noopener noreferrer" 
                             onClick={() => handleContactAlert(alert.id)}
-                            className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] px-6 py-3.5 rounded-xl transition-all w-full justify-center mt-auto border ${
+                            className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest h-11 rounded-xl transition-all w-full justify-center mt-auto border relative z-10 ${
                               isContacted 
-                                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border-emerald-500/30'
-                                : 'text-white bg-white/10 hover:bg-white/20 border-white/10'
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : 'text-stone-300 bg-white/5 hover:bg-white/10 border-white/10'
                             }`}
                           >
                             {isContacted ? (
-                              <><CheckCircle2 size={16} /> Mensagem Enviada</>
+                              <><CheckCircle2 size={16} /> Enviada</>
                             ) : (
                               <><MessageCircle size={16} /> {alert.waText}</>
                             )}
