@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, ImagePlus } from 'lucide-react';
+import { X, Send, Loader2, ImagePlus, MessageCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 // ===============================
@@ -266,18 +266,22 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
     return 'animate-[pulse_3s_ease-in-out_infinite]'; 
   };
 
+  const hasContent = state.input.trim().length > 0 || state.selectedImage !== null;
+
   return (
     <>
       {/* BOTÃO FLUTUANTE FECHADO */}
       {!state.isOpen && (
-        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
+        <div className="fixed bottom-5 right-5 sm:bottom-8 sm:right-8 z-50">
           <button 
             onClick={() => state.setIsOpen(true)} 
-            className="relative group transition-all hover:scale-110 active:scale-95 flex flex-col items-end"
+            className="relative group transition-all duration-300 hover:scale-110 active:scale-95 flex flex-col items-end"
+            aria-label="Abrir assistente virtual"
           >
-            <span className="absolute top-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full z-10 animate-pulse"></span>
+            {/* Ponto verde de notificação com ring sutil */}
+            <span className="absolute top-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full z-10 animate-pulse ring-4 ring-emerald-500/20"></span>
             
-            <div className={`w-16 h-16 rounded-full overflow-hidden border-2 border-stone-800 shadow-2xl bg-nutri-100 flex items-end justify-center ${getAvatarAnimation()}`}>
+            <div className={`w-[68px] h-[68px] sm:w-[72px] sm:h-[72px] rounded-full overflow-hidden border-[3px] border-stone-900 shadow-[0_12px_30px_rgba(0,0,0,0.2)] bg-gradient-to-b from-stone-50 to-stone-200 flex items-end justify-center ${getAvatarAnimation()}`}>
                <img 
                  src={AVATAR_IMAGES[state.avatarMood]} 
                  alt="Nutri Avatar" 
@@ -285,7 +289,8 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                />
             </div>
             
-            <div className="absolute right-20 top-1/2 -translate-y-1/2 bg-white text-stone-900 px-4 py-2 rounded-xl text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-stone-100 pointer-events-none">
+            {/* Tooltip Premium */}
+            <div className="absolute right-[85px] sm:right-[90px] top-1/2 -translate-y-1/2 bg-stone-900 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0 whitespace-nowrap pointer-events-none">
               {isRoleAdmin 
                 ? 'Pronta para te ajudar com os pacientes! 🚀' 
                 : state.avatarMood === 'seria' 
@@ -293,20 +298,28 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                   : state.avatarMood === 'feliz' 
                     ? 'Você tá arrasando! 🎉' 
                     : 'Dúvidas sobre a dieta? 🍎'}
+              {/* Triângulo do tooltip */}
+              <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-stone-900 rotate-45 rounded-sm"></div>
             </div>
           </button>
         </div>
       )}
 
-      {/* JANELA DO CHAT ABERTA */}
+      {/* JANELA DO CHAT ABERTA - Fundo escuro sutil no mobile para destacar o Bottom Sheet */}
       {state.isOpen && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex justify-center sm:block pointer-events-none">
-          <div className="w-full max-w-[400px] sm:w-[380px] h-[75vh] max-h-[550px] bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-stone-100 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300 origin-bottom sm:origin-bottom-right pointer-events-auto">
+        <div className="fixed inset-0 sm:inset-auto sm:bottom-8 sm:right-8 z-50 flex items-end sm:items-end justify-center pointer-events-none bg-stone-900/20 sm:bg-transparent backdrop-blur-sm sm:backdrop-blur-none transition-all duration-300">
+          
+          <div className="w-full sm:w-[400px] h-[85vh] sm:h-[600px] max-h-[800px] bg-[#f8f9fa] rounded-t-[2rem] sm:rounded-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] sm:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-stone-200/50 flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300 pointer-events-auto">
             
-            {/* Header */}
-            <div className="bg-stone-900 p-4 sm:p-5 text-white flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-white/20 shrink-0 bg-nutri-800 flex items-end justify-center ${getAvatarAnimation()}`}>
+            {/* Barra de puxar mobile */}
+            <div className="w-full flex justify-center pt-3 pb-2 sm:hidden bg-stone-900 shrink-0">
+              <div className="w-12 h-1.5 bg-stone-700 rounded-full" />
+            </div>
+
+            {/* HEADER PREMIUM */}
+            <div className="bg-stone-900 px-5 pt-2 pb-5 sm:py-5 text-white flex justify-between items-center shrink-0 shadow-sm relative z-10">
+              <div className="flex items-center gap-3.5">
+                <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 border-white/10 shrink-0 bg-gradient-to-b from-stone-700 to-stone-800 flex items-end justify-center shadow-inner ${getAvatarAnimation()}`}>
                   <img 
                     src={AVATAR_IMAGES[state.avatarMood]} 
                     alt="Avatar" 
@@ -314,17 +327,20 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                   />
                 </div>
                 <div className="flex flex-col">
-                  <h4 className="font-bold text-sm leading-tight text-white">
-                    Nutri <span className="text-green-400">Van</span>
+                  <h4 className="font-bold text-[15px] leading-tight text-white tracking-tight">
+                    Nutri <span className="text-emerald-400">Van</span>
                   </h4>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-                    <span className="text-[9px] text-stone-300 uppercase tracking-widest font-bold">
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-[10px] text-stone-300 uppercase tracking-widest font-bold">
                       {isRoleAdmin 
                         ? 'Assistente IA da Nutri' 
                         : state.avatarMood === 'seria' 
                           ? 'De olho em você' 
-                          : 'Assistente Virtual'}
+                          : 'Online agora'}
                     </span>
                   </div>
                 </div>
@@ -336,95 +352,110 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                     href={`https://wa.me/${WHATSAPP_NUMBER}?text=Oi%20Nutri!%20Estou%20com%20uma%20dúvida%20aqui%20no%20app.`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors group"
+                    className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl transition-all active:scale-95 shadow-sm"
                     title="Falar com a Nutricionista"
                   >
-                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-                    </svg>
+                    <MessageCircle size={16} strokeWidth={2.5} />
                     <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">WhatsApp</span>
                   </a>
                 )}
-                <button onClick={() => state.setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors shrink-0">
-                  <X size={18} />
+                <button 
+                  onClick={() => state.setIsOpen(false)} 
+                  className="p-2.5 bg-white/5 hover:bg-white/10 text-stone-300 hover:text-white rounded-xl transition-all active:scale-95 shrink-0"
+                  aria-label="Fechar chat"
+                >
+                  <X size={20} strokeWidth={2.5} />
                 </button>
               </div>
             </div>
             
-            {/* Chat Body */}
-            <div ref={state.scrollRef} className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 bg-stone-50">
+            {/* CHAT BODY (Area de Rolagem) */}
+            <div ref={state.scrollRef} className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-5 bg-[#f8f9fa] scrollbar-hide">
+              
+              {/* EMPTY STATE PREMIUM */}
               {state.messages.length === 0 && (
-                <div className="flex flex-col items-center text-center mt-6 space-y-4 px-6 animate-in slide-in-from-bottom-4 duration-500">
-                  <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-nutri-100 flex items-end justify-center shadow-inner border border-stone-200 ${getAvatarAnimation()}`}>
+                <div className="flex flex-col items-center text-center mt-8 space-y-4 px-6 animate-in slide-in-from-bottom-4 duration-500">
+                  <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200 flex items-end justify-center shadow-[0_8px_30px_rgba(0,0,0,0.08)] border-4 border-white ${getAvatarAnimation()}`}>
                     <img 
                       src={AVATAR_IMAGES[state.avatarMood]} 
                       alt="Nutri Grande" 
                       className="w-[90%] h-[90%] object-cover object-top drop-shadow-xl" 
                     />
                   </div>
-                  <div>
-                    <p className="font-bold text-stone-800 text-sm">
+                  <div className="space-y-2">
+                    <p className="font-black text-stone-800 text-lg tracking-tight">
                       {isRoleAdmin ? 'Olá, Vanusa!' : 'Olá!'}
                     </p>
-                    <p className="text-stone-500 text-xs mt-1 leading-relaxed">
+                    <p className="text-stone-500 text-sm leading-relaxed font-medium">
                       {isRoleAdmin 
-                        ? 'Estou conectada aos dados dos seus pacientes e leads ativos. Você pode me pedir resumos, relatórios de humor, ou checar quem ainda não tem dieta. Como posso te ajudar a gerenciar os atendimentos hoje?'
-                        : 'Sou a Nutri Van, sua assistente virtual. Posso te ajudar com dúvidas rápidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação. Como posso ajudar hoje?'}
+                        ? 'Estou conectada aos dados dos seus pacientes e leads ativos. Você pode me pedir resumos, relatórios de humor, ou checar quem ainda não tem dieta. Como posso te ajudar hoje?'
+                        : 'Sou a Nutri Van, sua assistente virtual. Posso te ajudar com dúvidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação.'}
                     </p>
                   </div>
                 </div>
               )}
               
+              {/* CHAT BUBBLES */}
               {state.messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                  <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed ${
+                  <div className={`max-w-[85%] px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
                     m.role === 'user' 
-                      ? 'bg-stone-800 text-white rounded-tr-none shadow-md' 
-                      : 'bg-white border border-stone-200 text-stone-700 rounded-tl-none shadow-sm'
+                      ? 'bg-stone-900 text-white rounded-2xl rounded-tr-sm font-medium' 
+                      : 'bg-white border border-stone-200/60 text-stone-700 rounded-2xl rounded-tl-sm font-medium'
                   }`}>
                     {m.role === 'assistant' ? renderMessage(m.content) : m.content}
                   </div>
                 </div>
               ))}
               
+              {/* LOADING STATE */}
               {state.isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-stone-200 p-4 rounded-3xl rounded-tl-none flex items-center gap-2 shadow-sm">
-                    <Loader2 className="animate-spin text-stone-800" size={16}/>
-                    <span className="text-xs text-stone-400 font-medium">Analisando...</span>
+                <div className="flex justify-start animate-in fade-in">
+                  <div className="bg-white border border-stone-200/60 p-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2.5">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* ÁREA DE INPUT */}
-            <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0">
+            {/* ÁREA DE INPUT PREMIUM */}
+            <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
               
+              {/* Preview de Imagem (Polaroid Style) */}
               {state.selectedImage && (
-                <div className="relative mb-3 inline-block animate-in fade-in zoom-in duration-200">
-                  <img 
-                    src={`data:image/jpeg;base64,${state.selectedImage}`} 
-                    className="h-20 rounded-xl border border-stone-200 shadow-sm object-cover" 
-                    alt="Preview"
-                  />
+                <div className="relative mb-3 inline-block animate-in fade-in slide-in-from-bottom-2">
+                  <div className="p-1 bg-white border border-stone-200 rounded-xl shadow-sm">
+                    <img 
+                      src={`data:image/jpeg;base64,${state.selectedImage}`} 
+                      className="h-16 w-16 rounded-lg object-cover" 
+                      alt="Preview do anexo"
+                    />
+                  </div>
                   <button 
                     onClick={() => state.setSelectedImage(null)} 
-                    className="absolute -top-2 -right-2 bg-stone-800 text-white rounded-full p-1 shadow-md hover:bg-stone-900 transition-colors"
+                    className="absolute -top-2 -right-2 bg-stone-800 text-white rounded-full p-1 shadow-md hover:bg-rose-500 hover:scale-110 transition-all active:scale-95"
+                    aria-label="Remover imagem"
                   >
-                     <X size={12} />
+                     <X size={14} strokeWidth={3} />
                   </button>
                 </div>
               )}
 
-              <div className="flex gap-2 bg-stone-100 p-1 rounded-[1.5rem] border border-stone-200 focus-within:border-stone-400 transition-all shadow-inner items-center">
+              {/* Barra de Digitação (Pill-shaped) */}
+              <div className="flex gap-2 bg-stone-50 p-1.5 rounded-[2rem] border border-stone-200 focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-500/10 focus-within:bg-white transition-all items-center">
                 
                 <button
                   onClick={() => state.fileInputRef.current?.click()}
-                  className="p-3 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-[1.2rem] transition-all shrink-0 ml-1"
+                  className="p-2.5 text-stone-400 hover:text-stone-800 hover:bg-stone-200 rounded-full transition-all shrink-0 ml-1 active:scale-95"
                   disabled={state.isLoading}
-                  title="Enviar foto"
+                  title="Anexar foto"
+                  aria-label="Anexar foto"
                 >
-                  <ImagePlus size={20} />
+                  <ImagePlus size={22} strokeWidth={2.5} />
                 </button>
                 
                 <input
@@ -439,21 +470,26 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                   value={state.input}
                   onChange={(e) => state.setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Ex: O que substitui o frango?"}
-                  className="flex-1 bg-transparent py-3 pr-2 text-sm outline-none text-stone-700 w-full"
+                  placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
+                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium"
                   disabled={state.isLoading}
                 />
 
                 <button 
                   onClick={handleSend} 
-                  disabled={state.isLoading || (!state.input.trim() && !state.selectedImage)} 
-                  className={`p-3 rounded-2xl transition-all shadow-lg shrink-0 ${
-                    state.isLoading || (!state.input.trim() && !state.selectedImage)
-                      ? 'bg-stone-300 text-stone-500' 
-                      : 'bg-stone-900 text-white hover:bg-stone-800'
+                  disabled={state.isLoading || !hasContent} 
+                  className={`p-3 rounded-full transition-all shrink-0 mr-0.5 ${
+                    state.isLoading || !hasContent
+                      ? 'bg-stone-200 text-stone-400' 
+                      : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-md hover:shadow-lg active:scale-95'
                   }`}
+                  aria-label="Enviar mensagem"
                 >
-                  <Send size={18} />
+                  {state.isLoading ? (
+                    <Loader2 size={18} className="animate-spin" strokeWidth={2.5} />
+                  ) : (
+                    <Send size={18} strokeWidth={2.5} className="ml-0.5" />
+                  )}
                 </button>
               </div>
             </div>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Save, CheckCircle2, ChevronRight, Loader2, Info, HelpCircle } from 'lucide-react';
+import { Save, CheckCircle2, ChevronRight, Loader2, Info, HelpCircle, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
@@ -185,48 +185,63 @@ export default function FoodFrequencyForm() {
   // RENDERIZAÇÃO
   // =========================================================================
   return (
-    <div className="max-w-4xl mx-auto bg-white/70 backdrop-blur-xl p-6 md:p-10 lg:p-12 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative mt-8 mb-24">
+    <div className="max-w-4xl mx-auto bg-white/70 backdrop-blur-3xl p-5 md:p-10 lg:p-12 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative mt-8 mb-24 transition-all">
       
       {/* CABEÇALHO */}
-      <div className="mb-10 text-center md:text-left">
-        <h2 className="text-3xl md:text-[2.5rem] font-bold text-stone-900 tracking-tight mb-3">
-          Raio-X Alimentar
-        </h2>
-        <p className="text-stone-500 font-medium leading-relaxed max-w-2xl text-sm md:text-base">
-          Para que o cardápio fique perfeito para você, indique a <b className="text-stone-800">frequência real</b> que você consome os alimentos abaixo. Não existe resposta certa ou errada, seja honesto!
-        </p>
+      <div className="mb-8 text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h2 className="text-3xl md:text-[2.5rem] font-black text-stone-900 tracking-tight mb-3 flex items-center justify-center md:justify-start gap-3">
+            <Activity className="text-stone-400" size={32} strokeWidth={2.5} />
+            Raio-X Alimentar
+          </h2>
+          <p className="text-stone-500 font-medium leading-relaxed max-w-2xl text-sm md:text-base">
+            Para que o cardápio fique perfeito para você, indique a <b className="text-stone-800">frequência real</b> que você consome os alimentos abaixo. Não existe resposta certa ou errada, seja honesto!
+          </p>
+        </div>
       </div>
 
       {/* BARRA DE PROGRESSO STICKY PREMIUM */}
-      <div className="sticky top-20 z-40 bg-transparent pt-2 pb-6 mb-8 transition-all">
-        <div className="bg-white/90 backdrop-blur-xl p-5 md:px-6 rounded-3xl border border-stone-200/50 shadow-[0_8px_30px_rgba(0,0,0,0.06)] flex flex-col md:flex-row md:items-center gap-5">
-          <div className="flex-1">
+      <div className="sticky top-4 md:top-6 z-50 mb-10 animate-fade-in-up">
+        <div className="bg-white/95 backdrop-blur-xl p-4 md:p-5 rounded-[2rem] border border-stone-200/60 shadow-[0_12px_40px_rgba(0,0,0,0.08)] flex items-center justify-between gap-4 md:gap-6 transition-all duration-500">
+          <div className="flex-1 w-full">
             <div className="flex justify-between items-end mb-2.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Progresso da Avaliação</span>
-              <span className={`text-xl font-bold tracking-tight transition-colors ${isComplete ? 'text-emerald-500' : 'text-stone-800'}`}>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Progresso</span>
+              <span className={`text-lg md:text-xl font-black tracking-tight transition-colors duration-500 ${isComplete ? 'text-emerald-500' : 'text-stone-800'}`}>
                 {progress}%
               </span>
             </div>
-            <div className="w-full h-2 bg-stone-100/80 rounded-full overflow-hidden shadow-inner">
+            <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden shadow-inner">
               <div 
-                className={`h-full transition-all duration-700 ease-out ${isComplete ? 'bg-emerald-500' : 'bg-gradient-to-r from-stone-400 to-stone-800'}`} 
+                className={`h-full transition-all duration-1000 ease-out relative ${isComplete ? 'bg-emerald-500' : 'bg-gradient-to-r from-stone-400 to-stone-800'}`} 
                 style={{ width: `${progress}%` }}
-              ></div>
+              >
+                {/* Efeito de Brilho Dinâmico */}
+                <div className="absolute top-0 bottom-0 right-0 w-12 bg-gradient-to-r from-transparent to-white/30" />
+              </div>
             </div>
           </div>
-          {isComplete && (
-            <div className="hidden md:flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100/50 animate-fade-in">
-              <CheckCircle2 size={16} /> Finalizado
-            </div>
-          )}
+          
+          <div className="hidden md:flex shrink-0">
+            {isComplete ? (
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-4 py-3 rounded-xl border border-emerald-100/50 animate-in zoom-in duration-300">
+                <CheckCircle2 size={16} strokeWidth={2.5} /> Finalizado
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-stone-400 bg-stone-50 px-4 py-3 rounded-xl border border-stone-200/50">
+                <Loader2 size={14} className="animate-spin" strokeWidth={2.5} /> Avaliando
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* AVISO DIDÁTICO */}
-      <div className="bg-amber-50/50 border border-amber-100/50 p-5 rounded-2xl flex items-start gap-4 mb-10 shadow-sm backdrop-blur-sm">
-        <div className="bg-amber-100/50 text-amber-600 p-2.5 rounded-xl shrink-0"><Info size={18} /></div>
-        <p className="text-xs md:text-sm font-medium text-amber-800/80 leading-relaxed mt-0.5">
-          <strong className="text-amber-900 block mb-1">Como preencher:</strong>
+      <div className="bg-amber-50/80 border border-amber-100/80 p-5 rounded-[1.5rem] flex flex-col sm:flex-row sm:items-center gap-4 mb-12 shadow-sm backdrop-blur-md">
+        <div className="bg-white text-amber-500 p-3 rounded-xl shrink-0 shadow-sm border border-amber-100/50 self-start sm:self-auto">
+          <Info size={20} strokeWidth={2.5} />
+        </div>
+        <p className="text-xs md:text-sm font-medium text-amber-800/80 leading-relaxed">
+          <strong className="text-amber-900 block sm:inline sm:mr-1 mb-1 sm:mb-0">Como preencher:</strong>
           Se consome apenas aos finais de semana, marque <b>"2-3x Sem"</b>. Se consome todos os dias de segunda a sexta, marque <b>"4-5x Sem"</b>.
         </p>
       </div>
@@ -238,12 +253,14 @@ export default function FoodFrequencyForm() {
             
             {/* Título da Categoria com Descrição */}
             <div className="mb-6 px-2">
-              <h3 className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-3">
-                <span className="bg-white border border-stone-200/60 shadow-sm w-7 h-7 rounded-full flex items-center justify-center text-[10px] text-stone-500">{catIndex + 1}</span>
+              <h3 className="text-[11px] md:text-xs font-black text-stone-400 uppercase tracking-[0.2em] mb-2.5 flex items-center gap-3">
+                <span className="bg-white border border-stone-200/80 shadow-sm w-8 h-8 rounded-full flex items-center justify-center text-[11px] text-stone-500 shrink-0">
+                  {catIndex + 1}
+                </span>
                 {category.category}
               </h3>
               {category.description && (
-                <p className="text-xs font-medium text-stone-500 ml-10">
+                <p className="text-xs font-medium text-stone-500 ml-11 md:ml-12">
                   {category.description}
                 </p>
               )}
@@ -256,25 +273,33 @@ export default function FoodFrequencyForm() {
                 return (
                   <div 
                     key={item.id} 
-                    className={`bg-white/50 p-5 md:p-6 rounded-[1.5rem] border transition-all duration-300 flex flex-col xl:flex-row xl:items-center justify-between gap-6 group backdrop-blur-sm
-                      ${hasAnswer ? 'border-emerald-100/50 shadow-[0_2px_15px_rgba(16,185,129,0.03)] bg-white/80 scale-[0.99]' : 'border-stone-100/80 hover:border-stone-200 hover:shadow-sm'}
+                    className={`p-5 md:p-6 rounded-[2rem] border transition-all duration-500 flex flex-col xl:flex-row xl:items-center justify-between gap-6 group relative overflow-hidden
+                      ${hasAnswer 
+                        ? 'bg-stone-50/40 border-emerald-100 shadow-[0_4px_20px_rgba(16,185,129,0.04)] scale-[0.99] xl:scale-100' 
+                        : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-md'
+                      }
                     `}
                   >
-                    {/* Bloco de Texto do Item (Label + Descrição Sutil) */}
-                    <div className="w-full xl:w-5/12 flex items-start gap-3.5">
+                    {/* Borda verde lateral indicando sucesso (Microinteração) */}
+                    {hasAnswer && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-400 transition-all duration-500 rounded-l-[2rem]" />
+                    )}
+                    
+                    {/* Bloco de Texto do Item */}
+                    <div className="w-full xl:w-5/12 flex items-start gap-3.5 sm:pl-2">
                       {hasAnswer ? (
-                        <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 shrink-0 animate-fade-in" strokeWidth={2.5} /> 
+                        <CheckCircle2 size={20} className="text-emerald-500 mt-0.5 shrink-0 animate-in zoom-in duration-300" strokeWidth={2.5} /> 
                       ) : (
-                        <ChevronRight size={18} className="text-stone-300 mt-0.5 shrink-0 group-hover:translate-x-1 group-hover:text-stone-400 transition-all" />
+                        <ChevronRight size={20} className="text-stone-300 mt-0.5 shrink-0 group-hover:translate-x-1 group-hover:text-stone-400 transition-all" strokeWidth={2.5} />
                       )}
                       
                       <div className="flex flex-col">
-                        <span className={`text-sm md:text-base font-bold transition-colors ${hasAnswer ? 'text-stone-400' : 'text-stone-800'}`}>
+                        <span className={`text-sm md:text-[15px] font-extrabold transition-colors duration-300 tracking-tight ${hasAnswer ? 'text-stone-400' : 'text-stone-800'}`}>
                           {item.label}
                         </span>
                         {item.description && (
-                          <span className={`text-[11px] font-medium leading-snug mt-1 flex items-start gap-1.5 transition-colors ${hasAnswer ? 'text-stone-300' : 'text-stone-500'}`}>
-                            <HelpCircle size={12} className="shrink-0 mt-[1px] opacity-40" />
+                          <span className={`text-[11px] font-medium leading-snug mt-1.5 flex items-start gap-1.5 transition-colors duration-300 ${hasAnswer ? 'text-stone-300' : 'text-stone-500'}`}>
+                            <HelpCircle size={14} className="shrink-0 mt-[1px] opacity-40" />
                             {item.description}
                           </span>
                         )}
@@ -282,23 +307,23 @@ export default function FoodFrequencyForm() {
                     </div>
                     
                     {/* Botões de Frequência - Segmented Control Premium */}
-                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full xl:w-auto bg-stone-50/80 p-1.5 rounded-2xl border border-stone-100 shadow-inner">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full xl:w-auto bg-stone-50/80 p-1.5 rounded-2xl border border-stone-200/50 shadow-inner">
                       {frequencyOptions.map((opt) => {
                         const isSelected = answers[item.id] === opt;
                         // Apaga as opções não selecionadas APENAS se a pergunta já foi respondida
-                        const notSelectedFaded = hasAnswer && !isSelected ? 'opacity-40 hover:opacity-100 scale-95' : '';
+                        const notSelectedFaded = hasAnswer && !isSelected ? 'opacity-30 hover:opacity-100 scale-95' : '';
                         
                         return (
                           <button
                             key={opt}
                             onClick={() => handleSelect(item.id, opt)}
-                            className={`flex-1 sm:flex-none sm:min-w-[80px] py-3 sm:py-2.5 px-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all duration-300 active:scale-90 ${notSelectedFaded} ${
+                            className={`h-12 sm:h-11 px-3 flex-1 sm:flex-none flex items-center justify-center text-[10px] sm:text-[11px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 active:scale-90 ${notSelectedFaded} ${
                               isSelected 
-                                ? 'bg-white text-stone-800 shadow-[0_2px_10px_rgba(0,0,0,0.08)] scale-100 border border-stone-100/50' 
-                                : 'text-stone-500 hover:bg-white hover:text-stone-700 hover:shadow-sm border border-transparent'
+                                ? 'bg-white text-stone-800 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-100 border border-stone-100/80' 
+                                : 'text-stone-500 hover:bg-white hover:text-stone-800 hover:shadow-sm border border-transparent'
                             }`}
                           >
-                            {opt}
+                            <span className="truncate">{opt}</span>
                           </button>
                         );
                       })}
@@ -312,17 +337,21 @@ export default function FoodFrequencyForm() {
       </div>
 
       {/* BOTÃO SALVAR PREMIUM */}
-      <div className="mt-14 pt-8 border-t border-stone-200/50 flex flex-col md:flex-row items-center justify-between gap-6">
-        <p className="text-[11px] text-stone-400 font-bold uppercase tracking-[0.15em] text-center md:text-left">
-          {isComplete ? "Tudo pronto! Você pode enviar sua avaliação." : `Faltam responder ${totalQuestions - answeredCount} itens.`}
+      <div className="mt-16 pt-8 border-t border-stone-200/80 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+        <p className="text-[11px] text-stone-400 font-black uppercase tracking-[0.15em] text-center md:text-left flex items-center gap-2">
+          {isComplete ? (
+            <><CheckCircle2 size={16} className="text-emerald-500" /> Tudo pronto! Você pode enviar sua avaliação.</>
+          ) : (
+            <><Loader2 size={16} className="animate-spin text-stone-300" /> Faltam responder {totalQuestions - answeredCount} itens.</>
+          )}
         </p>
         
         <button 
           onClick={handleSave}
           disabled={isSaving || !isComplete}
-          className="w-full md:w-auto px-10 flex items-center justify-center gap-3 bg-stone-900 text-white py-4 md:py-5 rounded-2xl font-bold text-sm hover:bg-stone-800 transition-all duration-300 disabled:opacity-50 disabled:bg-stone-200 disabled:text-stone-400 shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] disabled:shadow-none active:scale-95"
+          className="w-full md:w-auto px-10 flex items-center justify-center gap-3 bg-stone-900 text-white py-4 md:py-5 rounded-2xl font-bold text-sm hover:bg-stone-800 transition-all duration-300 disabled:opacity-40 disabled:bg-stone-200 disabled:text-stone-400 shadow-[0_8px_20px_rgba(0,0,0,0.15)] hover:shadow-[0_12px_25px_rgba(0,0,0,0.2)] disabled:shadow-none active:scale-[0.98]"
         >
-          {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+          {isSaving ? <Loader2 className="animate-spin" size={20} strokeWidth={2.5} /> : <Save size={20} strokeWidth={2.5} />}
           {isSaving ? "Analisando Perfil..." : "Enviar Raio-X Alimentar"}
         </button>
       </div>
