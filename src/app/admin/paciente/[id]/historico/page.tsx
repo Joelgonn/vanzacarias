@@ -19,9 +19,11 @@ import {
 import { toast } from 'sonner';
 
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
-// 🔥 Importamos o motor de cálculo para usar no componente Pai
-import { generateRecommendation } from '@/lib/nutrition'; 
+// 🔥 Importamos o motor de cálculo e validador de QFA para usar no componente Pai
+import { generateRecommendation, validateQFAConsistency } from '@/lib/nutrition'; 
 import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
+// NOVO: Tipos para o perfil alimentar
+import { FoodRestriction } from '@/types/patient';
 
 // =========================================================================
 // INTERFACES E TIPAGENS
@@ -35,6 +37,7 @@ interface PatientProfile {
   tipo_perfil?: string;
   meta_peso?: number | null;
   altura?: number | null;
+  food_restrictions?: FoodRestriction[];
 }
 
 interface CheckinData {
@@ -117,6 +120,10 @@ export default function PacienteHistoricoAdmin() {
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [notes, setNotes] = useState<ClinicalNote[]>([]);
   
+  // NOVO: Estados para o perfil alimentar e QFA
+  const [foodRestrictions, setFoodRestrictions] = useState<FoodRestriction[]>([]);
+  const [qfaResponses, setQfaResponses] = useState<Record<string, string>>({});
+
   const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
 
@@ -134,6 +141,7 @@ export default function PacienteHistoricoAdmin() {
   // =========================================================================
   // BUSCA DE DADOS
   // =========================================================================
+  // MODIFICADO: Função de busca de dados
   async function fetchData() {
     setLoading(true);
     try {
@@ -143,29 +151,50 @@ export default function PacienteHistoricoAdmin() {
         return;
       }
 
-      const { data: profileData, error: profileErr } = await supabase.from('profiles').select('*').eq('id', pacienteId).single();
+      // Busca o perfil incluindo as restrições
+      const { data: profileData, error: profileErr } = await supabase
+        .from('profiles')
+        .select('*, food_restrictions') // Garantindo que a coluna venha
+        .eq('id', pacienteId)
+        .single();
       if (profileErr) throw profileErr;
 
-      const { data: checkinData } = await supabase.from('checkins').select('*').eq('user_id', pacienteId).order('created_at', { ascending: true });
+      // Busca das outras tabelas em paralelo para otimização
+      const [
+        checkinRes,
+        antroRes,
+        skinRes,
+        bioRes,
+        notesRes,
+        dailyRes,
+        qfaRes // NOVO: Busca do QFA
+      ] = await Promise.all([
+        supabase.from('checkins').select('*').eq('user_id', pacienteId).order('created_at', { ascending: true }),
+        supabase.from('anthropometry').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false }),
+        supabase.from('skinfolds').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false }),
+        supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false }),
+        supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false }),
+        supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false }),
+        supabase.from('qfa_responses').select('answers').eq('user_id', pacienteId).single() // NOVO
+      ]);
       
-      const processedHistory = checkinData?.map(item => ({
+      const processedHistory = checkinRes.data?.map(item => ({
         ...item,
         imc: item.altura ? (item.peso / (item.altura * item.altura)) : 0
       })) as CheckinData[] || [];
 
-      const { data: antro } = await supabase.from('anthropometry').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
-      const { data: skin } = await supabase.from('skinfolds').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false });
-      const { data: bio } = await supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false });
-      const { data: notesData } = await supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false });
-      const { data: dailyData } = await supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false });
-
       setProfile(profileData as PatientProfile);
       setHistory(processedHistory);
-      setAntroData(antro || []);
-      setSkinfoldsData(skin || []);
-      setBioData(bio || []);
-      setNotes(notesData || []);
-      setDailyLogs(dailyData || []);
+      setAntroData(antroRes.data || []);
+      setSkinfoldsData(skinRes.data || []);
+      setBioData(bioRes.data || []);
+      setNotes(notesRes.data || []);
+      setDailyLogs(dailyRes.data || []);
+      
+      // NOVO: Seta os novos estados
+      setFoodRestrictions(profileData.food_restrictions || []);
+      setQfaResponses(qfaRes.data?.answers || {});
+
     } catch (error) {
       console.error("Erro ao buscar histórico:", error);
       toast.error("Ocorreu um erro ao carregar os dados clínicos deste paciente.");
@@ -351,6 +380,20 @@ export default function PacienteHistoricoAdmin() {
   // =========================================================================
   const patientAge = useMemo(() => calculateAge(profile?.data_nascimento), [profile]);
 
+  // NOVO: Extração dos alertas do QFA para gerenciar o Bloqueio Clínico
+  const qfaWarnings = useMemo(() => {
+    return validateQFAConsistency(qfaResponses, foodRestrictions);
+  }, [qfaResponses, foodRestrictions]);
+
+  const hasCriticalFoodRisk = qfaWarnings.length > 0;
+
+  // Filtros de perfil alimentar para exibição UI
+  const allergies = useMemo(() => foodRestrictions.filter(r => r.type === 'allergy'), [foodRestrictions]);
+  const intolerances = useMemo(() => foodRestrictions.filter(r => r.type === 'intolerance'), [foodRestrictions]);
+  const restrictions = useMemo(() => foodRestrictions.filter(r => r.type !== 'allergy' && r.type !== 'intolerance'), [foodRestrictions]);
+  const hasAnyRestriction = foodRestrictions.length > 0;
+
+  // MODIFICADO: useMemo do Radar IA
   const activeAlerts = useMemo(() => {
     const alerts: Alert[] = [];
     
@@ -485,8 +528,24 @@ export default function PacienteHistoricoAdmin() {
       }
     }
 
+    // NOVO: Push dos Alertas de QFA Consistência
+    qfaWarnings.forEach((warning, index) => {
+      alerts.push({
+        id: `qfa_${index}`,
+        type: 'danger',
+        text: warning,
+        icon: <AlertTriangle size={16} />,
+        waText: 'Corrigir Alimentação',
+        waLink: waBase
+          ? `${waBase}${encodeURIComponent(
+              `Oi ${firstName}, identifiquei um possível conflito alimentar no seu questionário (QFA). Precisamos ajustar isso para garantir sua segurança. Me chama aqui pra alinharmos.`
+            )}`
+          : undefined
+      });
+    });
+
     return alerts;
-  }, [history, bioData, dailyLogs, profile]);
+  }, [history, bioData, dailyLogs, profile, qfaWarnings]);
 
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
@@ -674,6 +733,9 @@ export default function PacienteHistoricoAdmin() {
   }, [history]);
 
   const masterRecommendation = useMemo(() => {
+    // 🔥 BLOQUEIO CLÍNICO DE SEGURANÇA
+    if (hasCriticalFoodRisk) return null;
+
     if (!tmb || !getVal || !latestMetabolicData.weight) return null;
 
     return generateRecommendation({
@@ -687,7 +749,7 @@ export default function PacienteHistoricoAdmin() {
       gender: profile?.sexo,
       weightTrend 
     });
-  }, [tmb, getVal, latestMetabolicData, avgActivityKcal, profile?.sexo, weightTrend]);
+  }, [tmb, getVal, latestMetabolicData, avgActivityKcal, profile?.sexo, weightTrend, hasCriticalFoodRisk]);
 
 
   const dangerCount = activeAlerts.filter(a => a.type === 'danger').length;
@@ -805,6 +867,47 @@ export default function PacienteHistoricoAdmin() {
                     </div>
                   </div>
                 )}
+
+                {/* 🔥 NOVO: PERFIL ALIMENTAR CLÍNICO VISUAL */}
+                {hasAnyRestriction && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mt-2">
+                    <p className="text-amber-700 font-bold text-sm mb-2">
+                      Perfil Alimentar do Paciente
+                    </p>
+
+                    {allergies.length > 0 && (
+                      <p className="text-rose-600 text-xs font-medium">
+                        🚫 Alergias: {allergies.map(a => a.food || a.tag || a.foodId).filter(Boolean).join(', ')}
+                      </p>
+                    )}
+
+                    {intolerances.length > 0 && (
+                      <p className="text-orange-600 text-xs font-medium mt-1">
+                        ⚠️ Intolerâncias: {intolerances.map(i => i.food || i.tag || i.foodId).filter(Boolean).join(', ')}
+                      </p>
+                    )}
+
+                    {restrictions.length > 0 && (
+                      <p className="text-yellow-700 text-xs font-medium mt-1">
+                        ⚠️ Restrições: {restrictions.map(r => r.food || r.tag || r.foodId).filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* 🔥 NOVO: BLOQUEIO CLÍNICO DE PRESCRIÇÃO VISUAL */}
+                {hasCriticalFoodRisk && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mt-2">
+                    <p className="text-rose-700 font-bold text-sm flex items-center gap-2">
+                      <AlertTriangle size={16} />
+                      Atenção: conflito alimentar detectado
+                    </p>
+                    <p className="text-rose-600 text-xs mt-1 font-medium">
+                      Ajuste necessário antes de prosseguir com prescrição.
+                    </p>
+                  </div>
+                )}
+
               </div>
             </div>
           </section>
@@ -823,6 +926,7 @@ export default function PacienteHistoricoAdmin() {
             getVal={getVal}
             avgActivityKcal={avgActivityKcal}
             recommendation={masterRecommendation}
+            foodRestrictions={foodRestrictions} // <-- 🔥 PROP ADICIONADA AQUI
           />
 
           {/* WIDGET: RADAR CLÍNICO */}

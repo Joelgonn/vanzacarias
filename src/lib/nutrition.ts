@@ -1,3 +1,99 @@
+import { FoodRestriction } from '@/types/patient';
+import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
+
+// ============================================================================
+// 🧠 HELPERS INTERNOS (MATCH INTELIGENTE)
+// ============================================================================
+
+function findFoodsByTag(tag: string): FoodEntity[] {
+  return FOOD_REGISTRY.filter(f => f.tags.includes(tag as any));
+}
+
+function matchFoodLegacy(food: string): FoodEntity[] {
+  const normalized = food.toLowerCase();
+  return FOOD_REGISTRY.filter(f =>
+    f.aliases.some(alias => normalized.includes(alias.toLowerCase()))
+  );
+}
+
+// ============================================================================
+// 🛡️ [CORE CLINICAL VALIDATORS] - SEGURANÇA ALIMENTAR
+// ============================================================================
+
+/**
+ * Resolve todos os alimentos proibidos baseado em foodId, tag ou fallback legado
+ */
+function resolveRestrictedFoods(
+  restrictions: FoodRestriction[] | undefined
+): Set<string> {
+  const blocked = new Set<string>();
+
+  if (!restrictions) return blocked;
+
+  restrictions.forEach(r => {
+    if (r.foodId) {
+      blocked.add(r.foodId);
+      return;
+    }
+    if (r.tag) {
+      findFoodsByTag(r.tag).forEach(f => blocked.add(f.id));
+      return;
+    }
+    if (r.food) {
+      matchFoodLegacy(r.food).forEach(f => blocked.add(f.id));
+    }
+  });
+
+  return blocked;
+}
+
+/**
+ * Filtra a lista de alimentos removendo os que possuem restrição
+ */
+export function filterAllowedFoods(
+  foods: string[],
+  restrictions: FoodRestriction[] | undefined
+): string[] {
+  if (!restrictions || restrictions.length === 0) return foods;
+
+  const blocked = resolveRestrictedFoods(restrictions);
+  return foods.filter(foodId => !blocked.has(foodId));
+}
+
+/**
+ * Valida o QFA cruzando as respostas com as restrições do paciente
+ */
+export function validateQFAConsistency(
+  qfaAnswers: Record<string, string>,
+  restrictions: FoodRestriction[] | undefined
+): string[] {
+  const warnings: string[] = [];
+
+  if (!restrictions || restrictions.length === 0) return warnings;
+
+  const blocked = resolveRestrictedFoods(restrictions);
+
+  Object.entries(qfaAnswers).forEach(([foodKey, frequency]) => {
+    if (frequency === "0") return;
+
+    const matchedFoods = matchFoodLegacy(foodKey);
+
+    matchedFoods.forEach(food => {
+      if (blocked.has(food.id)) {
+        warnings.push(
+          `Risco Crítico: Consumo de "${food.name}" conflita com restrição alimentar.`
+        );
+      }
+    });
+  });
+
+  return warnings;
+}
+
+// ============================================================================
+// 📊 [METABOLIC ENGINE] - CÁLCULO DE MACROS E RECOMENDAÇÕES
+// ============================================================================
+
 export interface RecommendationParams {
   weight: number;
   height: number | null;
@@ -44,19 +140,16 @@ export function generateRecommendation({
   let strategy = '';
   let alert = '';
 
-  // 🔥 1. SEXO (PADRONIZADO)
   const g = gender?.toLowerCase().trim() || '';
   const isFemale = ['f', 'feminino', 'female', 'mulher'].some(v => g.startsWith(v));
   const sex: 'M' | 'F' = isFemale ? 'F' : 'M';
 
-  // 🔥 2. ESTIMATIVA DE BF (PRIORIDADE CLÍNICA)
   let estimatedBf = bf;
 
   if (!estimatedBf && leanMass && leanMass > 0 && weight > 0) {
     estimatedBf = ((weight - leanMass) / weight) * 100;
   }
 
-  // 🔥 3. CLASSIFICAÇÃO DO OBJETIVO (ZONA NEUTRA)
   if (estimatedBf && estimatedBf > 0) {
     if (sex === 'M') {
       if (estimatedBf > 22) goal = 'perda de gordura';
@@ -68,8 +161,7 @@ export function generateRecommendation({
       else goal = 'manutenção';
     }
   } else if (!leanMass && height && height > 0) {
-    const h = height; 
-    const hMeters = h / 100;
+    const hMeters = height / 100;
     const imc = weight / (hMeters * hMeters);
 
     if (imc > 25) goal = 'perda de gordura';
@@ -78,13 +170,11 @@ export function generateRecommendation({
     if (weight > 90) goal = 'perda de gordura';
   }
 
-  // 🔥 4. AJUSTE CLÍNICO (ANTI-MANUTENÇÃO BURRA)
   if (goal === 'manutenção' && estimatedBf) {
     if (sex === 'M' && estimatedBf > 20) goal = 'perda de gordura';
     if (sex === 'F' && estimatedBf > 28) goal = 'perda de gordura';
   }
 
-  // 🔥 5. DÉFICIT / SUPERÁVIT DINÂMICO
   if (goal === 'perda de gordura') {
     let deficitFactor = 0.20;
 
@@ -115,7 +205,6 @@ export function generateRecommendation({
     strategy = 'Manutenção metabólica';
   }
 
-  // 🔥 6. AJUSTE AUTOMÁTICO SEMANAL / PLATÔ
   if (weightVelocity !== undefined && weightVelocity !== null) {
     if (goal === 'perda de gordura') {
       if (weightVelocity > -0.2) {
@@ -138,17 +227,9 @@ export function generateRecommendation({
     }
   }
 
-  // Inicialização da lista de alertas movida para cá para capturar os alertas fisiológicos
   const alertsList: string[] = [];
-
-  // 🔥 7. TRAVA FISIOLÓGICA INTELIGENTE (CORRIGIDO)
-  
-  // Ajuste baseado em contexto
   const isSedentary = avgActivity < 150;
-
-  // Piso mais conservador para sedentários
   const tmbFactor = isSedentary ? 1.0 : 0.95;
-
   const minCalories = Math.round(tmb * tmbFactor);
 
   if (calories < minCalories) {
@@ -156,33 +237,23 @@ export function generateRecommendation({
     strategy += ' | Proteção metabólica aplicada';
   }
 
-  // Alerta de segurança metabólica adicionado aqui
   if (calories <= tmb * 1.02) {
     alertsList.push('Calorias muito próximas da TMB. Monitorar adaptação metabólica.');
   }
 
-  // =======================================================================
-  // 🧠 [PRO] PERIODIZAÇÃO CALÓRICA (TREINO vs DESCANSO)
-  // =======================================================================
   let trainingDayCalories = calories;
   let restDayCalories = calories;
 
   if (goal === 'perda de gordura') {
     trainingDayCalories = calories; 
-    // 🔒 PISO NO DESCANSO (Evita calorias negativas/inanição extrema)
     restDayCalories = Math.max(minCalories, calories - (get * 0.08)); 
   } else if (goal === 'ganho de massa') {
     trainingDayCalories = calories + (get * 0.05); 
     restDayCalories = calories;
   }
 
-  // =======================================================================
-  // 🧠 [PRO] REFEED INTELIGENTE (ANTI-PLATÔ HORMONAL)
-  // =======================================================================
   let refeedCalories = null;
   const isLean = sex === 'M' ? (estimatedBf && estimatedBf < 15) : (estimatedBf && estimatedBf < 23);
-  
-  // Condição forte de platô baseada em velocidade ou tendência
   const isPlateau = weightVelocity !== undefined && weightVelocity !== null
     ? weightVelocity > -0.2
     : weightTrend === 'stable';
@@ -192,7 +263,6 @@ export function generateRecommendation({
     strategy += ' | Refeed recomendado (1 a 2 dias)';
   }
 
-  // 🔥 8. ALERTAS CLÍNICOS AVANÇADOS (Formatados Corretamente)
   const activityPerKg = avgActivity / weight;
 
   if (activityPerKg < 1) {
@@ -212,16 +282,11 @@ export function generateRecommendation({
 
   alert = alertsList.join(' | ');
 
-  // =======================================================================
-  // 🔥 9. CÁLCULO DE MACROS (INTELIGÊNCIA DINÂMICA SEM DRIFT E COM TETOS)
-  // =======================================================================
   let protein = 0;
   let fat = 0;
   let carbs = 0;
-
   const baseWeight = leanMass && leanMass > 0 ? leanMass : weight;
 
-  // PROTEÍNA INTELIGENTE
   if (goal === 'perda de gordura') {
     const isHighBf = sex === 'M' ? (estimatedBf && estimatedBf > 25) : (estimatedBf && estimatedBf > 33);
     protein = isHighBf ? baseWeight * 2.0 : baseWeight * 2.4; 
@@ -238,12 +303,10 @@ export function generateRecommendation({
     }
   }
 
-  // GORDURA BASE
   if (goal === 'perda de gordura') fat = weight * 0.8;
   else if (goal === 'ganho de massa') fat = weight * 1.0;
   else fat = weight * 0.9;
 
-  // AJUSTE FINO DE GORDURA X ATIVIDADE
   if (activityPerKg > 4) {
     fat = Math.max(weight * 0.6, fat * 0.85); 
   } else if (activityPerKg < 1.5) {
@@ -252,32 +315,23 @@ export function generateRecommendation({
 
   let proteinKcal = protein * 4;
   let fatKcal = fat * 9;
-
-  // CARBOIDRATO RESTANTE
   let remainingKcal = calories - (proteinKcal + fatKcal);
   carbs = remainingKcal > 0 ? remainingKcal / 4 : 0;
 
-  // 🔒 TETO DE CARBOIDRATOS (Evita picos extremos em altíssima atividade)
   const maxCarbs = weight * 5; 
   if (carbs > maxCarbs) {
     carbs = maxCarbs;
-    // O excesso calórico vai para a gordura garantindo não quebrar a balança total
     fat = Math.max(weight * 0.5, (calories - (protein * 4) - (carbs * 4)) / 9);
   }
 
-  // 🔒 PISO DE CARBOIDRATOS PRO (Dinâmico e justo para pessoas leves)
   const minCarbs = Math.max(80, weight * 1.5);
   if (carbs < minCarbs) {
     carbs = minCarbs;
-    // A falta calórica é descontada da gordura (com trava de segurança)
     fat = Math.max(weight * 0.5, (calories - (protein * 4) - (carbs * 4)) / 9);
   }
 
-  // Se por alguma maluquice extrema as travas criarem gordura negativa/baixa, recalibramos
   if (fat < weight * 0.5) {
      fat = weight * 0.5;
-     // NÃO tocamos nas calorias. Se fat estiver cravado no mínimo e carbo no mínimo,
-     // é sinal de déficit severo. As calorias já estão blindadas acima.
   }
 
   return {

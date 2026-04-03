@@ -16,6 +16,7 @@ import ChatAssistant from '@/components/ChatAssistant';
 import Link from 'next/link';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
+import { FoodRestriction } from '@/types/patient';
 
 // Importação do motor metabólico centralizado
 import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
@@ -46,6 +47,7 @@ interface Patient {
   bf?: number | null;
   massa_magra?: number | null;
   leanMass?: number | null;
+  food_restrictions?: FoodRestriction[];
 }
 
 interface Lead {
@@ -80,6 +82,87 @@ const questionTitles = [
   "Rotina e Tempo para Cozinhar",
   "Maiores Obstáculos com Dietas"
 ];
+
+// 🔥 SCHEMA DO QFA PARA EXIBIÇÃO NO MODAL
+const qfaSchemaDisplay = [
+  {
+    category: "Leites e Derivados",
+    items: ["leite", "iogurte", "queijos", "requeijao"]
+  },
+  {
+    category: "Carnes e Ovos",
+    items: ["ovo", "carne_vermelha", "carne_porco", "frango", "peixe"]
+  },
+  {
+    category: "Óleos",
+    items: ["azeite", "bacon", "frituras", "manteiga", "maionese", "oleos_veg"]
+  },
+  {
+    category: "Cereais e Leguminosas",
+    items: ["arroz", "aveia", "pao", "macarrao", "bolos", "leguminosas", "soja", "oleaginosas"]
+  },
+  {
+    category: "Frutas/Verduras/Legumes",
+    items: ["fruta", "folhosos", "tuberculos", "legumes"]
+  },
+  {
+    category: "Petiscos embutidos Enlatados",
+    items: ["snacks", "instantaneos", "embutidos", "enlatados"]
+  },
+  {
+    category: "Sobremesas e Doces",
+    items: ["sorvete", "tortas", "chocolates", "balas"]
+  },
+  {
+    category: "Bebidas",
+    items: ["agua", "cafe_s_acucar", "suco_natural_s_acucar", "refrigerante", "cafe_c_acucar", "suco_natural_c_acucar", "suco_caixinha"]
+  }
+];
+
+const qfaLabels: Record<string, string> = {
+  leite: "Leite (copo de requeijão)",
+  iogurte: "Iogurte natural (copo de requeijão)",
+  queijos: "Queijos (1/2 fatia)",
+  requeijao: "Requeijão / Creme de ricota (1,5 colher sopa)",
+  ovo: "Ovo cozido / mexido (2 unidades)",
+  carne_vermelha: "Carnes vermelhas (1 unidade)",
+  carne_porco: "Carnes de Porco (1 fatia)",
+  frango: "Frango (1 unidade)",
+  peixe: "Peixe fresco / Frutos do Mar (1 unidade)",
+  azeite: "Azeite (1 colher de sopa)",
+  bacon: "Bacon e toucinho (1/2 fatia)",
+  frituras: "Frituras",
+  manteiga: "Manteiga / Margarina (1/2 colher sopa)",
+  maionese: "Maionese (1/2 colher sopa)",
+  oleos_veg: "Óleos vegetais (1 colher de sopa)",
+  arroz: "Arroz Branco / Integral (4 colheres sopa)",
+  aveia: "Aveia (4 colheres de sopa)",
+  pao: "Pão (1 unidade)",
+  macarrao: "Macarrão (3,5 colheres sopa)",
+  bolos: "Bolos caseiros (1 fatia pequena)",
+  leguminosas: "Leguminosas (1 concha)",
+  soja: "Soja (1 colher de servir)",
+  oleaginosas: "Oleaginosas (1 colher de sopa)",
+  fruta: "Fruta in natura (1 unidade/fatia)",
+  folhosos: "Folhosos (10 folhas)",
+  tuberculos: "Tubérculos (2 colheres sopa)",
+  legumes: "Legumes (2 colheres sopa)",
+  snacks: "Snacks (1 pacote)",
+  instantaneos: "Macarrão instantâneo (1 pacote)",
+  embutidos: "Embutidos (2 fatias)",
+  enlatados: "Enlatados (2 colheres sopa)",
+  sorvete: "Sorvete (1 unidade ou 2 bolas)",
+  tortas: "Tortas e Doces (1 fatia)",
+  chocolates: "Chocolates (1 unidade)",
+  balas: "Balas (1 unidade)",
+  agua: "Água (1 garrafa 510 ml)",
+  cafe_s_acucar: "Café sem açúcar (1 xícara)",
+  suco_natural_s_acucar: "Suco Natural sem açúcar (copo)",
+  refrigerante: "Refrigerante (copo)",
+  cafe_c_acucar: "Café com açúcar (1 xícara)",
+  suco_natural_c_acucar: "Suco Natural adoçado (copo)",
+  suco_caixinha: "Sucos de Caixinha (copo)"
+};
 
 const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -117,18 +200,37 @@ function useAdminDashboard() {
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
-  const [evalModalOpen, setEvalModalOpen] = useState<{isOpen: boolean, data: any, name: string}>({ isOpen: false, data: null, name: '' });
+  
+  // 🔥 ESTADO EXPANDIDO DO MODAL (com qfaData, foodRestrictions)
+  const [evalModalOpen, setEvalModalOpen] = useState<{
+    isOpen: boolean, 
+    data: any, 
+    name: string,
+    qfaData: any,
+    foodRestrictions: FoodRestriction[]
+  }>({ 
+    isOpen: false, 
+    data: null, 
+    name: '',
+    qfaData: null,
+    foodRestrictions: []
+  });
+  
+  // 🔥 ABA ATIVA DO MODAL
+  const [evalModalActiveTab, setEvalModalActiveTab] = useState<'avaliacao' | 'qfa' | 'perfil'>('avaliacao');
   
   const [dietModalOpen, setDietModalOpen] = useState<{
     isOpen: boolean, 
     id: string, 
     name: string,
-    targetRecommendation: any | null
+    targetRecommendation: any | null,
+    foodRestrictions: FoodRestriction[]
   }>({ 
     isOpen: false, 
     id: '', 
     name: '',
-    targetRecommendation: null 
+    targetRecommendation: null,
+    foodRestrictions: [] 
   });
   
   const [premiumPrice, setPremiumPrice] = useState('297.00');
@@ -272,6 +374,25 @@ function useAdminDashboard() {
     }
   }
 
+  // 🔥 FUNÇÃO PARA ABRIR MODAL COM DADOS COMPLETOS (QFA + RESTRIÇÕES)
+  const handleOpenEvalModal = async (patient: Patient) => {
+    // Buscar QFA do paciente
+    const { data: qfaData } = await supabase
+      .from('qfa_responses')
+      .select('answers')
+      .eq('user_id', patient.id)
+      .single();
+    
+    setEvalModalOpen({
+      isOpen: true,
+      data: patient.evaluation?.answers || null,
+      name: patient.full_name,
+      qfaData: qfaData?.answers || null,
+      foodRestrictions: patient.food_restrictions || []
+    });
+    setEvalModalActiveTab('avaliacao');
+  };
+
   const newPatientsCount = useMemo(() => patients.filter(p => p.isNew).length, [patients]);  
   const activeLeadsCount = useMemo(() => leads.length, [leads]);
   const unseenPatientsCount = useMemo(() => {
@@ -360,7 +481,7 @@ function useAdminDashboard() {
     }
   };
 
-  const handleDeleteDiet = async (patientId: string) => {
+    const handleDeleteDiet = async (patientId: string) => {
     if (!window.confirm("Tem certeza que deseja excluir o cardápio atual? Essa ação não pode ser desfeita.")) {
       return;
     }
@@ -402,7 +523,8 @@ function useAdminDashboard() {
         isOpen: true,
         id: p.id,
         name: p.full_name,
-        targetRecommendation: metabolicData.recommendation
+        targetRecommendation: metabolicData.recommendation,
+        foodRestrictions: p.food_restrictions || []
       });
 
     } catch (e) {
@@ -698,8 +820,21 @@ function useAdminDashboard() {
   };
 
   return {
-    state: { loading, patients, activeTab, searchTerm, showOnlyNew, unseenPatientsCount, todayTotalMessages, usageStats, filteredPatients, editingId, editForm, evalModalOpen, activeLeadsCount, filteredLeads, copiedLink, calendlyUrl, premiumPrice, mealPlanPrice, consultationPrice, isSavingPrice, dietModalOpen, selectedPatient, adminContext, statusFilter },
-    actions: { setActiveTab, handleBellClick, handleLogout, setSearchTerm, setStatusFilter, setEditingId, setEditForm, updateProfile, setEvalModalOpen, setDietModalOpen, setSelectedPatient, copyToClipboard, setPremiumPrice, setMealPlanPrice, setConsultationPrice, setCalendlyUrl, handleSaveSettings, handleGeneratePDF, fetchAdminData, handleDeleteDiet, handleOpenDietBuilder }
+    state: { 
+      loading, patients, activeTab, searchTerm, showOnlyNew, unseenPatientsCount, 
+      todayTotalMessages, usageStats, filteredPatients, editingId, editForm, 
+      evalModalOpen, evalModalActiveTab, activeLeadsCount, filteredLeads, copiedLink, 
+      calendlyUrl, premiumPrice, mealPlanPrice, consultationPrice, isSavingPrice, 
+      dietModalOpen, selectedPatient, adminContext, statusFilter 
+    },
+    actions: { 
+      setActiveTab, handleBellClick, handleLogout, setSearchTerm, setStatusFilter, 
+      setEditingId, setEditForm, updateProfile, setEvalModalOpen, setEvalModalActiveTab,
+      setDietModalOpen, setSelectedPatient, copyToClipboard, setPremiumPrice, 
+      setMealPlanPrice, setConsultationPrice, setCalendlyUrl, handleSaveSettings, 
+      handleGeneratePDF, fetchAdminData, handleDeleteDiet, handleOpenDietBuilder,
+      handleOpenEvalModal // 🔥 NOVA AÇÃO EXPORTADA
+    }
   };
 }
 
@@ -836,7 +971,7 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* TELA DE PACIENTES */}
+            {/* TELA DE PACIENTES */}
       {state.activeTab === 'pacientes' && (
         <>
           {/* ESTATÍSTICAS (WIDGET UNIFICADO NO MOBILE) */}
@@ -990,12 +1125,12 @@ export default function AdminDashboard() {
                             </div>
                           </div>
 
-                          {/* Avaliação */}
+                          {/* 🔥 AVALIAÇÃO - USANDO NOVA FUNÇÃO handleOpenEvalModal */}
                           {p.evaluation ? (
-                            <button onClick={() => actions.setEvalModalOpen({ isOpen: true, data: p.evaluation?.answers, name: p.full_name })} className="w-full flex items-center justify-between bg-white border border-nutri-100 hover:border-nutri-300 hover:shadow-md transition-all p-3 md:p-4 rounded-xl md:rounded-2xl mb-5 md:mb-6 group text-left relative overflow-hidden">
+                            <button onClick={() => actions.handleOpenEvalModal(p)} className="w-full flex items-center justify-between bg-white border border-nutri-100 hover:border-nutri-300 hover:shadow-md transition-all p-3 md:p-4 rounded-xl md:rounded-2xl mb-5 md:mb-6 group text-left relative overflow-hidden">
                               <div className="absolute left-0 top-0 bottom-0 w-1 bg-nutri-400 group-hover:bg-nutri-500 transition-colors" />
                               <div className="flex-1 pr-3 pl-2">
-                                <p className="font-bold text-nutri-700 mb-0.5 md:mb-1 text-[10px] md:text-[11px] uppercase tracking-wider flex items-center gap-1.5"><Eye size={12} className="md:w-3.5 md:h-3.5"/> Avaliação Inicial</p>
+                                <p className="font-bold text-nutri-700 mb-0.5 md:mb-1 text-[10px] md:text-[11px] uppercase tracking-wider flex items-center gap-1.5"><Eye size={12} className="md:w-3.5 md:h-3.5"/> Inicial + 🍽️ QFA + 🚫 Alergias</p>
                                 <p className="line-clamp-1 text-xs md:text-sm font-medium text-stone-500 italic">"{Object.values(p.evaluation.answers)[0] as string}"</p>
                               </div>
                               <ChevronRight size={16} className="text-nutri-400 group-hover:text-nutri-600 transition-colors transform group-hover:translate-x-1" />
@@ -1233,27 +1368,184 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE AVALIAÇÃO */}
+      {/* 🔥 NOVO MODAL UNIFICADO COM 3 ABAS: AVALIAÇÃO INICIAL, QFA E PERFIL ALIMENTAR */}
       {state.evalModalOpen.isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300">
-            <div className="flex justify-between items-center p-5 md:p-6 border-b border-stone-100 shrink-0">
-              <div>
-                <h3 className="font-extrabold text-lg md:text-xl text-stone-900 tracking-tight">Avaliação Inicial</h3>
-                <p className="text-xs md:text-sm font-semibold text-stone-500 mt-0.5">{state.evalModalOpen.name}</p>
-              </div>
-              <button onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '' })} className="p-2 bg-stone-50 text-stone-500 hover:bg-stone-100 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-5 md:p-6 overflow-y-auto space-y-3 md:space-y-4 custom-scrollbar">
-              {Object.entries(state.evalModalOpen.data || {}).map(([k, v]) => (
-                <div key={k} className="bg-stone-50/80 border border-stone-100 p-4 md:p-5 rounded-2xl">
-                  <p className="text-[10px] md:text-[11px] font-bold text-nutri-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-nutri-100 text-nutri-800 flex items-center justify-center text-[10px] shrink-0">{parseInt(k)+1}</span>
-                    <span className="line-clamp-2 leading-tight">{questionTitles[parseInt(k)]}</span>
-                  </p>
-                  <p className="text-sm font-medium text-stone-800 ml-7 leading-relaxed">{v as string}</p>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-3xl flex flex-col max-h-[85vh] sm:max-h-[90vh] shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300">
+            
+            {/* HEADER COM ABAS */}
+            <div className="border-b border-stone-100 shrink-0">
+              <div className="flex justify-between items-center p-5 md:p-6 pb-0">
+                <div>
+                  <h3 className="font-extrabold text-lg md:text-xl text-stone-900 tracking-tight">Prontuário do Paciente</h3>
+                  <p className="text-xs md:text-sm font-semibold text-stone-500 mt-0.5">{state.evalModalOpen.name}</p>
                 </div>
-              ))}
+                <button 
+                  onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [] })} 
+                  className="p-2 bg-stone-50 text-stone-500 hover:bg-stone-100 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              {/* 🔥 ABAS */}
+              <div className="flex gap-1 px-5 md:px-6 mt-4">
+                <button
+                  onClick={() => actions.setEvalModalActiveTab('avaliacao')}
+                  className={`px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition-all ${
+                    state.evalModalActiveTab === 'avaliacao'
+                      ? 'bg-nutri-50 text-nutri-700 border-b-2 border-nutri-500'
+                      : 'text-stone-400 hover:text-stone-600'
+                  }`}
+                >
+                  📋 Avaliação Inicial
+                </button>
+                <button
+                  onClick={() => actions.setEvalModalActiveTab('qfa')}
+                  className={`px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition-all ${
+                    state.evalModalActiveTab === 'qfa'
+                      ? 'bg-nutri-50 text-nutri-700 border-b-2 border-nutri-500'
+                      : 'text-stone-400 hover:text-stone-600'
+                  }`}
+                >
+                  🍽️ QFA
+                </button>
+                <button
+                  onClick={() => actions.setEvalModalActiveTab('perfil')}
+                  className={`px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition-all ${
+                    state.evalModalActiveTab === 'perfil'
+                      ? 'bg-nutri-50 text-nutri-700 border-b-2 border-nutri-500'
+                      : 'text-stone-400 hover:text-stone-600'
+                  }`}
+                >
+                  ⚠️ Perfil Alimentar
+                </button>
+              </div>
+            </div>
+
+            {/* CONTEÚDO DINÂMICO POR ABA */}
+            <div className="p-5 md:p-6 overflow-y-auto custom-scrollbar flex-1">
+              
+              {/* ABA 1: AVALIAÇÃO INICIAL */}
+              {state.evalModalActiveTab === 'avaliacao' && (
+                <div className="space-y-3 md:space-y-4 animate-in fade-in duration-200">
+                  {Object.entries(state.evalModalOpen.data || {}).length === 0 ? (
+                    <div className="text-center py-12 text-stone-400 font-medium">
+                      <FileText size={48} className="mx-auto mb-3 opacity-50" />
+                      <p>Nenhuma avaliação inicial preenchida</p>
+                    </div>
+                  ) : (
+                    Object.entries(state.evalModalOpen.data || {}).map(([k, v]) => (
+                      <div key={k} className="bg-stone-50/80 border border-stone-100 p-4 md:p-5 rounded-2xl">
+                        <p className="text-[10px] md:text-[11px] font-bold text-nutri-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-nutri-100 text-nutri-800 flex items-center justify-center text-[10px] shrink-0">{parseInt(k as string)+1}</span>
+                          <span className="line-clamp-2 leading-tight">{questionTitles[parseInt(k as string)]}</span>
+                        </p>
+                        <p className="text-sm font-medium text-stone-800 ml-7 leading-relaxed">{v as string}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* ABA 2: QFA (Questionário de Frequência Alimentar) */}
+              {state.evalModalActiveTab === 'qfa' && (
+                <div className="space-y-3 md:space-y-4 animate-in fade-in duration-200">
+                  {!state.evalModalOpen.qfaData || Object.keys(state.evalModalOpen.qfaData).length === 0 ? (
+                    <div className="text-center py-12 text-stone-400 font-medium">
+                      <Utensils size={48} className="mx-auto mb-3 opacity-50" />
+                      <p>Nenhum QFA preenchido</p>
+                    </div>
+                  ) : (
+                    qfaSchemaDisplay.map((section, idx) => {
+                      const answeredItems = section.items.filter(itemId => state.evalModalOpen.qfaData?.[itemId]);
+                      if (answeredItems.length === 0) return null;
+                      
+                      return (
+                        <div key={idx} className="bg-stone-50/80 border border-stone-100 p-4 md:p-5 rounded-2xl">
+                          <h4 className="text-[11px] font-black text-nutri-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <div className="w-1.5 h-4 bg-nutri-500 rounded-full"></div>
+                            {section.category}
+                          </h4>
+                          <div className="space-y-2">
+                            {answeredItems.map(itemId => (
+                              <div key={itemId} className="flex justify-between items-center py-2 border-b border-stone-100 last:border-0">
+                                <span className="text-xs font-medium text-stone-700">{qfaLabels[itemId] || itemId}</span>
+                                <span className="text-xs font-extrabold text-nutri-800 bg-nutri-100 px-3 py-1 rounded-full">
+                                  {state.evalModalOpen.qfaData?.[itemId]}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* ABA 3: PERFIL ALIMENTAR (Restrições) */}
+              {state.evalModalActiveTab === 'perfil' && (
+                <div className="space-y-4 md:space-y-5 animate-in fade-in duration-200">
+                  {!state.evalModalOpen.foodRestrictions || state.evalModalOpen.foodRestrictions.length === 0 ? (
+                    <div className="text-center py-12 text-stone-400 font-medium">
+                      <AlertCircle size={48} className="mx-auto mb-3 opacity-50" />
+                      <p>Nenhuma restrição alimentar cadastrada</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Alergias */}
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'allergy').length > 0 && (
+                        <div className="bg-red-50 border border-red-200 p-4 md:p-5 rounded-2xl">
+                          <h4 className="text-[11px] font-black text-red-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            🚫 Alergias
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'allergy').map((r, idx) => (
+                              <span key={idx} className="bg-red-100 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold">
+                                {r.food || r.tag || r.foodId}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Intolerâncias */}
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'intolerance').length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 p-4 md:p-5 rounded-2xl">
+                          <h4 className="text-[11px] font-black text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            ⚠️ Intolerâncias
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'intolerance').map((r, idx) => (
+                              <span key={idx} className="bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg text-xs font-bold">
+                                {r.food || r.tag || r.foodId}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Restrições */}
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'restriction').length > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 p-4 md:p-5 rounded-2xl">
+                          <h4 className="text-[11px] font-black text-blue-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            📋 Restrições
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'restriction').map((r, idx) => (
+                              <span key={idx} className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold">
+                                {r.food || r.tag || r.foodId}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         </div>
@@ -1289,6 +1581,7 @@ export default function AdminDashboard() {
                   patientName={state.dietModalOpen.name} 
                   onClose={() => { actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false }); actions.fetchAdminData(); }} 
                   targetRecommendation={state.dietModalOpen.targetRecommendation} 
+                  foodRestrictions={state.dietModalOpen.foodRestrictions}
                 />
               </div>
             </div>

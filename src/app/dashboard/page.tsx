@@ -9,7 +9,7 @@ import {
   Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, 
   Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
   Smile, Frown, Meh, BellRing, Scale, Layers, Activity as ActivityIcon, Syringe,
-  Target, Calendar, ArrowDown, ArrowUp, Minus, ChevronRight
+  Target, Calendar, ArrowDown, ArrowUp, Minus, ChevronRight, ShieldAlert, ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -88,9 +88,10 @@ export default function Dashboard() {
 
     const userId = session.user.id;
 
+    // 🔥 NOVO: Buscando o food_restrictions junto no perfil
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan')
+      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions')
       .eq('id', userId)
       .single();
 
@@ -556,6 +557,13 @@ export default function Dashboard() {
     };
   }, [timelineData, profile?.meta_peso]);
 
+  // 🔥 Lógica de status para o Card de Perfil Alimentar
+  const foodRestrictions = profile?.food_restrictions || [];
+  const hasFoodRestrictions = foodRestrictions.length > 0;
+  const foodStatusConfig = hasFoodRestrictions 
+    ? { icon: <ShieldAlert size={20} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
+    : { icon: <ShieldCheck size={20} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
       <div className="flex flex-col items-center gap-4">
@@ -597,9 +605,27 @@ export default function Dashboard() {
                 <h3 className="text-base md:text-lg font-bold tracking-tight leading-tight">Avaliação Pendente</h3>
                 <p className="text-rose-100/90 text-xs md:text-sm mt-0.5 line-clamp-1 md:line-clamp-none">Preencha seu Raio-X alimentar. Assim a Nutri Vanusa poderá criar um plano personalizado para você.</p>
               </div>
-              <Link href="/paciente/avaliacao" className="shrink-0 bg-white text-rose-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-50 transition-all shadow-sm">
-                Começar
-              </Link>
+              
+              {/* 🔥 NOVO: Botões lado a lado e "Botão Inteligente" */}
+              <div className="flex gap-2 shrink-0">
+                <Link 
+                  href="/paciente/avaliacao"
+                  className="bg-white text-rose-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
+                >
+                  Avaliação
+                </Link>
+                <Link 
+                  href="/dashboard/completar-perfil"
+                  className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center transition-all shadow-sm ${
+                    hasFoodRestrictions
+                      ? 'bg-green-500 text-white hover:bg-green-400'
+                      : 'bg-yellow-500 text-white hover:bg-yellow-400'
+                  }`}
+                >
+                  Perfil Alimentar
+                </Link>
+              </div>
+
             </div>
           </div>
         )}
@@ -927,7 +953,7 @@ export default function Dashboard() {
             <p className="text-lg md:text-xl font-medium leading-snug tracking-tight relative z-10">{evaluation ? Object.values(evaluation)[0] as string : 'Objetivo em definição.'}</p>
           </div>
           
-          {/* Progresso de Peso (SUBSTITUIU A CINTURA) */}
+          {/* Progresso de Peso */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 relative overflow-hidden flex flex-col justify-center min-h-[140px]">
             <div className="flex items-center gap-1.5 mb-4 text-stone-400 relative z-10">
               <Scale size={14} /><h3 className="font-bold uppercase text-[10px] tracking-[0.2em]">Progresso de Peso</h3>
@@ -1002,14 +1028,17 @@ export default function Dashboard() {
             <ChevronRight size={18} className="text-stone-300" />
           </Link>
 
-          <Link href="/paciente/avaliacao" className="p-4 bg-white rounded-2xl shadow-sm border border-stone-100 hover:border-nutri-200 transition-all duration-200 flex items-center justify-between active:scale-[0.98]">
+          {/* 🔥 NOVO: CARD DE PERFIL ALIMENTAR E SEGURANÇA (Substitui botão simples do Raio X) */}
+          <Link href="/dashboard/completar-perfil" className={`p-4 rounded-2xl shadow-sm border transition-all duration-200 flex items-center justify-between active:scale-[0.98] bg-white border-stone-100 hover:border-nutri-200`}>
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-nutri-50 text-nutri-700">
-                <ClipboardCheck size={20} />
+              <div className={`p-3 rounded-xl ${foodStatusConfig.bgClass}`}>
+                {foodStatusConfig.icon}
               </div>
               <div>
-                <h3 className="font-bold text-stone-900 text-sm tracking-tight leading-tight">Raio-X Alimentar</h3>
-                <p className="text-xs text-stone-500 font-medium mt-0.5">{hasCompletedQFA ? 'Revisar respostas' : 'Preencher pendência'}</p>
+                <h3 className={`font-bold text-sm tracking-tight leading-tight ${foodStatusConfig.textClass}`}>Perfil Alimentar</h3>
+                <p className="text-xs text-stone-500 font-medium mt-0.5">
+                  {!hasCompletedQFA ? 'Pendência (Preencha agora)' : foodStatusConfig.label}
+                </p>
               </div>
             </div>
             <ChevronRight size={18} className="text-stone-300" />

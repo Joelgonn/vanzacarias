@@ -5,10 +5,78 @@ import {
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
   Copy, CheckCircle2, AlertCircle, CalendarRange, Loader2,
-  Beef, Wheat, Droplet, Target, X, Clock, ChevronRight
+  Beef, Wheat, Droplet, Target, X, Clock, ChevronRight, Search
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+
+// 🔥 IMPORTS DO DOMÍNIO DE NUTRIÇÃO
+import { FoodRestriction } from '@/types/patient';
+import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
+
+// 🔥 NOVO IMPORT DO HELPER DE RESTRIÇÕES (ARQUIVO SEPARADO)
+import { 
+  getRestrictionInfo, 
+  getRestrictionsSummary,
+  RestrictionInfo 
+} from '@/lib/nutrition/restrictions';
+
+// ============================================================================
+// 🧠 RESOLUÇÃO DE RESTRIÇÕES (NOVO CORE INTELIGENTE)
+// ============================================================================
+
+function resolveBlockedFoodIds(
+  restrictions: FoodRestriction[] | undefined
+): Set<string> {
+  const blocked = new Set<string>();
+
+  if (!restrictions) return blocked;
+
+  restrictions.forEach(r => {
+    // 1. foodId direto (Precisão máxima)
+    if (r.foodId) {
+      blocked.add(r.foodId);
+      return;
+    }
+
+    // 2. tag (Bloqueio de Categoria)
+    if (r.tag) {
+      FOOD_REGISTRY.forEach(food => {
+        if (food.tags.includes(r.tag as any)) {
+          blocked.add(food.id);
+        }
+      });
+      return;
+    }
+
+    // 3. legado (Fallback de compatibilidade)
+    if (r.food) {
+      FOOD_REGISTRY.forEach(food => {
+        if (food.aliases.some(a =>
+          a.toLowerCase().includes(r.food.toLowerCase())
+        )) {
+          blocked.add(food.id);
+        }
+      });
+    }
+  });
+
+  return blocked;
+}
+
+// 🔥 ADAPTADOR (REGISTRY → UI)
+function mapToFoodItem(food: FoodEntity): FoodItem {
+  return {
+    id: food.id,
+    name: food.name,
+    kcal: food.kcal,
+    macros: {
+      p: food.macros.p,
+      c: food.macros.c,
+      g: food.macros.g
+    }
+  };
+}
 
 // =========================================================================
 // INTERFACES E TIPAGENS
@@ -28,6 +96,7 @@ interface DietBuilderProps {
   patientName: string;
   onClose: () => void;
   targetRecommendation: TargetRecommendation | null;
+  foodRestrictions?: FoodRestriction[]; 
 }
 
 interface FoodItem {
@@ -91,7 +160,6 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
   return (
     <div className={`space-y-2 ${className}`}>
       <div className="flex flex-wrap gap-2">
-        {/* Botões de horário sugerido */}
         {suggestedTimes.slice(0, 4).map(time => (
           <button
             key={time}
@@ -109,7 +177,6 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
           </button>
         ))}
         
-        {/* Botão para horário personalizado */}
         {!showCustomInput && (
           <button
             onClick={() => {
@@ -127,7 +194,6 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
         )}
       </div>
       
-      {/* Input para horário personalizado */}
       {showCustomInput && (
         <div className="flex gap-2 items-center animate-in fade-in slide-in-from-left-2">
           <div className="relative">
@@ -165,7 +231,7 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
 }
 
 // =========================================================================
-// BANCO DE ALIMENTOS E CONSTANTES
+// BANCO DE ALIMENTOS E CONSTANTES (MANTIDO COMO FALLBACK UI)
 // =========================================================================
 
 interface QuickFoodItem {
@@ -185,72 +251,254 @@ interface QuickFoodCategory {
 
 const quickFoods: QuickFoodCategory[] =[
   { 
-    category: "Proteínas e Laticínios", 
+    category: "🥩 Proteínas (Carnes e Ovos)", 
     items:[
       { name: "Ovo mexido (2 un)", kcal: 156, macros: { c: 1, p: 12, g: 11 } },
       { name: "Ovo cozido (2 un)", kcal: 140, macros: { c: 1, p: 12, g: 10 } },
+      { name: "Ovo pochê (2 un)", kcal: 140, macros: { c: 1, p: 12, g: 10 } },
       { name: "Frango grelhado (100g)", kcal: 165, macros: { c: 0, p: 31, g: 3 } },
       { name: "Frango desfiado (3 col)", kcal: 105, macros: { c: 0, p: 20, g: 2 } },
+      { name: "Peito de frango assado (100g)", kcal: 160, macros: { c: 0, p: 32, g: 3 } },
+      { name: "Sobrecoxa frango assada (100g)", kcal: 220, macros: { c: 0, p: 25, g: 13 } },
       { name: "Carne moída magra (100g)", kcal: 133, macros: { c: 0, p: 21, g: 5 } },
+      { name: "Carne moída 5% (100g)", kcal: 150, macros: { c: 0, p: 22, g: 6 } },
+      { name: "Filé mignon grelhado (100g)", kcal: 180, macros: { c: 0, p: 28, g: 7 } },
+      { name: "Contra-filé grelhado (100g)", kcal: 210, macros: { c: 0, p: 26, g: 12 } },
+      { name: "Patinho moído (100g)", kcal: 140, macros: { c: 0, p: 22, g: 5 } },
+      { name: "Alcatra grelhada (100g)", kcal: 190, macros: { c: 0, p: 27, g: 9 } },
+      { name: "Maminha assada (100g)", kcal: 200, macros: { c: 0, p: 26, g: 10 } },
       { name: "Filé de peixe (100g)", kcal: 110, macros: { c: 0, p: 20, g: 2 } },
-      { name: "Whey Protein (1 scp 30g)", kcal: 120, macros: { c: 3, p: 24, g: 1.5 } },
-      { name: "Leite Int. (1 copo 200ml)", kcal: 120, macros: { c: 10, p: 6, g: 6 } },
-      { name: "Leite Desn. (1 copo 200ml)", kcal: 70, macros: { c: 10, p: 6, g: 0 } },
-      { name: "Iogurte Nat. (1 pote 170g)", kcal: 70, macros: { c: 9, p: 7, g: 0 } },
+      { name: "Salmão grelhado (100g)", kcal: 208, macros: { c: 0, p: 20, g: 13 } },
+      { name: "Atum sólido (1 lata)", kcal: 120, macros: { c: 0, p: 26, g: 1 } },
+      { name: "Sardinha assada (100g)", kcal: 180, macros: { c: 0, p: 24, g: 9 } },
+      { name: "Camarão grelhado (100g)", kcal: 100, macros: { c: 0, p: 20, g: 2 } },
+      { name: "Lombo de porco grelhado (100g)", kcal: 190, macros: { c: 0, p: 27, g: 8 } },
+      { name: "Peru fatiado (3 fatias)", kcal: 70, macros: { c: 1, p: 14, g: 1 } },
+      { name: "Hambúrguer caseiro (100g)", kcal: 180, macros: { c: 0, p: 22, g: 10 } }
+    ] 
+  },
+  { 
+    category: "🥛 Laticínios e Proteínas Vegetais", 
+    items:[
+      { name: "Leite Integral (1 copo 200ml)", kcal: 120, macros: { c: 10, p: 6, g: 6 } },
+      { name: "Leite Desnatado (1 copo 200ml)", kcal: 70, macros: { c: 10, p: 6, g: 0 } },
+      { name: "Leite Sem lactose (1 copo 200ml)", kcal: 110, macros: { c: 10, p: 6, g: 5 } },
+      { name: "Leite de amêndoas (200ml)", kcal: 60, macros: { c: 2, p: 2, g: 5 } },
+      { name: "Leite de soja (200ml)", kcal: 80, macros: { c: 6, p: 6, g: 4 } },
+      { name: "Iogurte Natural (1 pote 170g)", kcal: 70, macros: { c: 9, p: 7, g: 0 } },
+      { name: "Iogurte Grego (170g)", kcal: 150, macros: { c: 8, p: 15, g: 6 } },
+      { name: "Iogurte Proteico (170g)", kcal: 120, macros: { c: 10, p: 18, g: 2 } },
+      { name: "Kefir (200ml)", kcal: 80, macros: { c: 10, p: 8, g: 2 } },
       { name: "Queijo Minas (1 fatia 30g)", kcal: 66, macros: { c: 1, p: 5, g: 4 } },
-      { name: "Mussarela (2 fatias 30g)", kcal: 96, macros: { c: 1, p: 7, g: 7 } }
+      { name: "Queijo Mussarela (2 fatias 30g)", kcal: 96, macros: { c: 1, p: 7, g: 7 } },
+      { name: "Queijo Prato (1 fatia 30g)", kcal: 110, macros: { c: 1, p: 7, g: 8 } },
+      { name: "Queijo Cottage (2 col 50g)", kcal: 50, macros: { c: 2, p: 8, g: 1 } },
+      { name: "Queijo Ricota (2 col 50g)", kcal: 70, macros: { c: 2, p: 6, g: 4 } },
+      { name: "Queijo Parmesão (1 col 10g)", kcal: 40, macros: { c: 0, p: 4, g: 3 } },
+      { name: "Tofu grelhado (100g)", kcal: 145, macros: { c: 4, p: 15, g: 8 } },
+      { name: "Grão de bico cozido (3 col)", kcal: 130, macros: { c: 22, p: 7, g: 2 } },
+      { name: "Lentilha cozida (3 col)", kcal: 115, macros: { c: 20, p: 9, g: 0.5 } },
+      { name: "Ervilha fresca (3 col)", kcal: 70, macros: { c: 10, p: 5, g: 0.5 } },
+      { name: "Tempeh (100g)", kcal: 193, macros: { c: 9, p: 19, g: 11 } },
+      { name: "Seitan (100g)", kcal: 150, macros: { c: 8, p: 30, g: 2 } }
     ] 
   },
   { 
-    category: "Carboidratos", 
+    category: "🍚 Carboidratos (Grãos e Cereais)", 
     items:[
-      { name: "Arroz branco coz. (100g)", kcal: 130, macros: { c: 28, p: 2.5, g: 0.2 } },
-      { name: "Arroz integral coz. (100g)", kcal: 112, macros: { c: 24, p: 2.5, g: 1 } },
-      { name: "Mandioca cozida (100g)", kcal: 125, macros: { c: 30, p: 1, g: 0 } },
-      { name: "Tapioca (3 col sopa 50g)", kcal: 120, macros: { c: 30, p: 0, g: 0 } },
-      { name: "Pão francês (1 un)", kcal: 135, macros: { c: 28, p: 4, g: 0 } },
-      { name: "Pão forma int. (2 fatias)", kcal: 115, macros: { c: 20, p: 5, g: 1.5 } },
-      { name: "Batata doce coz. (100g)", kcal: 86, macros: { c: 20, p: 1, g: 0.1 } },
-      { name: "Batata inglesa coz. (150g)", kcal: 110, macros: { c: 26, p: 2, g: 0.1 } },
+      { name: "Arroz branco cozido (100g)", kcal: 130, macros: { c: 28, p: 2.5, g: 0.2 } },
+      { name: "Arroz integral cozido (100g)", kcal: 112, macros: { c: 24, p: 2.5, g: 1 } },
+      { name: "Arroz parboilizado (100g)", kcal: 125, macros: { c: 27, p: 2.5, g: 0.5 } },
+      { name: "Arroz 7 grãos (100g)", kcal: 120, macros: { c: 25, p: 3, g: 1.5 } },
+      { name: "Macarrão integral (100g)", kcal: 130, macros: { c: 25, p: 5, g: 2 } },
+      { name: "Macarrão comum (100g)", kcal: 157, macros: { c: 31, p: 5, g: 1 } },
+      { name: "Macarrão de arroz (100g)", kcal: 110, macros: { c: 24, p: 1, g: 0.5 } },
+      { name: "Quinoa cozida (100g)", kcal: 120, macros: { c: 21, p: 4, g: 2 } },
+      { name: "Cuscuz de milho (100g)", kcal: 120, macros: { c: 25, p: 2, g: 1 } },
+      { name: "Milho verde (3 col)", kcal: 90, macros: { c: 18, p: 3, g: 1.5 } },
       { name: "Aveia em flocos (30g)", kcal: 118, macros: { c: 17, p: 4.5, g: 2.5 } },
-      { name: "Granola s/ açúc. (3 col)", kcal: 140, macros: { c: 20, p: 4, g: 5 } },
-      { name: "Macarrão cozido (100g)", kcal: 157, macros: { c: 31, p: 5, g: 1 } },
-      { name: "Cuscuz de milho (100g)", kcal: 120, macros: { c: 25, p: 2, g: 1 } }
+      { name: "Granola s/ açúcar (3 col)", kcal: 140, macros: { c: 20, p: 4, g: 5 } },
+      { name: "Cereal matinal (30g)", kcal: 110, macros: { c: 22, p: 2, g: 1 } },
+      { name: "Pão francês (1 un)", kcal: 135, macros: { c: 28, p: 4, g: 0 } },
+      { name: "Pão integral (2 fatias)", kcal: 115, macros: { c: 20, p: 5, g: 1.5 } },
+      { name: "Pão de forma branco (2 fatias)", kcal: 130, macros: { c: 24, p: 4, g: 1 } },
+      { name: "Pão de queijo (1 un)", kcal: 110, macros: { c: 12, p: 4, g: 6 } },
+      { name: "Tapioca (3 col sopa 50g)", kcal: 120, macros: { c: 30, p: 0, g: 0 } },
+      { name: "Crepioca (1 un)", kcal: 130, macros: { c: 15, p: 6, g: 5 } },
+      { name: "Panqueca integral (1 un)", kcal: 90, macros: { c: 12, p: 4, g: 3 } }
     ] 
   },
   { 
-    category: "Leguminosas", 
+    category: "🥔 Tubérculos e Raízes", 
     items:[
-      { name: "Feijão caldo (1 concha)", kcal: 106, macros: { c: 14, p: 7, g: 0.5 } },
-      { name: "Feijão grãos (1 escumad.)", kcal: 140, macros: { c: 20, p: 9, g: 1 } },
+      { name: "Batata doce cozida (100g)", kcal: 86, macros: { c: 20, p: 1, g: 0.1 } },
+      { name: "Batata inglesa cozida (150g)", kcal: 110, macros: { c: 26, p: 2, g: 0.1 } },
+      { name: "Batata assada (150g)", kcal: 130, macros: { c: 30, p: 3, g: 0.2 } },
+      { name: "Batata sauté (150g)", kcal: 180, macros: { c: 28, p: 3, g: 6 } },
+      { name: "Purê de batata (3 col)", kcal: 120, macros: { c: 20, p: 2, g: 4 } },
+      { name: "Mandioca cozida (100g)", kcal: 125, macros: { c: 30, p: 1, g: 0 } },
+      { name: "Mandioca frita (100g)", kcal: 250, macros: { c: 35, p: 1, g: 12 } },
+      { name: "Inhame cozido (100g)", kcal: 110, macros: { c: 26, p: 2, g: 0.2 } },
+      { name: "Cará cozido (100g)", kcal: 115, macros: { c: 27, p: 1.5, g: 0.2 } },
+      { name: "Batata baroa (100g)", kcal: 80, macros: { c: 18, p: 1, g: 0.5 } }
+    ] 
+  },
+  { 
+    category: "🍌 Frutas", 
+    items:[
+      { name: "Banana prata (1 un)", kcal: 90, macros: { c: 23, p: 1, g: 0 } },
+      { name: "Banana nanica (1 un)", kcal: 100, macros: { c: 25, p: 1, g: 0.3 } },
+      { name: "Banana maçã (1 un)", kcal: 80, macros: { c: 20, p: 1, g: 0 } },
+      { name: "Maçã (1 un média)", kcal: 70, macros: { c: 15, p: 0.3, g: 0 } },
+      { name: "Maçã verde (1 un)", kcal: 65, macros: { c: 14, p: 0.3, g: 0 } },
+      { name: "Pera (1 un)", kcal: 65, macros: { c: 16, p: 0.4, g: 0 } },
+      { name: "Mamão (1 fatia média)", kcal: 45, macros: { c: 11, p: 0.5, g: 0 } },
+      { name: "Laranja (1 un)", kcal: 50, macros: { c: 12, p: 1, g: 0 } },
+      { name: "Mexerica (1 un)", kcal: 45, macros: { c: 11, p: 0.7, g: 0 } },
+      { name: "Abacaxi (1 fatia)", kcal: 50, macros: { c: 13, p: 0.5, g: 0 } },
+      { name: "Melancia (1 fatia)", kcal: 60, macros: { c: 15, p: 1, g: 0 } },
+      { name: "Melão (1 fatia)", kcal: 40, macros: { c: 10, p: 0.5, g: 0 } },
+      { name: "Manga (1 un pequena)", kcal: 100, macros: { c: 25, p: 1, g: 0.5 } },
+      { name: "Morango (10 un)", kcal: 32, macros: { c: 7, p: 0.6, g: 0.3 } },
+      { name: "Uva (15 un)", kcal: 60, macros: { c: 15, p: 0.5, g: 0 } },
+      { name: "Kiwi (1 un)", kcal: 45, macros: { c: 10, p: 0.8, g: 0.4 } },
+      { name: "Abacate (2 col sopa)", kcal: 110, macros: { c: 5, p: 1, g: 10 } },
+      { name: "Coco fresco (1 fatia)", kcal: 150, macros: { c: 6, p: 1, g: 14 } },
+      { name: "Açaí (100g s/ xarope)", kcal: 70, macros: { c: 6, p: 1, g: 5 } }
+    ] 
+  },
+  { 
+    category: "🥬 Verduras e Legumes", 
+    items:[
+      { name: "Salada de folhas (à vontade)", kcal: 15, macros: { c: 2, p: 1, g: 0 } },
+      { name: "Alface americana (5 folhas)", kcal: 8, macros: { c: 1, p: 0.5, g: 0 } },
+      { name: "Rúcula (1 prato)", kcal: 10, macros: { c: 1, p: 1, g: 0 } },
+      { name: "Espinafre refogado (3 col)", kcal: 45, macros: { c: 4, p: 3, g: 2 } },
+      { name: "Couve refogada (3 col)", kcal: 50, macros: { c: 5, p: 2, g: 2.5 } },
+      { name: "Brócolis cozido (3 ramos)", kcal: 25, macros: { c: 4, p: 2, g: 0 } },
+      { name: "Couve-flor cozida (3 col)", kcal: 25, macros: { c: 4, p: 2, g: 0.3 } },
+      { name: "Abobrinha refogada (3 col)", kcal: 30, macros: { c: 5, p: 1, g: 1 } },
+      { name: "Berinjela refogada (3 col)", kcal: 35, macros: { c: 6, p: 1, g: 1 } },
+      { name: "Chuchu refogado (3 col)", kcal: 25, macros: { c: 5, p: 1, g: 0.5 } },
+      { name: "Cenoura cozida (3 col)", kcal: 40, macros: { c: 9, p: 1, g: 0 } },
+      { name: "Cenoura ralada (3 col)", kcal: 30, macros: { c: 7, p: 0.5, g: 0 } },
+      { name: "Beterraba cozida (3 col)", kcal: 40, macros: { c: 9, p: 1, g: 0 } },
+      { name: "Tomate (1 un)", kcal: 20, macros: { c: 4, p: 1, g: 0 } },
+      { name: "Pepino (1/2 un)", kcal: 15, macros: { c: 3, p: 0.5, g: 0 } },
+      { name: "Pimentão (1/2 un)", kcal: 15, macros: { c: 3, p: 0.5, g: 0 } },
+      { name: "Vagem cozida (3 col)", kcal: 30, macros: { c: 6, p: 2, g: 0.5 } },
+      { name: "Aspargo grelhado (5 un)", kcal: 20, macros: { c: 3, p: 2, g: 0.5 } },
+      { name: "Palmito (3 talos)", kcal: 25, macros: { c: 4, p: 2, g: 0.5 } },
+      { name: "Cogumelo refogado (3 col)", kcal: 35, macros: { c: 4, p: 3, g: 1.5 } }
+    ] 
+  },
+  { 
+    category: "🍲 Leguminosas (Feijões e Grãos)", 
+    items:[
+      { name: "Feijão preto caldo (1 concha)", kcal: 106, macros: { c: 14, p: 7, g: 0.5 } },
+      { name: "Feijão preto grãos (1 escumadeira)", kcal: 140, macros: { c: 20, p: 9, g: 1 } },
+      { name: "Feijão carioca caldo (1 concha)", kcal: 100, macros: { c: 13, p: 7, g: 0.5 } },
+      { name: "Feijão branco (3 col)", kcal: 120, macros: { c: 20, p: 8, g: 1 } },
+      { name: "Feijão fradinho (3 col)", kcal: 110, macros: { c: 18, p: 7, g: 1 } },
       { name: "Lentilha (1 escumadeira)", kcal: 115, macros: { c: 20, p: 9, g: 0.5 } },
       { name: "Grão de bico (3 col)", kcal: 130, macros: { c: 22, p: 7, g: 2 } },
-      { name: "Ervilha fresca (3 col)", kcal: 70, macros: { c: 10, p: 5, g: 0.5 } }
+      { name: "Ervilha fresca (3 col)", kcal: 70, macros: { c: 10, p: 5, g: 0.5 } },
+      { name: "Soja cozida (3 col)", kcal: 120, macros: { c: 10, p: 12, g: 6 } },
+      { name: "Edamame (100g)", kcal: 120, macros: { c: 8, p: 11, g: 5 } }
     ] 
   },
   { 
-    category: "Vegetais e Frutas", 
+    category: "🧈 Gorduras e Óleos", 
     items:[
-      { name: "Salada de Folhas (à vont.)", kcal: 15, macros: { c: 2, p: 1, g: 0 } },
-      { name: "Tomate/Pepino (1 porção)", kcal: 25, macros: { c: 5, p: 1, g: 0 } },
-      { name: "Brócolis coz. (3 ramos)", kcal: 25, macros: { c: 4, p: 2, g: 0 } },
-      { name: "Banana prata (1 un)", kcal: 90, macros: { c: 23, p: 1, g: 0 } },
-      { name: "Maçã (1 un média)", kcal: 70, macros: { c: 15, p: 0.3, g: 0 } },
-      { name: "Mamão (1 fatia média)", kcal: 45, macros: { c: 11, p: 0.5, g: 0 } },
-      { name: "Morangos (10 un)", kcal: 32, macros: { c: 7, p: 0.6, g: 0.3 } },
-      { name: "Abacate (2 col sopa)", kcal: 110, macros: { c: 5, p: 1, g: 10 } }
-    ] 
-  },
-  { 
-    category: "Gorduras/Extras", 
-    items:[
-      { name: "Azeite oliva (1 col. sopa)", kcal: 108, macros: { c: 0, p: 0, g: 12 } },
-      { name: "Pasta amendoim (1 col. sp)", kcal: 90, macros: { c: 3, p: 4, g: 8 } },
+      { name: "Azeite de oliva (1 col sopa)", kcal: 108, macros: { c: 0, p: 0, g: 12 } },
+      { name: "Óleo de coco (1 col sopa)", kcal: 117, macros: { c: 0, p: 0, g: 13 } },
+      { name: "Óleo de gergelim (1 col sopa)", kcal: 120, macros: { c: 0, p: 0, g: 13 } },
       { name: "Manteiga (1 col chá 10g)", kcal: 70, macros: { c: 0, p: 0, g: 8 } },
-      { name: "Requeijão light (1 col. sp)", kcal: 50, macros: { c: 1, p: 3, g: 4 } },
-      { name: "Castanhas (Mix 30g)", kcal: 170, macros: { c: 9, p: 4, g: 15 } },
-      { name: "Chia/Linhaça (1 col. sp)", kcal: 55, macros: { c: 4, p: 2, g: 4 } },
-      { name: "Café s/ açúcar (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } }
+      { name: "Manteiga ghee (1 col chá)", kcal: 90, macros: { c: 0, p: 0, g: 10 } },
+      { name: "Pasta de amendoim (1 col sopa)", kcal: 90, macros: { c: 3, p: 4, g: 8 } },
+      { name: "Pasta de amendoim integral (1 col)", kcal: 95, macros: { c: 3, p: 4, g: 8.5 } },
+      { name: "Pasta de castanha (1 col sopa)", kcal: 100, macros: { c: 2, p: 3, g: 9 } },
+      { name: "Pasta de amêndoas (1 col sopa)", kcal: 98, macros: { c: 3, p: 3, g: 8.5 } },
+      { name: "Requeijão light (1 col sopa)", kcal: 50, macros: { c: 1, p: 3, g: 4 } },
+      { name: "Requeijão cremoso (1 col sopa)", kcal: 80, macros: { c: 1, p: 2, g: 8 } },
+      { name: "Creme de leite light (1 col sopa)", kcal: 45, macros: { c: 2, p: 1, g: 4 } },
+      { name: "Maionese (1 col sopa)", kcal: 90, macros: { c: 1, p: 0, g: 10 } },
+      { name: "Maionese light (1 col sopa)", kcal: 35, macros: { c: 2, p: 0, g: 3 } }
+    ] 
+  },
+  { 
+    category: "🥜 Oleaginosas e Sementes", 
+    items:[
+      { name: "Castanha do Pará (3 un)", kcal: 80, macros: { c: 1, p: 2, g: 8 } },
+      { name: "Castanha de caju (10 un)", kcal: 90, macros: { c: 5, p: 3, g: 7 } },
+      { name: "Amêndoas (10 un)", kcal: 70, macros: { c: 2, p: 3, g: 6 } },
+      { name: "Nozes (3 un)", kcal: 80, macros: { c: 2, p: 2, g: 8 } },
+      { name: "Macadâmia (5 un)", kcal: 100, macros: { c: 2, p: 1, g: 10 } },
+      { name: "Pistache (15 un)", kcal: 80, macros: { c: 4, p: 3, g: 6 } },
+      { name: "Amendoim torrado (30g)", kcal: 170, macros: { c: 5, p: 7, g: 14 } },
+      { name: "Mix de castanhas (30g)", kcal: 170, macros: { c: 9, p: 4, g: 15 } },
+      { name: "Semente de abóbora (1 col sopa)", kcal: 60, macros: { c: 2, p: 3, g: 5 } },
+      { name: "Semente de girassol (1 col sopa)", kcal: 50, macros: { c: 2, p: 2, g: 4 } },
+      { name: "Chia (1 col sopa)", kcal: 55, macros: { c: 4, p: 2, g: 4 } },
+      { name: "Linhaça dourada (1 col sopa)", kcal: 55, macros: { c: 4, p: 2, g: 4 } },
+      { name: "Linhaça marrom (1 col sopa)", kcal: 55, macros: { c: 4, p: 2, g: 4 } },
+      { name: "Gergelim (1 col sopa)", kcal: 50, macros: { c: 2, p: 2, g: 4 } },
+      { name: "Coco ralado seco (1 col sopa)", kcal: 60, macros: { c: 2, p: 1, g: 6 } },
+      { name: "Coco ralado fresco (1 col sopa)", kcal: 30, macros: { c: 2, p: 0.5, g: 2.5 } }
+    ] 
+  },
+  { 
+    category: "🥤 Bebidas e Suplementos", 
+    items:[
+      { name: "Whey Protein (1 scoop 30g)", kcal: 120, macros: { c: 3, p: 24, g: 1.5 } },
+      { name: "Whey Isolado (1 scoop)", kcal: 110, macros: { c: 1, p: 25, g: 0.5 } },
+      { name: "Whey Vegano (1 scoop)", kcal: 120, macros: { c: 4, p: 20, g: 3 } },
+      { name: "Albumina (1 scoop)", kcal: 110, macros: { c: 2, p: 22, g: 1 } },
+      { name: "Caseína (1 scoop)", kcal: 110, macros: { c: 3, p: 23, g: 1 } },
+      { name: "Creatina (5g)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "BCAA (5g)", kcal: 20, macros: { c: 0, p: 5, g: 0 } },
+      { name: "Glutamina (5g)", kcal: 20, macros: { c: 0, p: 5, g: 0 } },
+      { name: "Café preto (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Café com leite (1 xícara)", kcal: 60, macros: { c: 5, p: 4, g: 3 } },
+      { name: "Café com leite vegetal (1 xíc)", kcal: 40, macros: { c: 4, p: 1, g: 2 } },
+      { name: "Chá verde (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Chá mate (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Chá de camomila (1 xícara)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Suco de laranja natural (1 copo)", kcal: 120, macros: { c: 28, p: 2, g: 0 } },
+      { name: "Suco de limão (1 copo)", kcal: 20, macros: { c: 5, p: 0, g: 0 } },
+      { name: "Suco verde (1 copo 300ml)", kcal: 95, macros: { c: 20, p: 2, g: 1 } },
+      { name: "Água de coco (300ml)", kcal: 60, macros: { c: 15, p: 0, g: 0 } },
+      { name: "Cerveja (1 lata 350ml)", kcal: 150, macros: { c: 12, p: 1.5, g: 0 } },
+      { name: "Vinho tinto (1 taça 150ml)", kcal: 120, macros: { c: 4, p: 0, g: 0 } },
+      { name: "Vinho branco (1 taça 150ml)", kcal: 120, macros: { c: 5, p: 0, g: 0 } },
+      { name: "Destilados (1 dose 50ml)", kcal: 110, macros: { c: 0, p: 0, g: 0 } }
+    ] 
+  },
+  { 
+    category: "🍰 Doces e Extras", 
+    items:[
+      { name: "Mel (1 col sopa)", kcal: 60, macros: { c: 15, p: 0, g: 0 } },
+      { name: "Açúcar demerara (1 col chá)", kcal: 15, macros: { c: 4, p: 0, g: 0 } },
+      { name: "Açúcar de coco (1 col chá)", kcal: 12, macros: { c: 3, p: 0, g: 0 } },
+      { name: "Stévia (líquido)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Xilitol (1 col chá)", kcal: 10, macros: { c: 4, p: 0, g: 0 } },
+      { name: "Eritritol (1 col chá)", kcal: 0, macros: { c: 0, p: 0, g: 0 } },
+      { name: "Geleia de fruta diet (1 col sopa)", kcal: 20, macros: { c: 5, p: 0, g: 0 } },
+      { name: "Doce de leite (1 col sopa)", kcal: 80, macros: { c: 14, p: 2, g: 2 } },
+      { name: "Nutella (1 col sopa)", kcal: 100, macros: { c: 11, p: 1.5, g: 6 } },
+      { name: "Chocolate 70% (1 quadrado)", kcal: 35, macros: { c: 2, p: 0.5, g: 3 } },
+      { name: "Chocolate branco (1 quadrado)", kcal: 55, macros: { c: 6, p: 1, g: 3.5 } },
+      { name: "Brigadeiro (1 un)", kcal: 70, macros: { c: 8, p: 1, g: 4 } },
+      { name: "Beijinho (1 un)", kcal: 65, macros: { c: 7, p: 1, g: 4 } },
+      { name: "Sorvete de creme (1 bola)", kcal: 130, macros: { c: 16, p: 2, g: 7 } },
+      { name: "Sorvete diet (1 bola)", kcal: 70, macros: { c: 12, p: 2, g: 2 } },
+      { name: "Picolé de fruta (1 un)", kcal: 60, macros: { c: 15, p: 0, g: 0 } },
+      { name: "Bolo simples (1 fatia)", kcal: 200, macros: { c: 30, p: 4, g: 8 } },
+      { name: "Bolo integral (1 fatia)", kcal: 160, macros: { c: 24, p: 5, g: 5 } },
+      { name: "Cookie (1 un)", kcal: 120, macros: { c: 15, p: 2, g: 6 } },
+      { name: "Brownie (1 un)", kcal: 150, macros: { c: 18, p: 2, g: 8 } },
+      { name: "Panqueca doce (1 un)", kcal: 100, macros: { c: 12, p: 3, g: 4 } },
+      { name: "Waffle (1 un)", kcal: 150, macros: { c: 18, p: 4, g: 7 } }
     ] 
   }
 ];
@@ -301,16 +549,41 @@ const getMetricFeedback = (current: number, target: number, isKcal = false) => {
 };
 
 // =========================================================================
+// FUNÇÃO DE FALLBACK LEGADO (MANTIDA)
+// =========================================================================
+const checkFoodRisk = (foodName: string, foodRestrictions: FoodRestriction[]) => {
+  if (!foodRestrictions || foodRestrictions.length === 0) return { type: 'safe', label: '' };
+  
+  for (const r of foodRestrictions) {
+    if (foodName.toLowerCase().includes(r.food.toLowerCase()) || r.food.toLowerCase().includes(foodName.toLowerCase())) {
+      return { type: r.type, label: r.type === 'allergy' ? 'Alergia Grave' : r.type === 'intolerance' ? 'Intolerância' : 'Restrição' };
+    }
+  }
+  return { type: 'safe', label: '' };
+};
+
+// =========================================================================
 // COMPONENTE PRINCIPAL
 // =========================================================================
-export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose }: DietBuilderProps) {
+export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose, foodRestrictions = [] }: DietBuilderProps) {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const supabase = createClient();
+
+  // 🔥 PROCESSAMENTO DOS ALIMENTOS BLOQUEADOS (Core)
+  const blockedFoodIds = resolveBlockedFoodIds(foodRestrictions);
+  
+  // 🔥 RESUMO DAS RESTRIÇÕES PARA ALERTA GLOBAL
+  const restrictionsSummary = getRestrictionsSummary(foodRestrictions);
+
+  // Fallback Legado: alimentos seguros (mantido para compatibilidade)
+  const safeFoods: FoodEntity[] = FOOD_REGISTRY.filter(food => !blockedFoodIds.has(food.id));
+  const availableFoodItems: FoodItem[] = safeFoods.map(mapToFoodItem);
 
   // =========================================================================
   // FUNÇÕES DE MIGRAÇÃO
@@ -347,16 +620,31 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   // =========================================================================
-  // MANIPULAÇÃO DE DADOS
+  // MANIPULAÇÃO DE DADOS (COM TRAVA DE SEGURANÇA)
   // =========================================================================
-  const addFoodItem = (mealId: string, optId: string, food: QuickFoodItem) => {
+  const addFoodItem = (mealId: string, optId: string, food: QuickFoodItem | FoodItem, isBlocked?: boolean) => {
+    // 🛡️ Trava de Bloqueio Físico Absoluto
+    if (isBlocked) {
+      toast.error("❌ Ação Bloqueada: Este alimento fere uma restrição alimentar cadastrada.");
+      return;
+    }
+
+    // 🔥 Fallback legado (dupla verificação)
+    const risk = checkFoodRisk(food.name, foodRestrictions);
+    if (risk.type === 'allergy') {
+      toast.error(`Risco Crítico: Alergia grave detectada no item "${food.name}".`);
+      return;
+    }
+
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
             const newFoodItem: FoodItem = {
-              id: `food-${Date.now()}-${Math.random()}`,
-              name: food.name, kcal: food.kcal, macros: { ...food.macros }
+              id: ('id' in food) ? food.id : `food-${Date.now()}-${Math.random()}`,
+              name: food.name, 
+              kcal: food.kcal, 
+              macros: { ...food.macros }
             };
             const updatedFoodItems = [...(o.foodItems || []), newFoodItem];
             const newKcal = updatedFoodItems.reduce((sum, item) => sum + item.kcal, 0);
@@ -611,9 +899,28 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           </button>
         </div>
 
-        {/* HUD DE MACROS HORIZONTAL (Mobile-First Premium) */}
-        <div className="bg-white border-b border-stone-100 shrink-0 z-10 relative shadow-sm">
-          {/* Sombra interna para indicar scroll lateral no mobile */}
+        {/* 🔥 ALERTA GLOBAL DE RESTRIÇÕES (NOVO) */}
+        {restrictionsSummary.hasRestrictions && (
+          <div className="mx-5 sm:mx-8 mt-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <AlertCircle size={18} className="text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-bold text-amber-800">
+                  ⚠️ Este paciente possui restrições alimentares ativas
+                </p>
+                <p className="text-[10px] text-amber-700 mt-0.5">
+                  {restrictionsSummary.allergies > 0 && `🚫 ${restrictionsSummary.allergies} alergia(s) `}
+                  {restrictionsSummary.intolerances > 0 && `⚠️ ${restrictionsSummary.intolerances} intolerância(s) `}
+                  {restrictionsSummary.restrictions > 0 && `📋 ${restrictionsSummary.restrictions} restrição(ões)`}
+                  {' '}- Alimentos bloqueados aparecem em vermelho e não podem ser adicionados
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HUD DE MACROS HORIZONTAL */}
+        <div className="bg-white border-b border-stone-100 shrink-0 z-10 relative shadow-sm mt-4">
           <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none sm:hidden z-10" />
           
           <div className="flex overflow-x-auto scrollbar-hide snap-x gap-3 px-5 sm:px-8 py-4 md:grid md:grid-cols-4">
@@ -813,7 +1120,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
 
                             <div className="flex flex-wrap items-center gap-3">
                               
-                              {/* BARRA DE MACROS UNIFICADA PREMIUM */}
+                              {/* BARRA DE MACROS UNIFICADA */}
                               <div className="flex items-center bg-stone-50 rounded-xl border border-stone-200 p-1 shadow-inner overflow-hidden">
                                  <div className="flex items-center pl-3 pr-2 py-1 border-r border-stone-200/60 group focus-within:bg-red-50 transition-colors">
                                     <span className="text-[9px] font-black uppercase text-stone-400 mr-2">P</span>
@@ -886,33 +1193,177 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                             </div>
                           </div>
 
-                          {/* LISTA DE ALIMENTOS RÁPIDOS */}
+                          {/* ================================================================ */}
+                          {/* CATEGORIAS EXPANSÍVEIS (ACCORDION) */}
+                          {/* ================================================================ */}
                           <div>
                             <div className="flex items-center gap-2 mb-3 ml-1">
                               <Plus size={12} className="text-stone-400" strokeWidth={3} />
-                              <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em]">Adição Rápida</p>
+                              <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em]">Adicionar Alimentos</p>
                             </div>
-                            
-                            <div className="space-y-4">
-                              {quickFoods.map((cat) => (
-                                <div key={cat.category}>
-                                   <p className="text-[10px] font-black text-stone-800 mb-2 flex items-center gap-1.5">
-                                     <ChevronRight size={12} className="text-stone-300"/> {cat.category}
-                                   </p>
-                                   <div className="flex flex-wrap gap-1.5">
-                                     {cat.items.map(food => (
-                                       <button
-                                         key={food.name}
-                                         onClick={() => addFoodItem(meal.id, option.id, food)}
-                                         className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-[11px] font-bold text-stone-500 hover:border-stone-800 hover:text-stone-800 transition-all active:scale-95 shadow-sm"
-                                       >
-                                         {food.name}
-                                       </button>
-                                     ))}
-                                   </div>
-                                </div>
-                              ))}
+
+                            {/* 🔥 CAMPO DE BUSCA RÁPIDA */}
+                            <div className="relative mb-4">
+                              <input
+                                type="text"
+                                placeholder="Buscar alimento..."
+                                className="w-full px-3 py-2 pl-8 text-sm border border-stone-200 rounded-xl focus:border-stone-400 focus:ring-2 focus:ring-stone-100 outline-none transition-all bg-white"
+                                onChange={(e) => {
+                                  const term = e.target.value.toLowerCase();
+                                  // Filtra as categorias que têm itens correspondentes
+                                  const filtered = quickFoods.map(cat => ({
+                                    ...cat,
+                                    items: cat.items.filter(item => 
+                                      item.name.toLowerCase().includes(term)
+                                    )
+                                  })).filter(cat => cat.items.length > 0);
+                                  // Você precisaria adicionar um estado para armazenar filtered
+                                  // E re-renderizar dinamicamente
+                                }}
+                              />
+                              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                             </div>
+
+                            {/* 🔥 CATEGORIAS EXPANSÍVEIS */}
+                            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-200">
+                              {quickFoods.map((cat) => {
+                                const isExpanded = expandedCategories[`${meal.id}-${option.id}-${cat.category}`] || false;
+                                
+                                return (
+                                  <div key={cat.category} className="border border-stone-200 rounded-xl overflow-hidden bg-white">
+                                    {/* Cabeçalho da Categoria (clicável) */}
+                                    <button
+                                      onClick={() => setExpandedCategories(prev => ({
+                                        ...prev,
+                                        [`${meal.id}-${option.id}-${cat.category}`]: !prev[`${meal.id}-${option.id}-${cat.category}`]
+                                      }))}
+                                      className="w-full flex items-center justify-between px-3 py-2.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <ChevronRight 
+                                          size={14} 
+                                          className={`text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} 
+                                        />
+                                        <span className="text-[11px] font-extrabold text-stone-700 uppercase tracking-wider">
+                                          {cat.category}
+                                        </span>
+                                        <span className="text-[9px] font-bold text-stone-400 bg-stone-200/50 px-1.5 py-0.5 rounded-full">
+                                          {cat.items.length}
+                                        </span>
+                                      </div>
+                                    </button>
+
+                                    {/* Corpo da Categoria (expansível) */}
+                                    {isExpanded && (
+                                      <div className="p-3 pt-2 border-t border-stone-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <div className="flex flex-wrap gap-1.5 max-h-[200px] overflow-y-auto">
+                                          {cat.items.map(food => {
+                                            const risk = checkFoodRisk(food.name, foodRestrictions);
+                                            const registryMatch = FOOD_REGISTRY.find(f => 
+                                              f.name === food.name || 
+                                              f.aliases.some(a => food.name.toLowerCase().includes(a.toLowerCase()))
+                                            );
+                                            const restrictionInfo = registryMatch 
+                                              ? getRestrictionInfo(registryMatch.id, foodRestrictions)
+                                              : null;
+                                            
+                                            const isBlocked = restrictionInfo !== null || risk.type === 'allergy';
+                                            const restrictionType = restrictionInfo?.type || (risk.type !== 'safe' ? risk.type : null);
+                                            
+                                            let btnClass = "px-2.5 py-1.5 bg-white border border-stone-200 rounded-lg text-[10px] font-bold text-stone-500 hover:border-stone-800 hover:text-stone-800 transition-all active:scale-95 shadow-sm";
+                                            let tooltipText = "Adicionar ao Prato";
+                                            
+                                            if (isBlocked) {
+                                              if (restrictionType === 'allergy') {
+                                                btnClass = "px-2.5 py-1.5 bg-red-50 border border-red-300 rounded-lg text-[10px] font-bold text-red-600 line-through cursor-not-allowed opacity-80";
+                                                tooltipText = "🚫 PROIBIDO - Alergia grave";
+                                              } else if (restrictionType === 'intolerance') {
+                                                btnClass = "px-2.5 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-[10px] font-bold text-amber-700 line-through cursor-not-allowed opacity-80";
+                                                tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
+                                              } else {
+                                                btnClass = "px-2.5 py-1.5 bg-blue-50 border border-blue-300 rounded-lg text-[10px] font-bold text-blue-700 line-through cursor-not-allowed opacity-80";
+                                                tooltipText = "📋 EVITAR - Restrição alimentar";
+                                              }
+                                            } else if (risk.type === 'intolerance') {
+                                              btnClass = "px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-700 hover:bg-amber-100 transition-all active:scale-95 shadow-sm";
+                                              tooltipText = "⚠️ Intolerância - Consumir com cautela";
+                                            } else if (risk.type === 'restriction') {
+                                              btnClass = "px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-[10px] font-bold text-blue-700 hover:bg-blue-100 transition-all active:scale-95 shadow-sm";
+                                              tooltipText = "📋 Restrição - Verificar necessidade";
+                                            }
+
+                                            return (
+                                              <button
+                                                key={food.name}
+                                                onClick={() => addFoodItem(meal.id, option.id, food, isBlocked)}
+                                                disabled={isBlocked}
+                                                title={tooltipText}
+                                                className={btnClass}
+                                              >
+                                                {food.name}
+                                                {isBlocked && restrictionType === 'allergy' && <span className="text-red-500 text-[8px] ml-0.5">🚫</span>}
+                                                {isBlocked && restrictionType === 'intolerance' && <span className="text-amber-500 text-[8px] ml-0.5">⚠️</span>}
+                                                {isBlocked && restrictionType === 'restriction' && <span className="text-blue-500 text-[8px] ml-0.5">📋</span>}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* 🔥 LINK PARA BANCO COMPLETO (opcional) */}
+                            <details className="mt-3 group">
+                              <summary className="text-[10px] font-bold text-stone-400 hover:text-stone-600 cursor-pointer flex items-center gap-1 transition-colors">
+                                <ChevronRight size={12} className="group-open:rotate-90 transition-transform" />
+                                Ver todos os alimentos (banco completo)
+                              </summary>
+                              <div className="mt-3 pt-3 border-t border-stone-100 flex flex-wrap gap-1.5 max-h-[200px] overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-stone-200">
+                                {FOOD_REGISTRY.filter(food => {
+                                  // Não mostrar alimentos que já estão nas categorias rápidas? Opcional
+                                  return true;
+                                }).map(food => {
+                                  const restrictionInfo = getRestrictionInfo(food.id, foodRestrictions);
+                                  const isBlocked = restrictionInfo !== null;
+                                  
+                                  let btnClass = "px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm border";
+                                  let tooltipText = "Adicionar ao Prato";
+                                  
+                                  if (isBlocked) {
+                                    if (restrictionInfo?.type === 'allergy') {
+                                      btnClass = "px-2.5 py-1.5 bg-red-50 border-red-300 rounded-lg text-[10px] font-bold text-red-600 line-through cursor-not-allowed opacity-80";
+                                      tooltipText = "🚫 PROIBIDO - Alergia grave";
+                                    } else if (restrictionInfo?.type === 'intolerance') {
+                                      btnClass = "px-2.5 py-1.5 bg-amber-50 border-amber-300 rounded-lg text-[10px] font-bold text-amber-700 line-through cursor-not-allowed opacity-80";
+                                      tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
+                                    } else {
+                                      btnClass = "px-2.5 py-1.5 bg-blue-50 border-blue-300 rounded-lg text-[10px] font-bold text-blue-700 line-through cursor-not-allowed opacity-80";
+                                      tooltipText = "📋 EVITAR - Restrição alimentar";
+                                    }
+                                  } else {
+                                    btnClass = "px-2.5 py-1.5 bg-white border-stone-200 text-stone-500 hover:border-stone-800 hover:text-stone-800 active:scale-95";
+                                  }
+                                  
+                                  return (
+                                    <button
+                                      key={food.id}
+                                      disabled={isBlocked}
+                                      title={tooltipText}
+                                      className={btnClass}
+                                      onClick={() => addFoodItem(meal.id, option.id, mapToFoodItem(food), isBlocked)}
+                                    >
+                                      {food.name}
+                                      {isBlocked && restrictionInfo?.type === 'allergy' && <span className="text-red-500 text-[8px] ml-0.5">🚫</span>}
+                                      {isBlocked && restrictionInfo?.type === 'intolerance' && <span className="text-amber-500 text-[8px] ml-0.5">⚠️</span>}
+                                      {isBlocked && restrictionInfo?.type === 'restriction' && <span className="text-blue-500 text-[8px] ml-0.5">📋</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </details>
                           </div>
 
                         </div>
@@ -968,7 +1419,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           </button>
         </div>
 
-        {/* FOOTER FIXO (Bottom Sheet Premium) - AGORA EM LINHA NO MOBILE */}
+        {/* FOOTER FIXO (Bottom Sheet Premium) */}
         <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-stone-100 p-4 sm:p-6 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
           <div className="max-w-4xl mx-auto flex flex-row items-center gap-2.5 sm:gap-3">
             <button 

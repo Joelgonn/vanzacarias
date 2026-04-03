@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Flame, Zap, Info, TrendingUp, Target, AlertTriangle } from 'lucide-react';
+import { Flame, Zap, Info, TrendingUp, Target, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { FoodRestriction } from '@/types/patient';
 
 interface Props {
   weight: number | null;
@@ -23,6 +24,8 @@ interface Props {
     strategy: string;
     alert?: string;
   } | null;
+  // 🔥 Restrições injetadas pelo perfil do paciente
+  foodRestrictions?: FoodRestriction[];
 }
 
 export default function MetabolicSummary({
@@ -38,12 +41,19 @@ export default function MetabolicSummary({
   tmbMethod,
   getVal: get, // Renomeando localmente para 'get' para manter a interface visual
   avgActivityKcal,
-  recommendation
+  recommendation,
+  foodRestrictions = []
 }: Props) {
 
   // 🔥 1. BARRA VISUAL DO GET (Único cálculo que fica, pois é puramente visual)
   const tmbPercent = get > 0 ? Math.round(((tmb * 1.2) / get) * 100) : 0;
   const activityPercent = get > 0 ? 100 - tmbPercent : 0;
+
+  // 🔥 SEPARAÇÃO DO PERFIL ALIMENTAR
+  const allergies = foodRestrictions.filter(r => r.type === 'allergy');
+  const intolerances = foodRestrictions.filter(r => r.type === 'intolerance');
+  const restrictions = foodRestrictions.filter(r => r.type === 'restriction');
+  const hasAnyRestriction = foodRestrictions.length > 0;
 
   // 🔥 2. FALLBACK
   if (!weight || !height || !age) {
@@ -132,6 +142,32 @@ export default function MetabolicSummary({
               />
             </div>
           </div>
+
+          {/* PERFIL ALIMENTAR (NOVO) */}
+          {hasAnyRestriction && (
+            <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100/80">
+              <p className="text-[10px] text-stone-500 uppercase tracking-widest font-black flex items-center gap-1.5 mb-2.5">
+                <ShieldAlert size={14} className="text-stone-400" /> Perfil Alimentar
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {allergies.map((r, index) => (
+                  <span key={r.id || `allergy-${index}`} title="Alergia Grave (Risco de Bloqueio)" className="bg-red-50 text-red-600 border border-red-200/60 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                    🔴 <span className="capitalize">{r.food || r.tag || r.foodId || 'Alergia'}</span>
+                  </span>
+                ))}
+                {intolerances.map((r, index) => (
+                  <span key={r.id || `intolerance-${index}`} title="Intolerância Alimentar" className="bg-amber-50 text-amber-700 border border-amber-200/60 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                    🟡 <span className="capitalize">{r.food || r.tag || r.foodId || 'Intolerância'}</span>
+                  </span>
+                ))}
+                {restrictions.map((r, index) => (
+                  <span key={r.id || `restriction-${index}`} title="Restrição Comportamental" className="bg-blue-50 text-blue-700 border border-blue-200/60 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                    🔵 <span className="capitalize">{r.food || r.tag || r.foodId || 'Restrição'}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* RECOMENDAÇÃO */}
           {recommendation && (
