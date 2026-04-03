@@ -25,12 +25,24 @@ export interface LeadData {
   status: string;
 }
 
+// 🔥 NOVA INTERFACE PARA COMPOSIÇÃO CORPORAL
+export interface BodyComposition {
+  percentualGordura: number | null;
+  massaGorda: number | null;
+  massaMagra: number | null;
+  ultimaAvaliacao: string | null;
+  evolucaoGordura?: string;
+  evolucaoMassaMagra?: string;
+}
+
 export interface AdminContext {
   patients?: PatientData[];
   leads?: LeadData[];
   usageStats?: Record<string, number>;
   todayTotalMessages?: number;
   onSendDirectMessage?: (patientId: string, message: string) => Promise<void>;
+  // 🔥 NOVO CAMPO PARA COMPOSIÇÃO CORPORAL
+  bodyComposition?: BodyComposition | null;
 }
 
 export interface ChatAssistantProps {

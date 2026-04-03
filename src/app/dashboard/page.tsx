@@ -18,10 +18,42 @@ import {
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
 import ChatAssistant from '@/components/ChatAssistant';
+import type { AdminContext } from '@/components/ChatAssistant';
 import ActivityCard from '@/components/ActivityCard';
 import AddActivityModal from '@/components/AddActivityModal';
 import { Activity, getTotalActivityKcal } from '@/lib/activities';
 import { toast } from 'sonner';
+
+// =========================================================================
+// 🔥 FUNÇÃO DE CÁLCULO DE COMPOSIÇÃO CORPORAL (Jackson & Pollock)
+// =========================================================================
+function calculateBodyComposition(sum7: number, age: number | null, gender: string | undefined, weight: number) {
+  if (!sum7 || sum7 === 0 || !weight || age === null) return null; 
+  
+  let bd = 0;
+  const isMale = gender?.toLowerCase() === 'masculino' || gender?.toLowerCase() === 'homem';
+  
+  if (isMale) {
+    bd = 1.112 - (0.00043499 * sum7) + (0.00000055 * (sum7 * sum7)) - (0.00028826 * age);
+  } else {
+    bd = 1.097 - (0.00046971 * sum7) + (0.00000056 * (sum7 * sum7)) - (0.00012828 * age);
+  }
+
+  if (bd === 0) return null;
+  const bf = (4.95 / bd - 4.5) * 100; 
+  const validBF = bf > 0 && bf < 60 ? bf : null;
+
+  if (!validBF) return null;
+
+  const fatMass = weight * (validBF / 100);
+  const leanMass = weight - fatMass;
+
+  return { 
+    bf: validBF.toFixed(1), 
+    fatMass: fatMass.toFixed(1), 
+    leanMass: leanMass.toFixed(1) 
+  };
+}
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -70,6 +102,14 @@ export default function Dashboard() {
     activity_kcal: 0
   });
 
+  // 🔥 COMPOSIÇÃO CORPORAL (integrada no loadData)
+  const [bodyComposition, setBodyComposition] = useState<{
+    percentualGordura: number | null;
+    massaGorda: number | null;
+    massaMagra: number | null;
+    ultimaAvaliacao: string | null;
+  } | null>(null);
+
   const router = useRouter();
   const supabase = createClient();
 
@@ -88,10 +128,10 @@ export default function Dashboard() {
 
     const userId = session.user.id;
 
-    // 🔥 NOVO: Buscando o food_restrictions junto no perfil
+    // Buscando o food_restrictions junto no perfil
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions')
+      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo')
       .eq('id', userId)
       .single();
 
@@ -138,6 +178,68 @@ export default function Dashboard() {
       .eq('user_id', userId)
       .eq('date', todayStr)
       .single();
+
+    // ===============================================================
+    // 🔥 CÁLCULO DA COMPOSIÇÃO CORPORAL (integrado - sem duplicação)
+    // ===============================================================
+    try {
+      const latestSkin = skin?.[0];
+      const latestWeight = antro?.find(a => a.weight) || antro?.[0];
+
+      if (!latestSkin || !latestWeight || !latestWeight.weight) {
+        setBodyComposition(null);
+      } else {
+        const sum =
+          parseFloat(latestSkin.triceps?.toString() || "0") +
+          parseFloat(latestSkin.biceps?.toString() || "0") +
+          parseFloat(latestSkin.subscapular?.toString() || "0") +
+          parseFloat(latestSkin.suprailiac?.toString() || "0") +
+          parseFloat(latestSkin.abdominal?.toString() || "0") +
+          parseFloat(latestSkin.thigh?.toString() || "0") +
+          parseFloat(latestSkin.calf?.toString() || "0");
+
+        if (sum === 0) {
+          setBodyComposition(null);
+        } else {
+          // Calcular idade
+          let age: number | null = null;
+          if (profileData?.data_nascimento) {
+            const birthDate = new Date(profileData.data_nascimento);
+            const today = new Date();
+            age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+              age--;
+            }
+          }
+
+          if (!age) {
+            setBodyComposition(null);
+          } else {
+            const result = calculateBodyComposition(
+              sum,
+              age,
+              profileData?.sexo,
+              latestWeight.weight
+            );
+
+            if (result) {
+              setBodyComposition({
+                percentualGordura: parseFloat(result.bf),
+                massaGorda: parseFloat(result.fatMass),
+                massaMagra: parseFloat(result.leanMass),
+                ultimaAvaliacao: latestSkin.measurement_date || latestWeight.measurement_date
+              });
+            } else {
+              setBodyComposition(null);
+            }
+          }
+        }
+      }
+    } catch (compError) {
+      console.error("Erro ao calcular composição corporal:", compError);
+      setBodyComposition(null);
+    }
 
     if (dailyData) {
       setDailyLog({
@@ -557,12 +659,23 @@ export default function Dashboard() {
     };
   }, [timelineData, profile?.meta_peso]);
 
-  // 🔥 Lógica de status para o Card de Perfil Alimentar
+  // Lógica de status para o Card de Perfil Alimentar
   const foodRestrictions = profile?.food_restrictions || [];
   const hasFoodRestrictions = foodRestrictions.length > 0;
   const foodStatusConfig = hasFoodRestrictions 
     ? { icon: <ShieldAlert size={20} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
     : { icon: <ShieldCheck size={20} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
+
+  // =========================================================================
+  // 🔥 ADMIN CONTEXT PARA O CHATASSISTANT (com composição corporal)
+  // =========================================================================
+  const adminContextForChat: AdminContext = {
+    patients: [],
+    leads: [],
+    usageStats: {},
+    todayTotalMessages: 0,
+    bodyComposition: bodyComposition
+  };
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
@@ -606,7 +719,6 @@ export default function Dashboard() {
                 <p className="text-rose-100/90 text-xs md:text-sm mt-0.5 line-clamp-1 md:line-clamp-none">Preencha seu Raio-X alimentar. Assim a Nutri Vanusa poderá criar um plano personalizado para você.</p>
               </div>
               
-              {/* 🔥 NOVO: Botões lado a lado e "Botão Inteligente" */}
               <div className="flex gap-2 shrink-0">
                 <Link 
                   href="/paciente/avaliacao"
@@ -1028,7 +1140,7 @@ export default function Dashboard() {
             <ChevronRight size={18} className="text-stone-300" />
           </Link>
 
-          {/* 🔥 NOVO: CARD DE PERFIL ALIMENTAR E SEGURANÇA (Substitui botão simples do Raio X) */}
+          {/* CARD DE PERFIL ALIMENTAR E SEGURANÇA (Substitui botão simples do Raio X) */}
           <Link href="/dashboard/completar-perfil" className={`p-4 rounded-2xl shadow-sm border transition-all duration-200 flex items-center justify-between active:scale-[0.98] bg-white border-stone-100 hover:border-nutri-200`}>
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-xl ${foodStatusConfig.bgClass}`}>
@@ -1081,8 +1193,8 @@ export default function Dashboard() {
         onSave={handleAddActivity}
       />
 
-      {/* MODAL / COMPONENTE DE CHAT FLUTUANTE */}
-      <ChatAssistant />
+      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE COM COMPOSIÇÃO CORPORAL */}
+      <ChatAssistant adminContext={adminContextForChat} />
     </main>
   );
 }

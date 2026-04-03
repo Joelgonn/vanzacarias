@@ -674,6 +674,52 @@ export default function PacienteHistoricoAdmin() {
     return { weight, bf, leanMass, height };
   }, [timelineData, profile, history, antroData]); 
 
+    // 🔥 EXTRAIR COMPOSIÇÃO CORPORAL MAIS RECENTE PARA O CHATBOT (Jackson & Pollock)
+  const latestBodyComposition = useMemo(() => {
+    if (timelineData.length === 0) return null;
+    
+    // Encontrar o ponto mais recente com dados de composição
+    const latestComposition = [...timelineData].reverse().find(t => t.bf !== null);
+    
+    if (!latestComposition) return null;
+    
+    // Calcular evolução comparando com o primeiro registro
+    const firstComposition = timelineData.find(t => t.bf !== null);
+    
+    let evolucaoGordura = '';
+    let evolucaoMassaMagra = '';
+    
+    if (firstComposition && firstComposition.bf !== null && latestComposition.bf !== null) {
+      const diffGordura = latestComposition.bf - firstComposition.bf;
+      if (diffGordura < 0) {
+        evolucaoGordura = `Reduziu ${Math.abs(diffGordura).toFixed(1)}% de gordura corporal`;
+      } else if (diffGordura > 0) {
+        evolucaoGordura = `Aumentou ${diffGordura.toFixed(1)}% de gordura corporal`;
+      } else {
+        evolucaoGordura = `Manteve o percentual de gordura`;
+      }
+    }
+    
+    if (firstComposition && firstComposition.leanMass !== null && latestComposition.leanMass !== null) {
+      const diffMagra = latestComposition.leanMass - firstComposition.leanMass;
+      if (diffMagra > 0) {
+        evolucaoMassaMagra = `Ganhou ${diffMagra.toFixed(1)}kg de massa magra`;
+      } else if (diffMagra < 0) {
+        evolucaoMassaMagra = `Perdeu ${Math.abs(diffMagra).toFixed(1)}kg de massa magra`;
+      } else {
+        evolucaoMassaMagra = `Manteve a massa magra`;
+      }
+    }
+    
+    return {
+      percentualGordura: latestComposition.bf,
+      massaGorda: latestComposition.fatMass,
+      massaMagra: latestComposition.leanMass,
+      ultimaAvaliacao: latestComposition.date,
+      evolucaoGordura,
+      evolucaoMassaMagra
+    };
+  }, [timelineData]);
 
   // =========================================================================
   // 🔥 LÓGICA DE FONTE ÚNICA DE VERDADE (SINGLE SOURCE OF TRUTH)
@@ -795,6 +841,8 @@ export default function PacienteHistoricoAdmin() {
       </div>
     </div>
   );
+
+  
 
   return (
     <main className="min-h-screen bg-[#F8F9FA] p-3 sm:p-4 md:p-8 lg:p-10 pt-20 md:pt-24 lg:pt-28 font-sans text-stone-800 selection:bg-nutri-200">

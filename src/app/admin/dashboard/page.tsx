@@ -20,6 +20,7 @@ import { FoodRestriction } from '@/types/patient';
 
 // Importação do motor metabólico centralizado
 import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
+import { buildBodyComposition } from '@/lib/nutrition/bodyComposition';
 
 // =========================================================================
 // INTERFACES E TIPAGENS
@@ -292,6 +293,11 @@ function useAdminDashboard() {
         .from('anthropometry')
         .select('user_id, measurement_date, weight, height')
         .order('measurement_date', { ascending: false });
+        
+      const { data: skinfolds } = await supabase
+        .from('skinfolds')
+        .select('*')
+        .order('measurement_date', { ascending: false });
       
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       const { data: logs } = await supabase.from('daily_logs').select('user_id, water_ml, mood').eq('date', todayStr);
@@ -323,7 +329,20 @@ function useAdminDashboard() {
           isNew = diffInHours >= 0 && diffInHours <= 24;
         }
 
-        const patientLog = logs?.find(l => l.user_id === profile.id);
+        const userSkinfolds = skinfolds?.filter(s => s.user_id === profile.id);
+        const latestSkin = userSkinfolds?.[0];
+
+        const weight =
+          lastAntro?.weight ||
+          lastCheckin?.peso ||
+          null;
+
+        const composition = buildBodyComposition({
+          skin: latestSkin,
+          weight,
+          birthDate: profile.data_nascimento,
+          gender: profile.sexo
+        });
 
         return {
           ...profile,
@@ -331,9 +350,11 @@ function useAdminDashboard() {
           isLate,
           daysSinceLast,
           isNew,
-          todayLog: patientLog || null,
+          todayLog: logs?.find(l => l.user_id === profile.id) || null,
           peso: lastAntro?.weight || lastCheckin?.peso || null,
-          altura: lastAntro?.height || lastCheckin?.altura || null
+          altura: lastAntro?.height || lastCheckin?.altura || null,
+          bf: composition?.bf || null,
+          leanMass: composition?.leanMass || null
         };
       }) as Patient[];
       
@@ -417,10 +438,48 @@ function useAdminDashboard() {
   const filteredLeads = useMemo(() => {
     return leads.filter(l => l.nome?.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [leads, searchTerm]);
-
-  const adminContext = useMemo(() => ({
-    patients, leads, usageStats, todayTotalMessages
-  }), [patients, leads, usageStats, todayTotalMessages]);
+  
+  const adminContext = useMemo(() => {
+    // Mapeia os pacientes para incluir a composição corporal mais recente
+    const patientsWithComposition = patients.map(patient => {
+      // Buscar a composição mais recente do paciente a partir dos dados disponíveis
+      // Como os dados de BF e leanMass já estão no paciente (vindos do fetchAdminData)
+      const hasComposition = !!(patient.bf || patient.leanMass);
+      
+      let evolucaoGordura = '';
+      let evolucaoMassaMagra = '';
+      
+      // Tentar encontrar evolução comparando com registros anteriores
+      // (Isso seria ideal, mas para simplificar, usamos apenas o dado atual)
+      if (patient.bf) {
+        // Se tiver percentual de gordura, incluímos
+        evolucaoGordura = patient.bf ? `${patient.bf}% atualmente` : '';
+      }
+      
+      if (patient.leanMass) {
+        evolucaoMassaMagra = patient.leanMass ? `${patient.leanMass}kg de massa magra` : '';
+      }
+      
+      return {
+        ...patient,
+        composicaoCorporal: hasComposition ? {
+          percentualGordura: patient.bf || null,
+          massaGorda: null, // Não temos esse dado diretamente no patient
+          massaMagra: patient.leanMass || null,
+          ultimaAvaliacao: null,
+          evolucaoGordura,
+          evolucaoMassaMagra
+        } : null
+      };
+    });
+    
+    return {
+      patients: patientsWithComposition,
+      leads,
+      usageStats,
+      todayTotalMessages
+    };
+  }, [patients, leads, usageStats, todayTotalMessages]);
 
   const updateProfile = async (id: string) => {
     const updateData = {

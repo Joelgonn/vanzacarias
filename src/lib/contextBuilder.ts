@@ -32,6 +32,15 @@ export type UserData = {
     carbs: number;
     fat: number;
   }>;
+  // 🔥 NOVOS CAMPOS DE COMPOSIÇÃO CORPORAL
+  composicaoCorporal?: {
+    percentualGordura: number | null;
+    massaGorda: number | null;
+    massaMagra: number | null;
+    ultimaAvaliacao: string | null;
+    evolucaoGordura?: string;
+    evolucaoMassaMagra?: string;
+  };
 };
 
 type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
@@ -58,6 +67,11 @@ function detectIntent(message: string): IntentType {
   // NOVA DETECÇÃO PARA PERGUNTAS SOBRE MACROS
   if (/(caloria|kcal|proteina|protein|carbo|carboidrato|gordura|macro|valor nutricional)/.test(msg)) {
     return 'geral'; // Será tratado com contexto de macros
+  }
+
+  // 🔥 DETECÇÃO PARA PERGUNTAS SOBRE COMPOSIÇÃO CORPORAL
+  if (/(gordura|bf|percentual de gordura|massa gorda|massa magra|composicao corporal|jackson pollock|dobras)/.test(msg)) {
+    return 'resultado';
   }
 
   return 'geral';
@@ -94,7 +108,7 @@ ${data.cardapioFormatado}
 `.trim();
 }
 
-// NOVO MÓDULO: MACROS NUTRICIONAIS
+// MÓDULO: MACROS NUTRICIONAIS
 function buildMacrosContext(data: UserData): string {
   if (!data.macrosDiarios && (!data.macrosPorRefeicao || data.macrosPorRefeicao.length === 0)) {
     return '';
@@ -120,6 +134,54 @@ function buildMacrosContext(data: UserData): string {
   }
 
   return macrosText.trim();
+}
+
+// 🔥 NOVO MÓDULO: COMPOSIÇÃO CORPORAL (Jackson & Pollock)
+function buildBodyCompositionContext(data: UserData): string {
+  const comp = data.composicaoCorporal;
+  
+  if (!comp || !comp.percentualGordura) {
+    return '';
+  }
+  
+  let context = `
+[COMPOSIÇÃO CORPORAL (Protocolo Jackson & Pollock - 7 Dobras)]
+📊 **ÚLTIMA AVALIAÇÃO:** ${comp.ultimaAvaliacao || 'Data não registrada'}
+- Percentual de Gordura Corporal: ${comp.percentualGordura}%
+- Massa Gorda: ${comp.massaGorda !== null ? comp.massaGorda + ' kg' : 'N/A'}
+- Massa Magra: ${comp.massaMagra !== null ? comp.massaMagra + ' kg' : 'N/A'}
+`;
+
+  if (comp.evolucaoGordura) {
+    context += `- 📉 Evolução do % Gordura: ${comp.evolucaoGordura}\n`;
+  }
+  
+  if (comp.evolucaoMassaMagra) {
+    context += `- 💪 Evolução da Massa Magra: ${comp.evolucaoMassaMagra}\n`;
+  }
+  
+  context += `
+**🔬 INTERPRETAÇÃO CLÍNICA (para você usar no atendimento):**
+- Percentual de gordura ideal para homens: 10-20% | Para mulheres: 18-28%
+- Massa Magra é o principal indicador de metabolismo acelerado
+- Redução de % gordura + manutenção/ganho de massa magra = resultado ideal
+- Aumento de % gordura pode indicar necessidade de ajuste na dieta ou treino
+
+**💬 COMO USAR ESSES DADOS NAS RESPOSTAS:**
+1. **Quando perguntar sobre resultado/estagnação:**
+   "Seu percentual de gordura reduziu X%! Isso é fantástico! A balança pode não ter mudado muito, mas você está perdendo gordura e ganhando saúde."
+
+2. **Quando perguntar sobre motivação:**
+   "Olha só que legal: você ganhou massa magra! Isso significa que seu metabolismo está mais acelerado. Continue focando nos treinos e na dieta que os resultados vêm."
+
+3. **Quando identificar ganho de gordura:**
+   "Identifiquei que seu percentual de gordura aumentou um pouco. Vamos revisar sua dieta juntos? Pode ser um sinal para ajustarmos algumas coisas."
+
+4. **Para elogiar progresso:**
+   "Você manteve a massa magra enquanto perdeu gordura - esse é exatamente o cenário ideal para emagrecimento saudável!"
+`;
+  
+  return context;
 }
 
 function buildBehavioralContext(data: UserData): string {
@@ -158,7 +220,7 @@ ${alertas}
 `.trim();
 }
 
-function buildIntentInstructions(intent: IntentType, hasMacros: boolean): string {
+function buildIntentInstructions(intent: IntentType, hasMacros: boolean, hasBodyComposition: boolean): string {
   // Instrução específica para perguntas sobre macros
   if (hasMacros && intent === 'geral') {
     return `
@@ -178,6 +240,28 @@ O paciente está perguntando sobre valores nutricionais, calorias ou composiçã
 `.trim();
   }
 
+  // 🔥 INSTRUÇÃO ESPECÍFICA PARA PERGUNTAS SOBRE COMPOSIÇÃO CORPORAL
+  if (hasBodyComposition && intent === 'resultado') {
+    return `
+[INSTRUÇÃO DE TAREFA: RESULTADOS E COMPOSIÇÃO CORPORAL]
+O paciente está perguntando sobre resultados, peso ou composição corporal.
+
+**COMO RESPONDER USANDO DADOS DE COMPOSIÇÃO CORPORAL:**
+1. Sempre priorize os dados de [COMPOSIÇÃO CORPORAL] sobre o peso da balança.
+2. Explique que perder gordura e ganhar massa magra é mais importante que o número na balança.
+3. Use a evolução de % de gordura para contextualizar o progresso real.
+4. Se houver ganho de massa magra, destaque como isso acelera o metabolismo.
+5. Se houver aumento de gordura, seja honesta mas acolhedora: sugira revisão da dieta.
+
+**EXEMPLOS DE RESPOSTA:**
+- "Olha só que legal! Seu percentual de gordura reduziu de 28% para 25%! Isso significa que você perdeu 3kg de gordura pura. A balança pode não ter mudado tanto, mas sua composição corporal melhorou muito!"
+
+- "Você ganhou 1.5kg de massa magra! Isso é excelente - massa magra acelera seu metabolismo e queima mais calorias em repouso. Continue com os treinos e a dieta que você está no caminho certo!"
+
+- "Identifiquei que seu percentual de gordura aumentou um pouco. Isso é um sinal para ajustarmos algo na dieta. Vamos conversar com a Vanusa na próxima consulta para revisar?"
+`;
+  }
+
   switch (intent) {
     case 'troca':
       return `
@@ -194,10 +278,11 @@ O paciente quer trocar um alimento.
       return `
 [INSTRUÇÃO DE TAREFA: RESULTADOS E ESTAGNAÇÃO]
 O paciente está perguntando sobre peso, medidas ou resultados.
-1. Analise a [Evolução até agora]. Se ele já perdeu peso, celebre isso!
-2. Lembre-o de que oscilações de peso são normais (água, intestino, sono).
-3. Revise o [Padrão de Sono], [Relação com Doces] e [Atividades Físicas] e sugira que o foco na constância (dieta e treino) é mais importante que a balança hoje.
-4. Se houver [MACROS NUTRICIONAIS], mostre como ele está se alimentando bem e que a consistência nos macros é o que realmente importa.
+1. Analise a [Evolução até agora] e os dados de [COMPOSIÇÃO CORPORAL] se disponíveis.
+2. Se ele já perdeu peso ou reduziu % de gordura, celebre isso!
+3. Lembre-o de que oscilações de peso são normais (água, intestino, sono).
+4. Revise o [Padrão de Sono], [Relação com Doces] e [Atividades Físicas] e sugira que o foco na constância (dieta e treino) é mais importante que a balança hoje.
+5. Se houver [MACROS NUTRICIONAIS], mostre como ele está se alimentando bem e que a consistência nos macros é o que realmente importa.
 `.trim();
 
     case 'motivacional':
@@ -208,13 +293,14 @@ O paciente está desanimado, falhou na dieta ou está com dificuldade.
 2. Use a regra do "feito é melhor que perfeito".
 3. Não dê uma aula de nutrição agora. Apenas encoraje-o a beber um copo de água ou fazer uma refeição leve na próxima oportunidade.
 4. Se ele mencionou ter "chutado o balde", evite focar nos macros do deslize. Foque em retomar o próximo compromisso (água, próximo café, etc.).
+5. Se houver dados de [COMPOSIÇÃO CORPORAL] positivos, use-os para motivar (ex: "Lembra que você já reduziu X% de gordura? Você consegue!").
 `.trim();
 
     case 'geral':
     default:
       return `
 [INSTRUÇÃO DE TAREFA: DÚVIDA GERAL]
-Responda à dúvida do paciente baseando-se no plano alimentar dele, nos macros nutricionais e nos dados de rotina. Seja útil, amigável e concisa.
+Responda à dúvida do paciente baseando-se no plano alimentar dele, nos macros nutricionais, nos dados de composição corporal e nos dados de rotina. Seja útil, amigável e concisa.
 `.trim();
   }
 }
@@ -238,15 +324,17 @@ O paciente enviou uma foto da refeição.
 export function buildContext(message: string, data: UserData): string {
   const intent = detectIntent(message);
   const hasMacros = !!(data.macrosDiarios || (data.macrosPorRefeicao && data.macrosPorRefeicao.length > 0));
+  const hasBodyComposition = !!(data.composicaoCorporal && data.composicaoCorporal.percentualGordura);
 
   // Monta o array apenas com as partes válidas e junta com duas quebras de linha
   const promptParts = [
     buildSystemPersona(),
     buildClinicalContext(data),
-    buildMacrosContext(data), // NOVO MÓDULO INSERIDO AQUI
+    buildMacrosContext(data),
+    buildBodyCompositionContext(data), // 🔥 NOVO MÓDULO INSERIDO AQUI
     buildBehavioralContext(data),
     buildEmotionalContext(data),
-    buildIntentInstructions(intent, hasMacros),
+    buildIntentInstructions(intent, hasMacros, hasBodyComposition),
     data.hasImage ? buildImageAnalysisRules() : '',
     `
 [REGRAS DE FORMATAÇÃO]
@@ -255,6 +343,7 @@ export function buildContext(message: string, data: UserData): string {
 3. Use **negrito** para destacar alimentos, valores nutricionais ou informações muito importantes.
 4. Nunca termine a frase pela metade.
 5. Quando citar macros, formate sempre como: "kcal | P: Xg | C: Yg | G: Zg" para fácil leitura.
+6. Quando citar composição corporal, destaque % de gordura e massa magra.
     `.trim()
   ];
 
