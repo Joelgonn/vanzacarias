@@ -1,4 +1,11 @@
 // =========================================================================
+// IMPORTS DA ENGINE DE NUTRIÇÃO
+// =========================================================================
+import { expandRestrictions } from '@/lib/nutrition/restrictions';
+import { type FoodRestriction } from '@/types/patient';
+import { FOOD_REGISTRY } from '@/lib/foodRegistry';
+
+// =========================================================================
 // TIPAGENS DO CONTEXTO
 // =========================================================================
 export type UserData = {
@@ -7,7 +14,8 @@ export type UserData = {
   metaPeso: string;
   rotinaSono: string;
   vontadesDoces: string;
-  alimentosEvitar: string[];
+  alimentosEvitar: string[]; 
+  restrictions?: FoodRestriction[]; 
   cardapioFormatado: string;
   evolucaoTxt: string;
   humorHoje: string;
@@ -17,7 +25,7 @@ export type UserData = {
   activityKcal: number;
   todayStr: string;
   hasImage?: boolean;
-  // NOVOS CAMPOS DE MACROS
+  // CAMPOS DE MACROS
   macrosDiarios?: {
     totalKcal: number;
     totalProtein: number;
@@ -32,7 +40,7 @@ export type UserData = {
     carbs: number;
     fat: number;
   }>;
-  // 🔥 NOVOS CAMPOS DE COMPOSIÇÃO CORPORAL
+  // CAMPOS DE COMPOSIÇÃO CORPORAL
   composicaoCorporal?: {
     percentualGordura: number | null;
     massaGorda: number | null;
@@ -49,7 +57,6 @@ type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
 // 🔍 1. CLASSIFICADOR DE INTENÇÃO (Otimizado com Regex)
 // =========================================================================
 function detectIntent(message: string): IntentType {
-  // Normaliza a string (remove acentos e joga pra minúsculo) para melhorar a detecção
   const msg = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   if (/(troca|substitui|lugar de|em vez de|posso comer)/.test(msg)) {
@@ -64,12 +71,10 @@ function detectIntent(message: string): IntentType {
     return 'motivacional';
   }
 
-  // NOVA DETECÇÃO PARA PERGUNTAS SOBRE MACROS
   if (/(caloria|kcal|proteina|protein|carbo|carboidrato|gordura|macro|valor nutricional)/.test(msg)) {
-    return 'geral'; // Será tratado com contexto de macros
+    return 'geral'; 
   }
 
-  // 🔥 DETECÇÃO PARA PERGUNTAS SOBRE COMPOSIÇÃO CORPORAL
   if (/(gordura|bf|percentual de gordura|massa gorda|massa magra|composicao corporal|jackson pollock|dobras)/.test(msg)) {
     return 'resultado';
   }
@@ -93,15 +98,42 @@ Seu papel é atuar como uma extensão do atendimento dela, oferecendo suporte r�
 }
 
 function buildClinicalContext(data: UserData): string {
-  const aversões = data.alimentosEvitar.length > 0 ? data.alimentosEvitar.join(', ') : 'Nenhuma relatada';
+  // 1. Expande os IDs
+  const blockedIds = expandRestrictions(data.restrictions || []);
+
+  // 2. Nomes reais dos alimentos
+  const blockedFoods = FOOD_REGISTRY
+    .filter(f => blockedIds.has(f.id))
+    .map(f => f.name);
+
+  const legacyAversoes = data.alimentosEvitar || [];
+  const allRestrictions = Array.from(new Set([...blockedFoods, ...legacyAversoes]));
+
+  const restricoesTxt = allRestrictions.length > 0
+    ? allRestrictions.join(', ')
+    : 'Nenhuma relatada';
+
+  // 🔥 NOVO: Extração de TAGS (Semântica para o LLM)
+  const tags = (data.restrictions || [])
+    .map(r => r.tag)
+    .filter(Boolean) as string[];
   
+  const uniqueTags = Array.from(new Set(tags));
+  const tagsTxt = uniqueTags.length > 0 ? uniqueTags.join(', ') : '';
+
   return `
 [DADOS CLÍNICOS DO PACIENTE]
 - Nome: ${data.nomePaciente}
 - Objetivo Principal: ${data.objetivoPrincipal}
 - Meta de Peso: ${data.metaPeso}
 - Evolução até agora: ${data.evolucaoTxt}
-- Alimentos a Evitar (Aversões/Alergias): ${aversões}
+
+${tagsTxt ? `🚫 CATEGORIAS BLOQUEADAS (Atenção a derivados e generalizações):\n${tagsTxt}\n` : ''}
+🚫 ALIMENTOS BLOQUEADOS (OBRIGATÓRIO RESPEITAR):
+${restricoesTxt}
+
+⚠️ REGRA CRÍTICA:
+NUNCA sugerir as categorias ou alimentos listados acima em nenhuma hipótese, nem como substituição.
 
 [CARDÁPIO ATUAL]
 ${data.cardapioFormatado}
@@ -136,7 +168,7 @@ function buildMacrosContext(data: UserData): string {
   return macrosText.trim();
 }
 
-// 🔥 NOVO MÓDULO: COMPOSIÇÃO CORPORAL (Jackson & Pollock)
+// MÓDULO: COMPOSIÇÃO CORPORAL (Jackson & Pollock)
 function buildBodyCompositionContext(data: UserData): string {
   const comp = data.composicaoCorporal;
   
@@ -221,7 +253,6 @@ ${alertas}
 }
 
 function buildIntentInstructions(intent: IntentType, hasMacros: boolean, hasBodyComposition: boolean): string {
-  // Instrução específica para perguntas sobre macros
   if (hasMacros && intent === 'geral') {
     return `
 [INSTRUÇÃO DE TAREFA: CONSULTA DE MACROS NUTRICIONAIS]
@@ -240,7 +271,6 @@ O paciente está perguntando sobre valores nutricionais, calorias ou composiçã
 `.trim();
   }
 
-  // 🔥 INSTRUÇÃO ESPECÍFICA PARA PERGUNTAS SOBRE COMPOSIÇÃO CORPORAL
   if (hasBodyComposition && intent === 'resultado') {
     return `
 [INSTRUÇÃO DE TAREFA: RESULTADOS E COMPOSIÇÃO CORPORAL]
@@ -268,7 +298,7 @@ O paciente está perguntando sobre resultados, peso ou composição corporal.
 [INSTRUÇÃO DE TAREFA: SUBSTITUIÇÃO DE ALIMENTOS]
 O paciente quer trocar um alimento.
 1. Olhe o [CARDÁPIO ATUAL] e os [MACROS NUTRICIONAIS DO CARDÁPIO] para ver o valor nutricional do que ele deveria comer.
-2. Olhe as [Aversões] para NÃO sugerir o que ele odeia.
+2. Olhe as [CATEGORIAS BLOQUEADAS] e [ALIMENTOS BLOQUEADOS] para NÃO sugerir o que ele odeia ou tem intolerância.
 3. Sugira de 1 a 3 opções de substituições nutricionalmente equivalentes (mesmo grupo alimentar e macros semelhantes).
 4. Mostre a diferença de macros quando possível (ex: "Se trocar o frango por ovo, você teria que comer cerca de 8 ovos para igualar as 54g de proteína. Que tal adicionar mais ovos e um pouco de queijo?").
 5. Seja prático e direto nas quantidades aproximadas.
@@ -300,7 +330,7 @@ O paciente está desanimado, falhou na dieta ou está com dificuldade.
     default:
       return `
 [INSTRUÇÃO DE TAREFA: DÚVIDA GERAL]
-Responda à dúvida do paciente baseando-se no plano alimentar dele, nos macros nutricionais, nos dados de composição corporal e nos dados de rotina. Seja útil, amigável e concisa.
+Responda à dúvida do paciente baseando-se no plano alimentar dele, nas restrições obrigatórias, nos macros nutricionais, nos dados de composição corporal e nos dados de rotina. Seja útil, amigável e concisa.
 `.trim();
   }
 }
@@ -326,12 +356,11 @@ export function buildContext(message: string, data: UserData): string {
   const hasMacros = !!(data.macrosDiarios || (data.macrosPorRefeicao && data.macrosPorRefeicao.length > 0));
   const hasBodyComposition = !!(data.composicaoCorporal && data.composicaoCorporal.percentualGordura);
 
-  // Monta o array apenas com as partes válidas e junta com duas quebras de linha
   const promptParts = [
     buildSystemPersona(),
     buildClinicalContext(data),
     buildMacrosContext(data),
-    buildBodyCompositionContext(data), // 🔥 NOVO MÓDULO INSERIDO AQUI
+    buildBodyCompositionContext(data),
     buildBehavioralContext(data),
     buildEmotionalContext(data),
     buildIntentInstructions(intent, hasMacros, hasBodyComposition),
@@ -347,6 +376,5 @@ export function buildContext(message: string, data: UserData): string {
     `.trim()
   ];
 
-  // Filtra itens vazios (caso hasImage seja false) e une tudo
   return promptParts.filter(part => part.length > 0).join('\n\n');
 }

@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { FoodRestriction } from '@/types/patient';
+import { type FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 import { X, Plus } from 'lucide-react';
 
-// 🔥 TAGS PADRÃO (você pode expandir depois)
+// 🔥 TAGS PADRÃO
 const TAG_OPTIONS = [
   { label: 'Lactose', value: 'lactose' },
   { label: 'Glúten', value: 'gluten' },
@@ -29,13 +29,28 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
   const handleAdd = () => {
     if (!selectedFoodId && !selectedTag) return;
 
+    // PREVENÇÃO DE DUPLICATAS
+    const exists = value.some(r => 
+      r.type === type && 
+      r.foodId === (selectedFoodId || undefined) && 
+      r.tag === (selectedTag || undefined)
+    );
+
+    if (exists) {
+      setSelectedFoodId('');
+      setSelectedTag('');
+      return;
+    }
+
+    // 🔥 CORREÇÃO TYPESCRIPT: 
+    // Usamos string vazia ("") em vez de undefined para satisfazer a interface FoodRestriction
     const newRestriction: FoodRestriction = {
       type,
       foodId: selectedFoodId || undefined,
       tag: selectedTag || undefined,
       food: selectedFoodId
         ? FOOD_REGISTRY.find(f => f.id === selectedFoodId)?.name || ''
-        : selectedTag
+        : ''
     };
 
     onChange([...value, newRestriction]);
@@ -52,6 +67,11 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
     const updated = [...value];
     updated.splice(index, 1);
     onChange(updated);
+  };
+
+  // Função auxiliar para exibir o nome bonito da Tag na lista
+  const getTagLabel = (tagValue: string) => {
+    return TAG_OPTIONS.find(t => t.value === tagValue)?.label || tagValue;
   };
 
   return (
@@ -130,16 +150,18 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
             className="flex items-center justify-between bg-stone-100 px-3 py-2 rounded-lg text-xs"
           >
             <span>
-              {r.type === 'allergy' && '🚫'}
-              {r.type === 'intolerance' && '⚠️'}
-              {r.type === 'restriction' && '📋'}{' '}
-              {r.food || r.tag || r.foodId}
+              {r.type === 'allergy' && '🚫 '}
+              {r.type === 'intolerance' && '⚠️ '}
+              {r.type === 'restriction' && '📋 '}
+              
+              {/* Renderização mais limpa com fallback para string vazia */}
+              {r.food || (r.tag ? getTagLabel(r.tag) : r.foodId)}
             </span>
 
             <button
               type="button"
               onClick={() => handleRemove(index)}
-              className="text-red-500"
+              className="text-red-500 hover:text-red-700 transition-colors"
             >
               <X size={14} />
             </button>
