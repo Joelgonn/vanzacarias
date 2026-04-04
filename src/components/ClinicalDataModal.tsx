@@ -188,9 +188,16 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
             {activeTab === 'antropometria' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 animate-fade-in">
                 {[
-                  { label: "Peso (kg)", name: "weight" }, { label: "Altura (m)", name: "height" },
-                  { label: "Cintura (cm)", name: "waist" }, { label: "Quadril (cm)", name: "hip" },
-                  { label: "Braço (cm)", name: "arm" }, { label: "Panturrilha (cm)", name: "calf" }, { label: "Pescoço (cm)", name: "neck" }
+                  { label: "Peso (kg)", name: "weight" },
+                  { label: "Altura (m)", name: "height" },
+                  { label: "Cintura (cm)", name: "waist" },
+                  { label: "Quadril (cm)", name: "hip" },
+                  { label: "Braço (cm)", name: "arm" },
+                  { label: "Antebraço (cm)", name: "forearm" },
+                  { label: "Coxa (cm)", name: "thigh" },
+                  { label: "Panturrilha (cm)", name: "calf" },
+                  { label: "Pescoço (cm)", name: "neck" },
+                  { label: "Tórax (cm)", name: "chest" }
                 ].map((field) => (
                   <div key={field.name} className="group">
                     <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{field.label}</label>
@@ -208,13 +215,19 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
               </div>
             )}
 
-            {/* ABA: DOBRAS CUTÂNEAS */}
+            {/* ABA: DOBRAS CUTÂNEAS - 🔥 NOVOS CAMPOS: peitoral, axilar_media */}
             {activeTab === 'dobras' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 animate-fade-in">
                 {[
-                  { label: "Tricipital", name: "triceps" }, { label: "Bicipital", name: "biceps" },
-                  { label: "Subescapular", name: "subscapular" }, { label: "Suprailíaca", name: "suprailiac" },
-                  { label: "Abdominal", name: "abdominal" }, { label: "Coxa", name: "thigh" }, { label: "Panturrilha", name: "calf" }
+                  { label: "Tricipital", name: "triceps" },
+                  { label: "Bicipital", name: "biceps" },
+                  { label: "Subescapular", name: "subscapular" },
+                  { label: "Axilar Média", name: "axillary_media" },
+                  { label: "Peitoral", name: "pectoral" },
+                  { label: "Suprailíaca", name: "suprailiac" },
+                  { label: "Abdominal", name: "abdominal" },
+                  { label: "Coxa", name: "thigh" },
+                  { label: "Panturrilha", name: "calf" }
                 ].map((field) => (
                   <div key={field.name} className="group">
                     <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{field.label} (mm)</label>
@@ -241,7 +254,9 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                   <p className="text-[10px] font-black text-nutri-800 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><ChevronRight size={14} className="text-nutri-400"/> Glicêmico & Insulina</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
                     {[
-                      { label: "Glicose", name: "glucose" }, { label: "Insulina", name: "insulin" }, { label: "HbA1c (%)", name: "hba1c" }
+                      { label: "Glicose", name: "glucose" },
+                      { label: "Insulina", name: "insulin" },
+                      { label: "HbA1c (%)", name: "hba1c" }
                     ].map(f => (
                       <div key={f.name} className="group">
                         <label className="block text-[9px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{f.label}</label>
@@ -259,7 +274,10 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                   <p className="text-[10px] font-black text-nutri-800 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><ChevronRight size={14} className="text-nutri-400"/> Perfil Lipídico</p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
                     {[
-                      { label: "Colest. Total", name: "total_cholesterol" }, { label: "HDL", name: "hdl" }, { label: "LDL", name: "ldl" }, { label: "Triglicérides", name: "triglycerides" }
+                      { label: "Colest. Total", name: "total_cholesterol" },
+                      { label: "HDL", name: "hdl" },
+                      { label: "LDL", name: "ldl" },
+                      { label: "Triglicérides", name: "triglycerides" }
                     ].map(f => (
                       <div key={f.name} className="group">
                         <label className="block text-[9px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{f.label}</label>
@@ -277,7 +295,11 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                   <p className="text-[10px] font-black text-nutri-800 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><ChevronRight size={14} className="text-nutri-400"/> Inflamação & Órgãos</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
                     {[
-                      { label: "Ferritina", name: "ferritin" }, { label: "PCR", name: "pcr" }, { label: "TGP (Fígado)", name: "tgp" }, { label: "Creatinina", name: "creatinine" }, { label: "Ureia", name: "urea" }
+                      { label: "Ferritina", name: "ferritin" },
+                      { label: "PCR", name: "pcr" },
+                      { label: "TGP (Fígado)", name: "tgp" },
+                      { label: "Creatinina", name: "creatinine" },
+                      { label: "Ureia", name: "urea" }
                     ].map(f => (
                       <div key={f.name} className="group">
                         <label className="block text-[9px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{f.label}</label>
@@ -295,7 +317,10 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                   <p className="text-[10px] font-black text-nutri-800 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><ChevronRight size={14} className="text-nutri-400"/> Vitaminas & Hormonal</p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
                     {[
-                      { label: "Vitamina D", name: "vitamin_d" }, { label: "Vitamina B12", name: "vitamin_b12" }, { label: "TSH", name: "tsh" }, { label: "Ferro", name: "iron" }
+                      { label: "Vitamina D", name: "vitamin_d" },
+                      { label: "Vitamina B12", name: "vitamin_b12" },
+                      { label: "TSH", name: "tsh" },
+                      { label: "Ferro", name: "iron" }
                     ].map(f => (
                       <div key={f.name} className="group">
                         <label className="block text-[9px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1 group-focus-within:text-nutri-800 transition-colors">{f.label}</label>

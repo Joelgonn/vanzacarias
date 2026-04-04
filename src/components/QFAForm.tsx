@@ -8,108 +8,116 @@ import { FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
 import { useRouter } from 'next/navigation';
 
-// =========================================================================
-// 🧠 HELPERS DE RESOLUÇÃO (QFA → FOOD REGISTRY)
-// =========================================================================
+// 🔥 IMPORT DO CORE DE RESTRIÇÕES (SINGLE SOURCE OF TRUTH)
+import { resolveRestriction } from '@/lib/nutrition/restrictions';
 
-function resolveQFAItemToFoods(qfaId: string): FoodEntity[] {
-  const normalized = qfaId.toLowerCase();
-
-  return FOOD_REGISTRY.filter(food =>
-    food.aliases.some(alias =>
-      alias.toLowerCase().includes(normalized) ||
-      normalized.includes(alias.toLowerCase())
-    ) ||
-    food.tags.some(tag =>
-      tag.toLowerCase().includes(normalized)
-    )
-  );
+// =========================================================================
+// SCHEMA CLÍNICO REAL (QFA) CONECTADO AO DOMÍNIO
+// =========================================================================
+export interface QFASchemaItem {
+  id: string; // Chave legada
+  label: string; // Nome de exibição UI
+  foodId?: string; // Precisão máxima (1 para 1)
+  tag?: string; // Mapeamento comportamental/grupo (ex: lactose, ultraprocessado)
+  legacySearch?: string; // Fallback textual seguro
 }
 
-// =========================================================================
-// SCHEMA CLÍNICO REAL (QFA)
-// =========================================================================
-const qfaSchema = [
+export interface QFASchemaCategory {
+  category: string;
+  items: QFASchemaItem[];
+}
+
+export interface QFARichAnswer {
+  id: string;
+  value: string;
+  label: string;
+  category: string;
+  foodId?: string;
+  tag?: string;
+  legacySearch?: string;
+}
+
+const qfaSchema: QFASchemaCategory[] = [
   {
     category: "Leites e Derivados",
     items: [
-      { id: "leite", label: "Leite (copo de requeijão)" },
-      { id: "iogurte", label: "Iogurte natural (copo de requeijão)" },
-      { id: "queijos", label: "Queijos (1/2 fatia)" },
-      { id: "requeijao", label: "Requeijão / Creme de ricota etc (1,5 colher de sopa)" }
+      { id: "leite", label: "Leite (copo de requeijão)", tag: "lactose", legacySearch: "leite" },
+      { id: "iogurte", label: "Iogurte natural (copo de requeijão)", tag: "lactose", legacySearch: "iogurte" },
+      { id: "queijos", label: "Queijos (1/2 fatia)", tag: "lactose", legacySearch: "queijo" },
+      { id: "requeijao", label: "Requeijão / Creme de ricota etc (1,5 colher de sopa)", tag: "lactose", legacySearch: "requeijão" }
     ]
   },
   {
     category: "Carnes e Ovos",
     items: [
-      { id: "ovo", label: "Ovo cozido / mexido (2 unidades)" },
-      { id: "carne_vermelha", label: "Carnes vermelhas (1 unidade)" },
-      { id: "carne_porco", label: "Carnes de Porco (1 fatia)" },
-      { id: "frango", label: "Frango - filé, sobrecoxa, peito (1 unidade)" },
-      { id: "peixe", label: "Peixe fresco / Frutos do Mar (1 unidade)" }
+      { id: "ovo", label: "Ovo cozido / mexido (2 unidades)", legacySearch: "ovo" },
+      { id: "carne_vermelha", label: "Carnes vermelhas (1 unidade)", legacySearch: "carne" },
+      { id: "carne_porco", label: "Carnes de Porco (1 fatia)", legacySearch: "porco" },
+      { id: "frango", label: "Frango - filé, sobrecoxa, peito (1 unidade)", legacySearch: "frango" },
+      { id: "peixe", label: "Peixe fresco / Frutos do Mar (1 unidade)", legacySearch: "peixe" }
     ]
   },
   {
     category: "Óleos",
     items: [
-      { id: "azeite", label: "Azeite (1 colher de sopa)" },
-      { id: "bacon", label: "Bacon e toucinho / banha (1/2 fatia)" },
-      { id: "frituras", label: "Frituras" },
-      { id: "manteiga", label: "Manteiga / Margarina (1/2 colher de sopa)" },
-      { id: "maionese", label: "Maionese (1/2 colher de sopa)" },
-      { id: "oleos_veg", label: "Óleos vegetais (1 colher de sopa)" }
+      { id: "azeite", label: "Azeite (1 colher de sopa)", legacySearch: "azeite" },
+      { id: "bacon", label: "Bacon e toucinho / banha (1/2 fatia)", legacySearch: "bacon" },
+      { id: "frituras", label: "Frituras", tag: "ultraprocessado", legacySearch: "frito" },
+      { id: "manteiga", label: "Manteiga / Margarina (1/2 colher de sopa)", legacySearch: "manteiga" },
+      { id: "maionese", label: "Maionese (1/2 colher de sopa)", legacySearch: "maionese" },
+      { id: "oleos_veg", label: "Óleos vegetais (1 colher de sopa)", legacySearch: "óleo" }
     ]
   },
   {
     category: "Cereais e Leguminosas",
     items: [
-      { id: "arroz", label: "Arroz Branco / Integral (4 colheres de sopa)" },
-      { id: "aveia", label: "Aveia (4 colheres de sopa)" },
-      { id: "pao", label: "Pão francês / Integral / Forma (1 unidade)" },
-      { id: "macarrao", label: "Macarrão (3 colheres e 1/2 de sopa)" },
-      { id: "bolos", label: "Bolos caseiros (1 fatia pequena)" },
-      { id: "leguminosas", label: "Leguminosas (1 concha)" },
-      { id: "soja", label: "Soja (1 colher de servir)" },
-      { id: "oleaginosas", label: "Oleaginosas (castanha/nozes/amendoim) (1 colher de sopa)" }
+      { id: "arroz", label: "Arroz Branco / Integral (4 colheres de sopa)", legacySearch: "arroz" },
+      { id: "aveia", label: "Aveia (4 colheres de sopa)", legacySearch: "aveia" },
+      { id: "pao", label: "Pão francês / Integral / Forma (1 unidade)", legacySearch: "pão" },
+      { id: "macarrao", label: "Macarrão (3 colheres e 1/2 de sopa)", legacySearch: "macarrão" },
+      { id: "bolos", label: "Bolos caseiros (1 fatia pequena)", legacySearch: "bolo" },
+      { id: "leguminosas", label: "Leguminosas (1 concha)", legacySearch: "feijão" },
+      { id: "soja", label: "Soja (1 colher de servir)", legacySearch: "soja" },
+      { id: "oleaginosas", label: "Oleaginosas (castanha/nozes/amendoim) (1 colher de sopa)", legacySearch: "castanha" }
     ]
   },
   {
     category: "Frutas/Verduras/Legumes",
     items: [
-      { id: "fruta", label: "Fruta in natura (1 unidade/fatia)" },
-      { id: "folhosos", label: "Folhosos (10 folhas)" },
-      { id: "tuberculos", label: "Tubérculos (batatas/cenoura/beterraba) (2 colheres de sopa)" },
-      { id: "legumes", label: "Legumes (abobora/chuchu/tomate/pepino) (2 colheres de sopa)" }
+      { id: "fruta", label: "Fruta in natura (1 unidade/fatia)", legacySearch: "fruta" },
+      { id: "folhosos", label: "Folhosos (10 folhas)", legacySearch: "alface" },
+      { id: "tuberculos", label: "Tubérculos (batatas/cenoura/beterraba) (2 colheres de sopa)", legacySearch: "batata" },
+      { id: "legumes", label: "Legumes (abobora/chuchu/tomate/pepino) (2 colheres de sopa)", legacySearch: "cenoura" }
     ]
   },
   {
     category: "Petiscos embutidos Enlatados",
     items: [
-      { id: "snacks", label: "Snacks - salgadinhos, bolachas, pizza, amendoim (1 pacote)" },
-      { id: "instantaneos", label: "Macarrão instantâneo / lasanha / Nuggets (1 pacote)" },
-      { id: "embutidos", label: "Embutidos em geral (presunto, mortadela etc) (2 fatias)" },
-      { id: "enlatados", label: "Enlatados (milho, ervilha, palmito, azeitona) (2 colheres de sopa)" }
+      { id: "snacks", label: "Snacks - salgadinhos, bolachas, pizza, amendoim (1 pacote)", tag: "ultraprocessado", legacySearch: "salgadinho" },
+      { id: "instantaneos", label: "Macarrão instantâneo / lasanha / Nuggets (1 pacote)", tag: "ultraprocessado", legacySearch: "instantâneo" },
+      { id: "embutidos", label: "Embutidos em geral (presunto, mortadela etc) (2 fatias)", tag: "ultraprocessado", legacySearch: "presunto" },
+      { id: "enlatados", label: "Enlatados (milho, ervilha, palmito, azeitona) (2 colheres de sopa)", tag: "ultraprocessado", legacySearch: "milho" }
     ]
   },
   {
     category: "Sobremesas e Doces",
     items: [
-      { id: "sorvete", label: "Sorvete (1 unidade ou 2 bolas)" },
-      { id: "tortas", label: "Tortas e Doces Elaborados (1 fatia)" },
-      { id: "chocolates", label: "Chocolates (1 unidade)" },
-      { id: "balas", label: "Balas (1 unidade)" }
+      { id: "sorvete", label: "Sorvete (1 unidade ou 2 bolas)", tag: "ultraprocessado", legacySearch: "sorvete" },
+      { id: "tortas", label: "Tortas e Doces Elaborados (1 fatia)", legacySearch: "doce" },
+      { id: "chocolates", label: "Chocolates (1 unidade)", legacySearch: "chocolate" },
+      { id: "balas", label: "Balas (1 unidade)", legacySearch: "bala" }
     ]
   },
   {
     category: "Bebidas",
     items: [
-      { id: "agua", label: "Água (1 garrafa 510 ml)" },
-      { id: "cafe_s_acucar", label: "Café sem açúcar (1 xícara café)" },
-      { id: "suco_natural_s_acucar", label: "Suco Natural / Chás sem açúcar (copo de requeijão)" },
-      { id: "refrigerante", label: "Refrigerante normal (copo de requeijao)" },
-      { id: "cafe_c_acucar", label: "Café / Chá com açúcar (1 xícara café)" },
-      { id: "suco_natural_c_acucar", label: "Suco Natural Adoçado (copo de requeijao)" },
-      { id: "suco_caixinha", label: "Sucos de Caixinha (copo de requeijao)" }
+      { id: "agua", label: "Água (1 garrafa 510 ml)", legacySearch: "água" },
+      { id: "cafe_s_acucar", label: "Café sem açúcar (1 xícara café)", legacySearch: "café" },
+      { id: "suco_natural_s_acucar", label: "Suco Natural / Chás sem açúcar (copo de requeijão)", legacySearch: "suco" },
+      { id: "refrigerante", label: "Refrigerante normal (copo de requeijao)", tag: "ultraprocessado", legacySearch: "refrigerante" },
+      { id: "cafe_c_acucar", label: "Café / Chá com açúcar (1 xícara café)", legacySearch: "café" },
+      { id: "suco_natural_c_acucar", label: "Suco Natural Adoçado (copo de requeijao)", legacySearch: "suco" },
+      { id: "suco_caixinha", label: "Sucos de Caixinha (copo de requeijao)", tag: "ultraprocessado", legacySearch: "suco" }
     ]
   }
 ];
@@ -134,45 +142,56 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
   const router = useRouter();
 
   // =========================================================================
-  // INTELIGÊNCIA CLÍNICA: MATCH DE RESTRIÇÕES 
-  // (Movida para cima para ser acessível nos useEffects)
+  // INTELIGÊNCIA CLÍNICA: AVALIAÇÃO VIA SINGLE SOURCE OF TRUTH
   // =========================================================================
-  const getRestrictionForItem = (itemId: string, itemLabel: string, currentRestrictions: FoodRestriction[]): FoodRestriction | null => {
-    if (!currentRestrictions.length) return null;
-
-    const matchedFoods = resolveQFAItemToFoods(itemId);
-    const triggeredRestrictions: FoodRestriction[] = [];
+  const getRestrictionForItem = (
+    item: QFASchemaItem, 
+    currentRestrictions: FoodRestriction[]
+  ): { type: 'allergy' | 'intolerance' | 'restriction' } | null => {
     
-    currentRestrictions.forEach(r => {
-      let isMatch = false;
+    if (!currentRestrictions || currentRestrictions.length === 0) return null;
 
-      if (r.foodId && matchedFoods.some(f => f.id === r.foodId)) {
-        isMatch = true;
+    let matchedFoodIds: string[] = [];
+
+    // 1. Resolve para a linguagem do Domínio (Regras de Prioridade: foodId > tag > fallback)
+    if (item.foodId) {
+      matchedFoodIds.push(item.foodId);
+    } else if (item.tag) {
+      matchedFoodIds = FOOD_REGISTRY.filter(f => f.tags.includes(item.tag as any)).map(f => f.id);
+    } else if (item.legacySearch) {
+      const term = item.legacySearch.toLowerCase();
+      matchedFoodIds = FOOD_REGISTRY.filter(f =>
+        f.name.toLowerCase().includes(term) ||
+        f.aliases.some(alias => alias.toLowerCase().includes(term))
+      ).map(f => f.id);
+    }
+
+    // 2. Avalia cada FoodId no Motor de Domínio (SSOT)
+    let highestSeverity: 'allergy' | 'intolerance' | 'restriction' | null = null;
+    
+    for (const id of matchedFoodIds) {
+      const type = resolveRestriction(id, currentRestrictions);
+      if (type === 'allergy') return { type: 'allergy' }; // Severidade máxima, aborta busca
+      if (type === 'intolerance') highestSeverity = 'intolerance';
+      if (type === 'restriction' && highestSeverity !== 'intolerance') highestSeverity = 'restriction';
+    }
+
+    // 3. Safety Net Legado
+    if (!highestSeverity) {
+      for (const r of currentRestrictions) {
+        if (r.food && (r.food.toLowerCase().includes(item.id.toLowerCase()) || item.id.toLowerCase().includes(r.food.toLowerCase()))) {
+           if (r.type === 'allergy') return { type: 'allergy' };
+           if (r.type === 'intolerance') highestSeverity = 'intolerance';
+           if (r.type === 'restriction' && highestSeverity !== 'intolerance') highestSeverity = 'restriction';
+        }
       }
-      else if (r.tag && matchedFoods.some(f => f.tags.includes(r.tag as any))) {
-        isMatch = true;
-      }
-      else if (r.food) {
-        const legacyMatch = 
-          matchedFoods.some(f => f.aliases.some(alias => alias.toLowerCase().includes(r.food.toLowerCase()))) ||
-          itemId.toLowerCase().includes(r.food.toLowerCase()) || 
-          itemLabel.toLowerCase().includes(r.food.toLowerCase()) ||
-          r.food.toLowerCase().includes(itemId.toLowerCase());
-          
-        if (legacyMatch) isMatch = true;
-      }
+    }
 
-      if (isMatch) triggeredRestrictions.push(r);
-    });
-
-    if (triggeredRestrictions.length === 0) return null;
-
-    const allergy = triggeredRestrictions.find(r => r.type === 'allergy');
-    return allergy || triggeredRestrictions[0];
+    return highestSeverity ? { type: highestSeverity } : null;
   };
 
   // =========================================================================
-  // CARREGAR DADOS INICIAIS
+  // CARREGAR DADOS INICIAIS (COM RETROCOMPATIBILIDADE)
   // =========================================================================
   useEffect(() => {
     async function loadData() {
@@ -188,7 +207,18 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
         }
         
         if (qfaRes.data?.answers) {
-          setAnswers(qfaRes.data.answers);
+          const dbData = qfaRes.data.answers;
+          // Tradução da Fronteira: Se for o formato rico (Array), normaliza para UI
+          if (Array.isArray(dbData)) {
+            const restoredAnswers: Record<string, string> = {};
+            dbData.forEach((ans: QFARichAnswer) => {
+              restoredAnswers[ans.id] = ans.value;
+            });
+            setAnswers(restoredAnswers);
+          } else {
+            // Formato legado
+            setAnswers(dbData);
+          }
         }
       }
       setFetchingData(false);
@@ -197,21 +227,18 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
   }, [supabase]);
 
   // =========================================================================
-  // ✅ CORREÇÃO ARQUITETURAL: AUTO-FILL DE ALERGIAS VIA EFFECT
+  // AUTO-FILL DE ALERGIAS (GARANTIDO VIA DOMÍNIO)
   // =========================================================================
   useEffect(() => {
     if (!restrictions.length) return;
 
-    // Usando a callback form de setState para garantir que não dependemos 
-    // do objeto answers no array de dependências (evitando infinitos loops)
     setAnswers(prev => {
       const updatedAnswers: Record<string, string> = { ...prev };
       let changed = false;
 
       qfaSchema.forEach(section => {
         section.items.forEach(item => {
-          // Passamos a restrição atual para a função
-          const restriction = getRestrictionForItem(item.id, item.label, restrictions);
+          const restriction = getRestrictionForItem(item, restrictions);
 
           if (restriction?.type === 'allergy') {
             if (updatedAnswers[item.id] !== "0") {
@@ -222,14 +249,13 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
         });
       });
 
-      // Se nada mudou, retorna o estado anterior para evitar re-render inútil
       return changed ? updatedAnswers : prev;
     });
 
   }, [restrictions]);
 
   // =========================================================================
-  // CÁLCULOS E HANDLERS (COM PROGRESÃO INTELIGENTE)
+  // CÁLCULOS E HANDLERS (PROGRESÃO INTELIGENTE)
   // =========================================================================
   const handleSelect = (itemId: string, val: string) => {
     setAnswers(prev => ({ ...prev, [itemId]: val }));
@@ -237,24 +263,24 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
 
   const totalItems = qfaSchema.reduce((acc, cat) => acc + cat.items.length, 0);
   
-  // 🔥 NOVO: Cálculo inteligente de progresso que não infla com alergias
   let allergyCount = 0;
   qfaSchema.forEach(section => {
     section.items.forEach(item => {
-      const restriction = getRestrictionForItem(item.id, item.label, restrictions);
+      const restriction = getRestrictionForItem(item, restrictions);
       if (restriction?.type === 'allergy') allergyCount++;
     });
   });
 
   const actionableItems = totalItems - allergyCount;
   const totalAnswers = Object.keys(answers).length;
-  // Subtraímos as alergias auto-preenchidas para saber quantas ações manuais o usuário tomou
   const manualAnswersCount = Math.max(0, totalAnswers - allergyCount);
 
-  // Progresso baseado apenas no que o usuário de fato precisa responder
   const progress = actionableItems === 0 ? 100 : Math.round((manualAnswersCount / actionableItems) * 100);
   const isComplete = manualAnswersCount >= actionableItems;
 
+  // =========================================================================
+  // 💾 PERSISTÊNCIA ENRIQUECIDA (NORMALIZAÇÃO NO BANCO)
+  // =========================================================================
   const handleSave = async () => {
     setLoading(true);
     const toastId = toast.loading("Salvando suas respostas...");
@@ -266,12 +292,30 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
         throw new Error("Sessão expirada. Por favor, faça login novamente.");
       }
 
+      // 🔥 TRADUÇÃO DE FRONTEIRA: Converte o Record rápido da UI para o Payload Rico
+      const richPayload: QFARichAnswer[] = [];
+      qfaSchema.forEach(section => {
+        section.items.forEach(item => {
+          if (answers[item.id] !== undefined) {
+            richPayload.push({
+              id: item.id,
+              value: answers[item.id],
+              label: item.label,
+              category: section.category,
+              ...(item.foodId && { foodId: item.foodId }),
+              ...(item.tag && { tag: item.tag }),
+              ...(item.legacySearch && { legacySearch: item.legacySearch })
+            });
+          }
+        });
+      });
+
       const { error } = await supabase
         .from('qfa_responses')
         .upsert(
           { 
             user_id: session.user.id, 
-            answers: answers, 
+            answers: richPayload, // 🎯 Salva o JSON normalizado
             updated_at: new Date().toISOString() 
           }, 
           { onConflict: 'user_id' }
@@ -360,14 +404,12 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
 
             <div className="space-y-4">
               {section.items.map((item) => {
-                const restriction = getRestrictionForItem(item.id, item.label, restrictions);
+                const restriction = getRestrictionForItem(item, restrictions);
                 const isAllergy = restriction?.type === 'allergy';
                 const isIntoleranceOrRestriction = restriction?.type === 'intolerance' || restriction?.type === 'restriction';
                 
                 const currentAnswer = answers[item.id];
                 const hasAnswer = currentAnswer !== undefined;
-
-                // ❌ O SETTIMEOUT FOI COMPLETAMENTE REMOVIDO DAQUI
 
                 return (
                   <div 
