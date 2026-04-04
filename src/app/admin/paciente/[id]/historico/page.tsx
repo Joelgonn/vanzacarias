@@ -69,6 +69,8 @@ interface SkinfoldsData {
   triceps?: string | number;
   biceps?: string | number;
   subscapular?: string | number;
+  axillary_media?: string | number; // 🔥 CORREÇÃO: Adicionado para o TS não quebrar
+  pectoral?: string | number;       // 🔥 CORREÇÃO: Adicionado para o TS não quebrar
   suprailiac?: string | number;
   abdominal?: string | number;
   thigh?: string | number;
@@ -584,7 +586,7 @@ export default function PacienteHistoricoAdmin() {
       let leanMass: number | null = null;
       
       if (skin) {
-        const s1 = parseFloat(skin.triceps?.toString()||"0") + parseFloat(skin.biceps?.toString()||"0") + parseFloat(skin.subscapular?.toString()||"0") + parseFloat(skin.suprailiac?.toString()||"0") + parseFloat(skin.abdominal?.toString()||"0") + parseFloat(skin.thigh?.toString()||"0") + parseFloat(skin.calf?.toString()||"0");
+        const s1 = parseFloat(skin.triceps?.toString()||"0") + parseFloat(skin.biceps?.toString()||"0") + parseFloat(skin.subscapular?.toString()||"0") + parseFloat(skin.axillary_media?.toString()||"0") + parseFloat(skin.pectoral?.toString()||"0") + parseFloat(skin.suprailiac?.toString()||"0") + parseFloat(skin.abdominal?.toString()||"0") + parseFloat(skin.thigh?.toString()||"0") + parseFloat(skin.calf?.toString()||"0");
         if (s1 > 0) {
           sumFolds = parseFloat(s1.toFixed(1));
           if (currentWeight && patientAge !== null) {

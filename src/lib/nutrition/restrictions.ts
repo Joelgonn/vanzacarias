@@ -15,11 +15,76 @@ export interface RestrictionInfo {
   description: string;
 }
 
+export interface NormalizedRestriction {
+  foodIds: string[];
+  type: RestrictionType;
+}
+
 /**
- * Obtém o tipo de restrição de um alimento específico
- * @returns RestrictionType ou null se não houver restrição
+ * ==========================================
+ * 1. NORMALIZAÇÃO (Nível Profissional)
+ * ==========================================
+ * Converte qualquer regra (id direto, tag ou string legada) para uma lista exata de foodIds.
+ * Elimina a ambiguidade. Ordem de prioridade estrita: foodId > tag > food (legado)
  */
-export function getRestrictionType(
+export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction {
+  let foodIds: string[] = [];
+
+  if (r.foodId) {
+    // 1. Fonte da verdade mais forte: ID direto
+    const exists = FOOD_REGISTRY.some(f => f.id === r.foodId);
+    if (exists) {
+      foodIds.push(r.foodId);
+    }
+  } else if (r.tag) {
+    // 2. Tag: Categoria inteira bloqueada -> mapeia para todos os IDs que possuem a tag
+    foodIds = FOOD_REGISTRY.filter(f => f.tags.includes(r.tag as any)).map(f => f.id);
+  } else if (r.food) {
+    // 3. Fallback legado: Varre o registry fazendo fuzzy match em name e aliases
+    const searchTerm = r.food.toLowerCase();
+    foodIds = FOOD_REGISTRY.filter(f => {
+      const matchesName = f.name.toLowerCase().includes(searchTerm);
+      const matchesAlias = f.aliases.some(alias => alias.toLowerCase().includes(searchTerm));
+      return matchesName || matchesAlias;
+    }).map(f => f.id);
+  }
+
+  return {
+    foodIds,
+    type: r.type
+  };
+}
+
+/**
+ * ==========================================
+ * 2. EXPANSÃO COMPLETA (Substitui lógica do DietBuilder)
+ * ==========================================
+ * Retorna um Set rápido com TODOS os foodIds que estão bloqueados.
+ * Isso deve substituir a antiga função `resolveBlockedFoodIds` que ficava solta.
+ */
+export function expandRestrictions(restrictions: FoodRestriction[]): Set<string> {
+  const blockedIds = new Set<string>();
+
+  if (!restrictions || restrictions.length === 0) return blockedIds;
+
+  for (const r of restrictions) {
+    const normalized = normalizeRestriction(r);
+    for (const id of normalized.foodIds) {
+      blockedIds.add(id);
+    }
+  }
+
+  return blockedIds;
+}
+
+/**
+ * ==========================================
+ * 3. FUNÇÃO CORE DE RESOLUÇÃO (Single Source of Truth)
+ * ==========================================
+ * Avalia se um foodId específico bate com alguma restrição.
+ * Substitui o QFA Matcher e centraliza a checagem.
+ */
+export function resolveRestriction(
   foodId: string,
   restrictions: FoodRestriction[]
 ): RestrictionType | null {
@@ -28,24 +93,24 @@ export function getRestrictionType(
   const food = FOOD_REGISTRY.find(f => f.id === foodId);
   if (!food) return null;
 
+  // Percorre aplicando a mesma ordem de prioridade
   for (const r of restrictions) {
-    // 1. foodId direto
+    // 1. Match direto por ID
     if (r.foodId === foodId) {
       return r.type;
     }
 
-    // 2. tag (categoria inteira bloqueada)
-    if (r.tag) {
-      if (food.tags.includes(r.tag as any)) {
-        return r.type;
-      }
+    // 2. Match por Tag
+    if (r.tag && food.tags.includes(r.tag as any)) {
+      return r.type;
     }
 
-    // 3. fallback legado (r.food string)
+    // 3. Match legado (string no form antigo)
     if (r.food) {
-      const matchesName = food.name.toLowerCase().includes(r.food.toLowerCase());
+      const searchTerm = r.food.toLowerCase();
+      const matchesName = food.name.toLowerCase().includes(searchTerm);
       const matchesAlias = food.aliases.some(alias =>
-        alias.toLowerCase().includes(r.food.toLowerCase())
+        alias.toLowerCase().includes(searchTerm)
       );
       if (matchesName || matchesAlias) {
         return r.type;
@@ -57,13 +122,30 @@ export function getRestrictionType(
 }
 
 /**
+ * ==========================================
+ * 4. API PÚBLICA (Mantém contratos existentes intactos)
+ * ==========================================
+ */
+
+/**
+ * Alias de retrocompatibilidade: aponta diretamente para o novo Core
+ */
+export function getRestrictionType(
+  foodId: string,
+  restrictions: FoodRestriction[]
+): RestrictionType | null {
+  return resolveRestriction(foodId, restrictions);
+}
+
+/**
  * Obtém informações completas (incluindo classes CSS) para UI
  */
 export function getRestrictionInfo(
   foodId: string,
   restrictions: FoodRestriction[]
 ): RestrictionInfo | null {
-  const type = getRestrictionType(foodId, restrictions);
+  // Agora consome do Core
+  const type = resolveRestriction(foodId, restrictions);
   if (!type) return null;
 
   const config: Record<RestrictionType, Omit<RestrictionInfo, 'type'>> = {
@@ -109,7 +191,8 @@ export function isFoodBlocked(
   foodId: string,
   restrictions: FoodRestriction[]
 ): boolean {
-  return getRestrictionType(foodId, restrictions) !== null;
+  // Agora consome do Core
+  return resolveRestriction(foodId, restrictions) !== null;
 }
 
 /**
