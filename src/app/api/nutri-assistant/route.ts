@@ -8,7 +8,6 @@ import { getUserSummary, updateUserSummary } from '@/lib/memorySummary'
 import { getSemanticMemories } from '@/lib/semanticSearch'
 import { generateEmbedding } from '@/lib/embeddingService'
 
-// 🔥 CORREÇÃO DO IMPORT: Trazendo a função do motor e o tipo do arquivo correto
 import { expandRestrictions } from '@/lib/nutrition/restrictions';
 import { type FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
@@ -257,22 +256,51 @@ export async function POST(req: Request) {
 
       let deepContext = '';
       const normalizedMsg = normalizeString(safeMessage);
+      
+      // 🔥 CORREÇÃO: Busca inteligente de Paciente (Evita confusão entre homônimos)
       const mentionedPatient = adminData?.patients?.find((p: any) => {
         if (!p.full_name) return false;
-        return p.full_name.split(' ')[0].length > 2 && normalizedMsg.includes(normalizeString(p.full_name.split(' ')[0]));
+        const fullNameNorm = normalizeString(p.full_name);
+        
+        // 1. Tenta match do nome inteiro (ex: "vanusa barros")
+        if (normalizedMsg.includes(fullNameNorm)) return true;
+        
+        // 2. Tenta match do Nome + Sobrenome principal
+        const parts = fullNameNorm.split(' ');
+        if (parts.length > 1 && normalizedMsg.includes(`${parts[0]} ${parts[1]}`)) return true;
+        
+        // 3. Fallback pro primeiro nome
+        const firstName = parts[0];
+        return firstName.length > 2 && normalizedMsg.includes(firstName);
       });
 
       if (mentionedPatient) {
         const targetId = mentionedPatient.id;
-        const [antro, logs, evals, checkins] = await Promise.all([
+        
+        // 🔥 CORREÇÃO 1: Alterado de 'restrictions' para 'food_restrictions' no .select()
+        const [antro, logs, evals, checkins, profileTargetData] = await Promise.all([
           supabaseAdmin.from('anthropometry').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }).limit(2),
           supabaseAdmin.from('daily_logs').select('*').eq('user_id', targetId).order('date', { ascending: false }).limit(3),
           supabaseAdmin.from('evaluations').select('*').eq('user_id', targetId).limit(1),
-          supabaseAdmin.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(2)
+          supabaseAdmin.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(2),
+          supabaseAdmin.from('profiles').select('food_restrictions').eq('id', targetId).limit(1)
         ]);
+
+        // 🔥 CORREÇÃO 2: Lendo de 'food_restrictions'
+        const restrictionsRaw = profileTargetData.data?.[0]?.food_restrictions || [];
+        const restricoesTxt = restrictionsRaw.length > 0
+          ? restrictionsRaw.map((r: any) => {
+              const icon = r.type === 'allergy' ? '🚫' : r.type === 'intolerance' ? '⚠️' : '📋';
+              return `${icon} ${r.food || r.tag || r.foodId}`;
+            }).join(', ')
+          : 'Nenhuma registrada';
 
         deepContext = `
         DADOS DO PACIENTE: ${mentionedPatient.full_name}
+
+        🚫 RESTRIÇÕES ALIMENTARES:
+        ${restricoesTxt}
+
         📋 AVALIAÇÃO: ${JSON.stringify(evals.data)}
         ✅ CHECK-INS: ${JSON.stringify(checkins.data)}
         📊 ANTROPOMETRIA: ${JSON.stringify(antro.data)}
@@ -303,8 +331,9 @@ export async function POST(req: Request) {
     const rate = await checkRateLimit(userId);
     if (!rate.allowed) return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
 
+    // 🔥 CORREÇÃO 3: Alterado de 'restrictions' para 'food_restrictions' no .select()
     const [profileRes, dailyLogRes, evalRes, qfaRes, antroRes] = await Promise.all([
-      supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan, restrictions').eq('id', userId).limit(1),
+      supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan, food_restrictions').eq('id', userId).limit(1),
       supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood, activities, activity_kcal').eq('user_id', userId).eq('date', todayStr).limit(1),
       supabaseAdmin.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
@@ -329,7 +358,8 @@ export async function POST(req: Request) {
       rotinaSono: evaluation?.answers?.["3"] || '',
       vontadesDoces: evaluation?.answers?.["7"] || '',
       alimentosEvitar,
-      restrictions: profile?.restrictions || [],
+      // 🔥 CORREÇÃO 4: Lendo de 'food_restrictions'
+      restrictions: profile?.food_restrictions || [],
       cardapioFormatado: formatarCardapio(profile?.meal_plan || []),
       evolucaoTxt: antroRes.data?.length === 2 ? `Reduziu ${antroRes.data[1].weight - antroRes.data[0].weight}kg` : 'Iniciando.',
       humorHoje: dailyLog?.mood || 'Não registrado',
@@ -367,7 +397,8 @@ ${semanticMemory || ''}`.trim();
     if (!reply) return NextResponse.json({ reply: "Pode repetir?" }, { status: 200 });
 
     // 🔥 EXECUÇÃO DO GUARDRAIL SOTA
-    reply = await ensureSafeResponse(reply, profile?.restrictions, chat);
+    // 🔥 CORREÇÃO 5: Passando 'food_restrictions' para a validação do guardrail
+    reply = await ensureSafeResponse(reply, profile?.food_restrictions, chat);
 
     // Salvamento Assíncrono
     if (userId) {
