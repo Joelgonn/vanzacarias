@@ -1,21 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
   Copy, CheckCircle2, AlertCircle, CalendarRange, Loader2,
   Beef, Wheat, Droplet, Target, X, Clock, ChevronRight, Search,
-  Minus // 🔥 NOVO: Ícone para diminuir quantidade
+  ChevronLeft
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
-// 🔥 IMPORTS DO DOMÍNIO DE NUTRIÇÃO
 import { FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
 
-// 🔥 IMPORTS DO CORE DE RESTRIÇÕES (SINGLE SOURCE OF TRUTH)
 import { 
   getRestrictionInfo, 
   getRestrictionsSummary,
@@ -23,7 +21,50 @@ import {
   resolveRestriction
 } from '@/lib/nutrition/restrictions';
 
-// 🔥 ADAPTADOR (REGISTRY → UI) - AGORA COM QUANTITY DEFAULT
+// ============================================================================
+// 🔥 NORMALIZAÇÃO CENTRAL (CORE DO NOVO SISTEMA)
+// ============================================================================
+
+function getBaseGrams(foodId: string): number {
+  const food = FOOD_REGISTRY.find(f => f.id === foodId);
+  return food?.baseGrams || 100;
+}
+
+function normalizeGrams(item: FoodItem): number {
+  if (item.grams != null) return item.grams;
+
+  if (item.quantity != null) {
+    return item.quantity * getBaseGrams(item.id);
+  }
+
+  return getBaseGrams(item.id);
+}
+
+// ============================================================================
+// 🔥 CÁLCULO PROPORCIONAL (NOVO MOTOR)
+// ============================================================================
+
+function calculateTotals(foodItems: FoodItem[]) {
+  return foodItems.reduce((acc, item) => {
+    const baseGrams = getBaseGrams(item.id);
+    const grams = normalizeGrams(item);
+    const factor = grams / baseGrams;
+
+    return {
+      kcal: acc.kcal + (item.kcal * factor),
+      macros: {
+        p: acc.macros.p + (item.macros.p * factor),
+        c: acc.macros.c + (item.macros.c * factor),
+        g: acc.macros.g + (item.macros.g * factor),
+      }
+    };
+  }, {
+    kcal: 0,
+    macros: { p: 0, c: 0, g: 0 }
+  });
+}
+
+// 🔥 ADAPTADOR (REGISTRY → UI)
 function mapToFoodItem(food: FoodEntity): FoodItem {
   return {
     id: food.id,
@@ -34,7 +75,8 @@ function mapToFoodItem(food: FoodEntity): FoodItem {
       c: food.macros.c,
       g: food.macros.g
     },
-    quantity: 1 // 🔥 Default obrigatório ao mapear do banco
+    grams: food.baseGrams,
+    quantity: 1
   };
 }
 
@@ -59,7 +101,6 @@ interface DietBuilderProps {
   foodRestrictions?: FoodRestriction[]; 
 }
 
-// 🔥 SSOT DA UI: AGORA INCLUI QUANTITY
 interface FoodItem {
   id: string;
   name: string;
@@ -69,7 +110,8 @@ interface FoodItem {
     c: number;
     g: number;
   };
-  quantity: number; // 🔥 NOVO
+  grams: number;
+  quantity?: number;
 }
 
 export interface Option {
@@ -92,7 +134,7 @@ export interface Meal {
 }
 
 // =========================================================================
-// COMPONENTE DE SELETOR DE HORÁRIO COMPACTO PREMIUM
+// COMPONENTE DE SELETOR DE HORÁRIO
 // =========================================================================
 
 interface TimeSelectorProps {
@@ -157,7 +199,7 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
       </div>
       
       {showCustomInput && (
-        <div className="flex gap-2 items-center animate-in fade-in slide-in-from-left-2">
+        <div className="flex gap-2 items-center animate-in fade-in slide-in-from-left-2 mt-2">
           <div className="relative">
             <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
@@ -166,7 +208,7 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
               value={customTime || (value && !hasSuggested ? value : '')}
               onChange={(e) => setCustomTime(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleCustomTimeSubmit()}
-              className="w-24 pl-8 pr-3 py-2 rounded-xl border border-stone-200 font-bold text-stone-800 outline-none focus:border-nutri-500 focus:ring-4 focus:ring-nutri-500/10 bg-white text-sm transition-all"
+              className="w-24 pl-8 pr-3 py-2 rounded-xl border border-stone-200 font-bold text-stone-800 outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-500/10 bg-white text-sm transition-all"
               autoFocus
             />
           </div>
@@ -193,12 +235,263 @@ function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelecto
 }
 
 // =========================================================================
-// 🧠 BANCO VISUAL CONECTADO AO DOMÍNIO (VIEW ADAPTER)
+// COMPONENTE DE RESTRIÇÕES SIDEBAR
+// =========================================================================
+
+interface RestrictionsSidebarProps {
+  restrictionsSummary: {
+    hasRestrictions: boolean;
+    allergies: number;
+    intolerances: number;
+    restrictions: number;
+  };
+}
+
+function RestrictionsSidebar({ restrictionsSummary }: RestrictionsSidebarProps) {
+  if (!restrictionsSummary?.hasRestrictions) return null;
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <AlertCircle size={16} className="text-amber-600" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-amber-800">
+          Restrições
+        </span>
+      </div>
+
+      <div className="text-[11px] font-medium text-amber-700 space-y-1.5">
+        {restrictionsSummary.allergies > 0 && (
+          <div className="flex items-center gap-1.5"><span className="text-[10px]">🚫</span> {restrictionsSummary.allergies} alergia(s)</div>
+        )}
+        {restrictionsSummary.intolerances > 0 && (
+          <div className="flex items-center gap-1.5"><span className="text-[10px]">⚠️</span> {restrictionsSummary.intolerances} intolerância(s)</div>
+        )}
+        {restrictionsSummary.restrictions > 0 && (
+          <div className="flex items-center gap-1.5"><span className="text-[10px]">📋</span> {restrictionsSummary.restrictions} restrição(ões)</div>
+        )}
+      </div>
+
+      <div className="text-[9px] font-bold text-amber-600 pt-2 border-t border-amber-200/50 leading-relaxed">
+        Alimentos bloqueados aparecem com estilo cortado e não podem ser adicionados.
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// COMPONENTE DE MACROS SIDEBAR
+// =========================================================================
+
+interface MacrosSidebarProps {
+  totals: { kcal: number; p: number; c: number; g: number };
+  targets: { kcal: number; protein: number; carbs: number; fat: number };
+}
+
+function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
+  const getPercentage = (current: number, target: number) => {
+    if (!target) return 0;
+    return Math.min((current / target) * 100, 100);
+  };
+  
+  const getBarColor = (type: string) => {
+    switch (type) {
+      case 'kcal': return 'bg-stone-800';
+      case 'p': return 'bg-red-500';
+      case 'c': return 'bg-amber-500';
+      case 'g': return 'bg-blue-500';
+      default: return 'bg-stone-400';
+    }
+  };
+  
+  return (
+    <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-4 shadow-sm">
+      <div className="flex items-center gap-2 pb-2 border-b border-stone-100">
+        <Target size={14} className="text-stone-500" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">Metas do Dia</span>
+      </div>
+      
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="font-bold text-stone-700">Kcal</span>
+            <span className="font-mono font-bold text-stone-900">{Math.round(totals.kcal)} / {targets.kcal}</span>
+          </div>
+          <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+            <div 
+              className={`h-full ${getBarColor('kcal')} transition-all duration-300`}
+              style={{ width: `${getPercentage(totals.kcal, targets.kcal)}%` }}
+            />
+          </div>
+        </div>
+        
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="font-bold text-red-600">Proteína</span>
+            <span className="font-mono font-bold text-red-600">{Math.round(totals.p)}g / {targets.protein}g</span>
+          </div>
+          <div className="h-1.5 bg-red-100 rounded-full overflow-hidden">
+            <div 
+              className={`h-full ${getBarColor('p')} transition-all duration-300`}
+              style={{ width: `${getPercentage(totals.p, targets.protein)}%` }}
+            />
+          </div>
+        </div>
+        
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="font-bold text-amber-600">Carboidrato</span>
+            <span className="font-mono font-bold text-amber-600">{Math.round(totals.c)}g / {targets.carbs}g</span>
+          </div>
+          <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
+            <div 
+              className={`h-full ${getBarColor('c')} transition-all duration-300`}
+              style={{ width: `${getPercentage(totals.c, targets.carbs)}%` }}
+            />
+          </div>
+        </div>
+        
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="font-bold text-blue-600">Gordura</span>
+            <span className="font-mono font-bold text-blue-600">{Math.round(totals.g)}g / {targets.fat}g</span>
+          </div>
+          <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div 
+              className={`h-full ${getBarColor('g')} transition-all duration-300`}
+              style={{ width: `${getPercentage(totals.g, targets.fat)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// COMPONENTE DE FOOD ITEM COM CONTROLES AVANÇADOS (LAYOUT HORIZONTAL)
+// =========================================================================
+
+interface FoodItemCardProps {
+  foodItem: FoodItem;
+  index: number;
+  isActive: boolean;
+  onUpdateGrams: (grams: number) => void;
+  onDelete: () => void;
+  onActivate: () => void;
+}
+
+function FoodItemCard({ 
+  foodItem, 
+  index, 
+  isActive, 
+  onUpdateGrams, 
+  onDelete, 
+  onActivate 
+}: FoodItemCardProps) {
+  const grams = foodItem.grams;
+  const baseGrams = getBaseGrams(foodItem.id);
+  const ratio = grams / baseGrams;
+  
+  const presets = [100, 150, 200];
+  
+  const handlePresetClick = (preset: number) => {
+    onUpdateGrams(preset);
+  };
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    if (rawValue === '') {
+      onUpdateGrams(0);
+    } else {
+      const parsedValue = parseInt(rawValue, 10);
+      if (!isNaN(parsedValue)) {
+        onUpdateGrams(parsedValue);
+      }
+    }
+  };
+  
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdateGrams(Number(e.target.value));
+  };
+  
+  return (
+    <div 
+      className={`bg-white border rounded-xl p-3 transition-all duration-200 ${
+        isActive 
+          ? 'ring-2 ring-stone-800 shadow-md border-stone-800' 
+          : 'border-stone-200 hover:border-stone-300 hover:shadow-sm'
+      }`}
+      onClick={onActivate}
+    >
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+        <span className="text-sm font-bold text-stone-800 w-full xl:w-48 shrink-0 truncate">
+          {foodItem.name}
+        </span>
+        
+        <div className="flex flex-1 flex-wrap items-center gap-3 xl:gap-4">
+          
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 bg-stone-50 border border-stone-200 rounded-lg px-2 py-1">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={Math.round(grams)}
+                onChange={handleInputChange}
+                className="w-12 text-sm font-bold text-center bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="text-[10px] font-bold text-stone-400 uppercase">g</span>
+            </div>
+            
+            {isActive && presets.map(preset => (
+              <button
+                key={preset}
+                onClick={(e) => { e.stopPropagation(); handlePresetClick(preset); }}
+                className="text-[10px] font-bold px-2 py-1 rounded-md bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-800 transition-all active:scale-95 hidden sm:block"
+              >
+                {preset}g
+              </button>
+            ))}
+          </div>
+          
+          <div className={`flex-1 min-w-[80px] hidden sm:block ${isActive ? 'opacity-100' : 'opacity-0 xl:opacity-100 xl:opacity-30 pointer-events-none xl:pointer-events-auto transition-opacity'}`}>
+            <input
+              type="range"
+              min={0}
+              max={300}
+              step={10}
+              value={Math.min(grams, 300)}
+              onChange={handleSliderChange}
+              className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-700 opacity-70 hover:opacity-100 transition-opacity"
+            />
+          </div>
+          
+          <div className="flex items-center gap-2 text-[10px] font-bold shrink-0 opacity-80 xl:ml-auto">
+            <span className="text-stone-500 w-12 text-right">{Math.round(foodItem.kcal * ratio)} kcal</span>
+            <span className="text-red-500 w-8 text-right">P {Math.round(foodItem.macros.p * ratio)}</span>
+            <span className="text-amber-500 w-8 text-right">C {Math.round(foodItem.macros.c * ratio)}</span>
+            <span className="text-blue-500 w-8 text-right">G {Math.round(foodItem.macros.g * ratio)}</span>
+          </div>
+          
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDelete(); }} 
+            className="text-stone-300 hover:text-rose-600 transition-colors p-1 ml-auto xl:ml-0 shrink-0"
+            title="Remover Alimento"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// 🧠 BANCO VISUAL CONECTADO AO DOMÍNIO
 // =========================================================================
 
 interface QuickFoodConfigItem {
-  id: string; // 🔥 SSOT: Deve obrigatoriamente existir no FOOD_REGISTRY
-  label: string; // Label visual apenas para UI (ex: com porções)
+  id: string;
+  label: string;
 }
 
 interface QuickFoodCategoryConfig {
@@ -460,7 +753,6 @@ const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] =[
   }
 ];
 
-// 🔥 GERADOR DINÂMICO 10/10: Filtra a configuração estática validando contra a SSOT
 const quickFoods: QuickFoodCategoryConfig[] = QUICK_FOODS_CONFIG.map(cat => {
   const validItems = cat.items.filter(uiItem => {
     const exists = FOOD_REGISTRY.some(f => f.id === uiItem.id);
@@ -469,6 +761,9 @@ const quickFoods: QuickFoodCategoryConfig[] = QUICK_FOODS_CONFIG.map(cat => {
   });
   return { ...cat, items: validItems };
 }).filter(cat => cat.items.length > 0);
+
+// 🔥 FLAT LIST PARA BUSCA (criada uma vez para performance)
+const flatFoodsList = quickFoods.flatMap(cat => cat.items);
 
 const MEAL_TYPES =[
   "Café da Manhã", "Lanche da Manhã", "Almoço", "Lanche da Tarde", 
@@ -492,28 +787,174 @@ const GROUP_DAYS = ["Todos os dias", "Segunda a Sexta", "Finais de Semana"];
 const ALL_DAYS = [...GROUP_DAYS, ...SINGLE_DAYS];
 
 // =========================================================================
-// FUNÇÕES DE FEEDBACK VISUAL (HUD)
+// COMPONENTE DE BUSCA COM AUTOCOMPLETE (PATCH 1-7)
 // =========================================================================
-const getMetricFeedback = (current: number, target: number, isKcal = false) => {
-  if (!target) return { statusText: "Sem Meta", statusColorClass: "text-stone-400", barColorClass: "bg-stone-200" };
-  
-  const ratio = current / target;
-  let statusColorClass = "text-emerald-500";
-  let barColorClass = "bg-gradient-to-r from-emerald-400 to-emerald-500";
-  let statusText = "Na Meta ✓";
 
-  if (ratio < 0.90) {
-    statusColorClass = "text-amber-500";
-    barColorClass = "bg-gradient-to-r from-amber-300 to-amber-400";
-    statusText = `Falta ${Math.round(target - current)}${isKcal ? '' : 'g'}`;
-  } else if (ratio > 1.10) {
-    statusColorClass = "text-rose-500";
-    barColorClass = "bg-gradient-to-r from-rose-400 to-rose-500";
-    statusText = `Passou ${Math.round(current - target)}${isKcal ? '' : 'g'}`;
-  }
+interface SearchableFoodListProps {
+  onSelectFood: (foodId: string) => void;
+  blockedFoodIds: Set<string>;
+  foodRestrictions: FoodRestriction[];
+}
 
-  return { statusText, statusColorClass, barColorClass };
-};
+function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: SearchableFoodListProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 🔥 PATCH 2: Ranking inteligente (startsWith + includes)
+  const getFilteredFoods = () => {
+    const normalizedSearch = searchTerm.toLowerCase().trim();
+    if (!normalizedSearch) return [];
+
+    return flatFoodsList
+      .map(item => {
+        const label = item.label.toLowerCase();
+        let score = 0;
+        if (label.startsWith(normalizedSearch)) score += 3;
+        else if (label.includes(normalizedSearch)) score += 2;
+        return { ...item, score };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+  };
+
+  const filteredFoods = getFilteredFoods();
+
+  // 🔥 PATCH 3: Reset do highlight quando busca muda
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [searchTerm]);
+
+  // 🔥 PATCH 6: Scroll automático para o item destacado
+  useEffect(() => {
+    const el = listRef.current?.children[highlightIndex] as HTMLElement;
+    if (el) {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightIndex]);
+
+  // 🔥 PATCH 4: Controle de teclado
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!filteredFoods.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex(prev => (prev < filteredFoods.length - 1 ? prev + 1 : prev));
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex(prev => (prev > 0 ? prev - 1 : 0));
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const selected = filteredFoods[highlightIndex];
+      if (selected) {
+        onSelectFood(selected.id);
+        setSearchTerm('');
+        setHighlightIndex(0);
+        inputRef.current?.focus();
+      }
+    }
+
+    if (e.key === 'Escape') {
+      setSearchTerm('');
+      setHighlightIndex(0);
+    }
+  };
+
+  const handleSelect = (foodId: string) => {
+    onSelectFood(foodId);
+    setSearchTerm('');
+    setHighlightIndex(0);
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* PATCH 1: Input de busca com autofocus */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Buscar alimento... (ex: frango, arroz, banana)"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-stone-800 focus:ring-4 focus:ring-stone-800/10 transition-all"
+          autoFocus
+        />
+      </div>
+
+      {/* PATCH 5: Lista flat com highlight + kcal preview */}
+      {searchTerm.length > 0 && (
+        <div 
+          ref={listRef}
+          className="space-y-1 max-h-64 overflow-y-auto border border-stone-200 rounded-xl bg-white p-1 shadow-sm"
+        >
+          {filteredFoods.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-stone-400">
+              Nenhum alimento encontrado
+            </div>
+          ) : (
+            filteredFoods.map((item, index) => {
+              const food = FOOD_REGISTRY.find(f => f.id === item.id);
+              const isBlocked = blockedFoodIds.has(item.id);
+              const restrictionInfo = getRestrictionInfo(item.id, foodRestrictions);
+              
+              let isDanger = false;
+              let restrictionIcon = '';
+              
+              if (isBlocked) {
+                if (restrictionInfo?.type === 'allergy') {
+                  isDanger = true;
+                  restrictionIcon = '🚫';
+                } else if (restrictionInfo?.type === 'intolerance') {
+                  isDanger = true;
+                  restrictionIcon = '⚠️';
+                } else {
+                  isDanger = true;
+                  restrictionIcon = '📋';
+                }
+              }
+              
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => !isBlocked && handleSelect(item.id)}
+                  disabled={isBlocked}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all ${
+                    index === highlightIndex
+                      ? 'bg-stone-800 text-white'
+                      : isBlocked
+                        ? 'bg-red-50 text-red-400 cursor-not-allowed opacity-70'
+                        : 'hover:bg-stone-50 text-stone-700'
+                  }`}
+                >
+                  <span className="truncate flex items-center gap-1.5">
+                    {restrictionIcon && <span className="text-[10px]">{restrictionIcon}</span>}
+                    {item.label}
+                  </span>
+                  {food && (
+                    <span className={`text-[9px] font-bold ml-2 ${
+                      index === highlightIndex ? 'text-white/70' : 'text-stone-400'
+                    }`}>
+                      {food.kcal} kcal
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // =========================================================================
 // COMPONENTE PRINCIPAL
@@ -524,9 +965,10 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const [isLoading, setIsLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null);
+  const [activeTimeMealId, setActiveTimeMealId] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  
-  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFoodKey, setActiveFoodKey] = useState<string | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const supabase = createClient();
 
@@ -534,16 +976,33 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const restrictionsSummary = getRestrictionsSummary(foodRestrictions);
 
   // =========================================================================
-  // FUNÇÕES DE MIGRAÇÃO (AGORA ATRIBUINDO QUANTITY = 1 SE NÃO EXISTIR)
+  // FUNÇÕES DE MIGRAÇÃO
   // =========================================================================
   const migrateExistingOption = (option: any): Option => {
     if (option.foodItems && Array.isArray(option.foodItems)) {
       return {
         ...option,
-        foodItems: option.foodItems.map((item: any) => ({
-          ...item,
-          quantity: item.quantity || 1 // 🔥 Fallback seguro
-        }))
+        foodItems: option.foodItems.map((item: any) => {
+          const baseGrams = getBaseGrams(item.id);
+          
+          let grams: number;
+          if (item.grams != null) {
+            grams = item.grams;
+          } else if (item.quantity != null) {
+            grams = item.quantity * baseGrams;
+          } else {
+            grams = baseGrams;
+          }
+          
+          return {
+            id: item.id,
+            name: item.name,
+            kcal: item.kcal,
+            macros: item.macros,
+            grams: grams,
+            quantity: Math.round(grams / baseGrams)
+          };
+        })
       };
     }
     
@@ -554,7 +1013,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
         name: line.replace(/^[-+]\s*/, '').trim(),
         kcal: 0,
         macros: { p: 0, c: 0, g: 0 },
-        quantity: 1 // 🔥 Default
+        grams: 100,
+        quantity: 1
       }));
       
       if (foodItems.length === 0 && option.description.trim()) {
@@ -563,7 +1023,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           name: option.description,
           kcal: option.kcal || 0,
           macros: option.macros || { p: 0, c: 0, g: 0 },
-          quantity: 1 // 🔥 Default
+          grams: 100,
+          quantity: 1
         });
       }
       return {
@@ -578,10 +1039,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   // =========================================================================
-  // MANIPULAÇÃO DE DADOS (COM TRAVA E QUANTITY)
+  // MANIPULAÇÃO DE DADOS
   // =========================================================================
   
-  // 🔥 ADICIONA OU INCREMENTA O ALIMENTO
   const addFoodItem = (mealId: string, optId: string, foodId: string) => {
     const registryFood = FOOD_REGISTRY.find(f => f.id === foodId);
 
@@ -600,35 +1060,34 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       return;
     }
 
-    const mappedFood = mapToFoodItem(registryFood);
-
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
-            // Verifica se já existe para incrementar ou inserir novo
-            const existing = o.foodItems?.find(f => f.id === mappedFood.id);
+            const existing = o.foodItems?.find(f => f.id === registryFood.id);
             let updatedFoodItems: FoodItem[];
 
             if (existing) {
+              const baseGrams = getBaseGrams(existing.id);
+              const newGrams = existing.grams + baseGrams;
+              
               updatedFoodItems = (o.foodItems || []).map(f =>
-                f.id === mappedFood.id
-                  ? { ...f, quantity: f.quantity + 1 }
+                f.id === registryFood.id
+                  ? { 
+                      ...f, 
+                      grams: newGrams,
+                      quantity: Math.round(newGrams / baseGrams)
+                    }
                   : f
               );
             } else {
-              updatedFoodItems = [...(o.foodItems || []), mappedFood];
+              const newItem = mapToFoodItem(registryFood);
+              updatedFoodItems = [...(o.foodItems || []), newItem];
             }
 
-            // Recalcula multiplicando por quantidade
-            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
-            const newMacros = updatedFoodItems.reduce((acc, item) => ({
-              p: acc.p + (item.macros.p * item.quantity),
-              c: acc.c + (item.macros.c * item.quantity),
-              g: acc.g + (item.macros.g * item.quantity)
-            }), { p: 0, c: 0, g: 0 });
+            const totals = calculateTotals(updatedFoodItems);
 
-            return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
+            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
           }
           return o;
         });
@@ -638,32 +1097,34 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }));
   };
 
-  // 🔥 DECREMENTA O ALIMENTO (REMOVE SE CHEGAR A 0)
-  const decrementFoodItem = (mealId: string, optId: string, foodItemId: string) => {
+  const updateFoodItemGrams = (mealId: string, optId: string, foodItemId: string, newGrams: number) => {
+    const safeGrams = Math.max(0, Math.floor(newGrams || 0));
+    
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
-            const updatedFoodItems = (o.foodItems || [])
-              .map(item => {
+            let updatedFoodItems = (o.foodItems || []);
+            
+            if (safeGrams === 0) {
+              updatedFoodItems = updatedFoodItems.filter(item => item.id !== foodItemId);
+            } else {
+              updatedFoodItems = updatedFoodItems.map(item => {
                 if (item.id === foodItemId) {
-                  if (item.quantity > 1) {
-                    return { ...item, quantity: item.quantity - 1 };
-                  }
-                  return null; // vai remover pelo filter
+                  const baseGrams = getBaseGrams(item.id);
+                  return {
+                    ...item,
+                    grams: safeGrams,
+                    quantity: Math.round(safeGrams / baseGrams)
+                  };
                 }
                 return item;
-              })
-              .filter(Boolean) as FoodItem[];
+              });
+            }
 
-            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
-            const newMacros = updatedFoodItems.reduce((acc, item) => ({
-              p: acc.p + (item.macros.p * item.quantity),
-              c: acc.c + (item.macros.c * item.quantity),
-              g: acc.g + (item.macros.g * item.quantity)
-            }), { p: 0, c: 0, g: 0 });
+            const totals = calculateTotals(updatedFoodItems);
 
-            return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
+            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
           }
           return o;
         });
@@ -673,22 +1134,15 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }));
   };
 
-  // 🔥 REMOVE COMPLETAMENTE O ALIMENTO (BOTÃO X)
   const deleteFoodItem = (mealId: string, optId: string, foodItemId: string) => {
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
             const updatedFoodItems = (o.foodItems || []).filter(item => item.id !== foodItemId);
+            const totals = calculateTotals(updatedFoodItems);
 
-            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
-            const newMacros = updatedFoodItems.reduce((acc, item) => ({
-              p: acc.p + (item.macros.p * item.quantity),
-              c: acc.c + (item.macros.c * item.quantity),
-              g: acc.g + (item.macros.g * item.quantity)
-            }), { p: 0, c: 0, g: 0 });
-
-            return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
+            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
           }
           return o;
         });
@@ -720,6 +1174,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const removeMeal = (mealId: string) => {
     setMeals(meals.filter(m => m.id !== mealId));
     if (expandedMealId === mealId) setExpandedMealId(null);
+    if (activeTimeMealId === mealId) setActiveTimeMealId(null);
   };
 
   const updateMealTime = (mealId: string, time: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, time } : m));
@@ -799,6 +1254,19 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const updateKcal = (mealId: string, optionId: string, kcal: number) => setMeals(meals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, kcal } : o) } : m));
 
   // =========================================================================
+  // TOTAIS PARA SIDEBAR
+  // =========================================================================
+  
+  const liveTotals = meals.reduce((acc, meal) => {
+    const relevantOption = meal.options[0];
+    if (!relevantOption) return acc;
+    return {
+      kcal: acc.kcal + (relevantOption.kcal || 0), p: acc.p + (relevantOption.macros?.p || 0),
+      c: acc.c + (relevantOption.macros?.c || 0), g: acc.g + (relevantOption.macros?.g || 0),
+    };
+  }, { kcal: 0, p: 0, c: 0, g: 0 });
+
+  // =========================================================================
   // INIT & LOAD
   // =========================================================================
   useEffect(() => {
@@ -846,21 +1314,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
 
   const { calories: kcalTarget, macros: { protein: proteinTarget, carbs: carbsTarget, fat: fatTarget } } = targetRecommendation;
 
-  const liveTotals = meals.reduce((acc, meal) => {
-    const relevantOption = meal.options[0];
-    if (!relevantOption) return acc;
-    return {
-      kcal: acc.kcal + (relevantOption.kcal || 0), p: acc.p + (relevantOption.macros?.p || 0),
-      c: acc.c + (relevantOption.macros?.c || 0), g: acc.g + (relevantOption.macros?.g || 0),
-    };
-  }, { kcal: 0, p: 0, c: 0, g: 0 });
-
   const isMealComplete = (meal: Meal) => meal.options.length > 0 && meal.time !== '' && meal.options.some(opt => opt.foodItems.length > 0);
-
-  const kcalStatus = getMetricFeedback(liveTotals.kcal, kcalTarget, true);
-  const pStatus = getMetricFeedback(liveTotals.p, proteinTarget);
-  const cStatus = getMetricFeedback(liveTotals.c, carbsTarget);
-  const gStatus = getMetricFeedback(liveTotals.g, fatTarget);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -886,585 +1340,444 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-center bg-stone-900/60 backdrop-blur-sm sm:p-4 transition-all duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-2 sm:p-4 transition-all duration-300">
       
-      {/* CONTAINER PRINCIPAL */}
-      <div className="bg-[#fcfcfc] w-full max-w-4xl h-full sm:h-[95vh] mt-auto sm:mt-0 rounded-t-[2rem] sm:rounded-[2.5rem] flex flex-col shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom-8 sm:zoom-in-95 overflow-hidden relative">
+      <div className="bg-[#fcfcfc] w-full max-w-[95vw] md:max-w-[1400px] h-[90vh] rounded-2xl sm:rounded-[2rem] flex flex-col shadow-2xl animate-in zoom-in-95 overflow-hidden">
         
-        {/* HEADER (Sticky) */}
-        <div className="bg-white px-5 sm:px-8 pt-5 pb-4 border-b border-stone-100 shrink-0 z-20 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-          <div>
-            <div className="w-12 h-1.5 bg-stone-200 rounded-full mb-4 sm:hidden mx-auto" />
+        {/* HEADER COMPACTADO */}
+        <div className="bg-white px-4 sm:px-6 py-3 border-b border-stone-100 shrink-0 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/60 text-stone-800 hidden sm:block">
-                <Utensils size={20} strokeWidth={2.5} />
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-200/60 text-stone-800 hidden sm:block">
+                <Utensils size={18} strokeWidth={2.5} />
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight leading-none mb-1">
+                <h2 className="text-base sm:text-xl font-black text-stone-900 tracking-tight leading-none flex items-center flex-wrap gap-2">
                   Montar Cardápio
+                  <span className="text-xs text-stone-500 font-medium tracking-normal mt-0.5 sm:mt-0">
+                    • {patientName}
+                  </span>
                 </h2>
-                <p className="text-xs text-stone-500 font-medium">Paciente: <b className="text-stone-800">{patientName}</b></p>
               </div>
             </div>
+            <button 
+              onClick={onClose} 
+              className="p-2 bg-stone-50 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-full transition-all active:scale-95"
+            >
+              <X size={18} strokeWidth={2.5} />
+            </button>
           </div>
-          <button onClick={onClose} className="p-2.5 bg-stone-50 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-full transition-all active:scale-95">
-            <X size={20} strokeWidth={2.5} />
-          </button>
         </div>
 
-        {/* ALERTA GLOBAL DE RESTRIÇÕES */}
-        {restrictionsSummary.hasRestrictions && (
-          <div className="mx-5 sm:mx-8 mt-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-              <AlertCircle size={18} className="text-amber-600 shrink-0" />
-              <div className="flex-1">
-                <p className="text-xs font-bold text-amber-800">
-                  ⚠️ Este paciente possui restrições alimentares ativas
-                </p>
-                <p className="text-[10px] text-amber-700 mt-0.5">
-                  {restrictionsSummary.allergies > 0 && `🚫 ${restrictionsSummary.allergies} alergia(s) `}
-                  {restrictionsSummary.intolerances > 0 && `⚠️ ${restrictionsSummary.intolerances} intolerância(s) `}
-                  {restrictionsSummary.restrictions > 0 && `📋 ${restrictionsSummary.restrictions} restrição(ões)`}
-                  {' '}- Alimentos bloqueados aparecem com estilo cortado e não podem ser adicionados.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* HUD DE MACROS HORIZONTAL */}
-        <div className="bg-white border-b border-stone-100 shrink-0 z-10 relative shadow-sm mt-4">
-          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none sm:hidden z-10" />
+        {/* CONTEÚDO PRINCIPAL */}
+        <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
           
-          <div className="flex overflow-x-auto scrollbar-hide snap-x gap-3 px-5 sm:px-8 py-4 md:grid md:grid-cols-4">
-            
-            {/* KCAL */}
-            <div className="min-w-[140px] flex-1 bg-stone-50/80 border border-stone-200/60 rounded-2xl p-3.5 flex flex-col snap-center shadow-inner relative overflow-hidden">
-              <div className="flex items-center gap-1.5 text-stone-500 mb-1">
-                 <Target size={14} strokeWidth={2.5} />
-                 <p className="text-[9px] font-black uppercase tracking-widest">Kcal</p>
-              </div>
-              <p className="text-xl font-black text-stone-800 tracking-tight leading-none mb-1">
-                {Math.round(liveTotals.kcal)} <span className="text-xs text-stone-400 font-bold opacity-60">/ {kcalTarget}</span>
-              </p>
-              <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${kcalStatus.statusColorClass}`}>{kcalStatus.statusText}</p>
-              <div className="absolute bottom-0 left-0 w-full h-1 bg-stone-200/50">
-                <div className={`h-full transition-all duration-1000 ease-out ${kcalStatus.barColorClass}`} style={{ width: `${Math.min((liveTotals.kcal / kcalTarget) * 100, 100)}%` }} />
-              </div>
+          <button
+            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+            className="md:hidden flex items-center justify-between gap-2 mx-4 mt-3 p-2.5 bg-stone-800 text-white rounded-xl text-xs font-bold"
+          >
+            <span>Ver metas do dia e restrições</span>
+            <ChevronLeft size={14} className={`transition-transform ${isMobileSidebarOpen ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {/* SIDEBAR */}
+          <div className={`
+            ${isMobileSidebarOpen ? 'block' : 'hidden'} 
+            md:block md:w-64 lg:w-72 shrink-0 border-r border-stone-100 bg-stone-50/30 p-4 overflow-y-auto
+          `}>
+            <div className="sticky top-4 space-y-4">
+              {targetRecommendation && (
+                <MacrosSidebar 
+                  totals={liveTotals}
+                  targets={{
+                    kcal: kcalTarget,
+                    protein: proteinTarget,
+                    carbs: carbsTarget,
+                    fat: fatTarget
+                  }}
+                />
+              )}
+              <RestrictionsSidebar restrictionsSummary={restrictionsSummary} />
             </div>
-
-            {/* PROTEINA */}
-            <div className="min-w-[140px] flex-1 bg-stone-50/80 border border-stone-200/60 rounded-2xl p-3.5 flex flex-col snap-center shadow-inner relative overflow-hidden">
-              <div className="flex items-center gap-1.5 text-red-500 mb-1">
-                 <Beef size={14} strokeWidth={2.5} />
-                 <p className="text-[9px] font-black uppercase tracking-widest">Proteína</p>
-              </div>
-              <p className="text-xl font-black text-stone-800 tracking-tight leading-none mb-1">
-                {Math.round(liveTotals.p)}g <span className="text-xs text-stone-400 font-bold opacity-60">/ {proteinTarget}g</span>
-              </p>
-              <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${pStatus.statusColorClass}`}>{pStatus.statusText}</p>
-              <div className="absolute bottom-0 left-0 w-full h-1 bg-stone-200/50">
-                <div className={`h-full transition-all duration-1000 ease-out ${pStatus.barColorClass}`} style={{ width: `${Math.min((liveTotals.p / proteinTarget) * 100, 100)}%` }} />
-              </div>
-            </div>
-
-            {/* CARBO */}
-            <div className="min-w-[140px] flex-1 bg-stone-50/80 border border-stone-200/60 rounded-2xl p-3.5 flex flex-col snap-center shadow-inner relative overflow-hidden">
-              <div className="flex items-center gap-1.5 text-amber-500 mb-1">
-                 <Wheat size={14} strokeWidth={2.5} />
-                 <p className="text-[9px] font-black uppercase tracking-widest">Carbo</p>
-              </div>
-              <p className="text-xl font-black text-stone-800 tracking-tight leading-none mb-1">
-                {Math.round(liveTotals.c)}g <span className="text-xs text-stone-400 font-bold opacity-60">/ {carbsTarget}g</span>
-              </p>
-              <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${cStatus.statusColorClass}`}>{cStatus.statusText}</p>
-              <div className="absolute bottom-0 left-0 w-full h-1 bg-stone-200/50">
-                <div className={`h-full transition-all duration-1000 ease-out ${cStatus.barColorClass}`} style={{ width: `${Math.min((liveTotals.c / carbsTarget) * 100, 100)}%` }} />
-              </div>
-            </div>
-
-            {/* GORDURA */}
-            <div className="min-w-[140px] flex-1 bg-stone-50/80 border border-stone-200/60 rounded-2xl p-3.5 flex flex-col snap-center shadow-inner relative overflow-hidden">
-              <div className="flex items-center gap-1.5 text-blue-500 mb-1">
-                 <Droplet size={14} strokeWidth={2.5} />
-                 <p className="text-[9px] font-black uppercase tracking-widest">Gordura</p>
-              </div>
-              <p className="text-xl font-black text-stone-800 tracking-tight leading-none mb-1">
-                {Math.round(liveTotals.g)}g <span className="text-xs text-stone-400 font-bold opacity-60">/ {fatTarget}g</span>
-              </p>
-              <p className={`text-[9px] font-black uppercase tracking-[0.15em] ${gStatus.statusColorClass}`}>{gStatus.statusText}</p>
-              <div className="absolute bottom-0 left-0 w-full h-1 bg-stone-200/50">
-                <div className={`h-full transition-all duration-1000 ease-out ${gStatus.barColorClass}`} style={{ width: `${Math.min((liveTotals.g / fatTarget) * 100, 100)}%` }} />
-              </div>
-            </div>
-
           </div>
-        </div>
+          
+          {/* ÁREA PRINCIPAL */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scrollbar-thin scrollbar-thumb-stone-200">
+            
+            {meals.map((meal) => {
+              const isExpanded = expandedMealId === meal.id;
+              const isComplete = isMealComplete(meal);
 
-        {/* ÁREA DE ROLAGEM: LISTA DE REFEIÇÕES */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-4 scrollbar-thin scrollbar-thumb-stone-200 pb-28">
-          {meals.map((meal) => {
-            const isExpanded = expandedMealId === meal.id;
-            const isComplete = isMealComplete(meal);
-
-            return (
-              <div 
-                key={meal.id} 
-                className={`rounded-[2rem] transition-all duration-300 relative group overflow-hidden ${
-                  isExpanded 
-                    ? 'bg-white border-2 border-stone-800 shadow-[0_20px_40px_rgba(0,0,0,0.06)] scale-[1.01]' 
-                    : isComplete 
-                      ? 'bg-emerald-50/50 border border-emerald-100 hover:border-emerald-300 cursor-pointer shadow-sm' 
-                      : 'bg-white border border-stone-200 hover:border-stone-300 cursor-pointer shadow-sm'
-                }`}
-              >
-                {/* Botão Flutuante de Excluir Refeição (Visível no Hover) */}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); removeMeal(meal.id); }} 
-                  title="Excluir Refeição"
-                  className="absolute top-4 right-4 bg-white border border-stone-200 p-2.5 rounded-full shadow-sm text-stone-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 opacity-0 group-hover:opacity-100 transition-all z-20 active:scale-90"
-                >
-                  <Trash2 size={16} strokeWidth={2.5} />
-                </button>
-
-                {/* CARD RETRAÍDO (RESUMO) */}
+              return (
                 <div 
-                  onClick={() => setExpandedMealId(isExpanded ? null : meal.id)}
-                  className={`p-5 sm:p-6 flex items-center justify-between relative z-10 ${isExpanded ? 'border-b border-stone-100 bg-stone-50/50' : ''}`}
+                  key={meal.id} 
+                  className={`rounded-2xl transition-all duration-300 relative group overflow-hidden ${
+                    isExpanded 
+                      ? 'bg-white border-2 border-stone-800 shadow-lg' 
+                      : isComplete 
+                        ? 'bg-emerald-50/50 border border-emerald-100 hover:border-emerald-300 cursor-pointer shadow-sm' 
+                        : 'bg-white border border-stone-200 hover:border-stone-300 cursor-pointer shadow-sm'
+                  }`}
                 >
-                  <div className="flex items-center gap-4 w-full pr-12">
-                    <div className={`p-3.5 rounded-2xl shrink-0 transition-colors shadow-sm border ${
-                      isComplete 
-                        ? 'bg-emerald-100 border-emerald-200 text-emerald-600' 
-                        : isExpanded 
-                          ? 'bg-stone-800 border-stone-800 text-white'
-                          : 'bg-stone-50 border-stone-200 text-stone-400'
-                    }`}>
-                      {isComplete ? <CheckCircle2 size={22} strokeWidth={2.5} /> : <Clock size={22} strokeWidth={2.5} />}
-                    </div>
-                    
-                    <div className="w-full">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {!isExpanded && (
-                          <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-2.5 py-1 rounded-md">
-                            {meal.time || '--:--'}
-                          </span>
-                        )}
-                        {meal.options[0]?.kcal > 0 && !isExpanded && (
-                          <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider hidden sm:flex">
-                             <span className="text-stone-500 bg-stone-100 px-2 py-1 rounded-md">{Math.round(meal.options[0]?.kcal)} kcal</span>
-                             <span className="text-red-500 bg-red-50 px-2 py-1 rounded-md">P {Math.round(meal.options[0]?.macros?.p || 0)}g</span>
-                             <span className="text-amber-500 bg-amber-50 px-2 py-1 rounded-md">C {Math.round(meal.options[0]?.macros?.c || 0)}g</span>
-                             <span className="text-blue-500 bg-blue-50 px-2 py-1 rounded-md">G {Math.round(meal.options[0]?.macros?.g || 0)}g</span>
-                          </div>
-                        )}
-                      </div>
-                      <h3 className={`text-lg sm:text-xl font-extrabold tracking-tight ${isComplete && !isExpanded ? 'text-emerald-900' : 'text-stone-900'}`}>
-                        {meal.name}
-                      </h3>
-                    </div>
-                  </div>
-                  
-                  <div className={`shrink-0 transition-transform duration-300 bg-white shadow-sm border border-stone-100 rounded-full p-1.5 ${isExpanded ? 'text-stone-800 rotate-180' : 'text-stone-400'}`}>
-                    <ChevronDown size={20} strokeWidth={2.5} />
-                  </div>
-                </div>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeMeal(meal.id); }} 
+                    title="Excluir Refeição"
+                    className="absolute top-3 right-3 bg-white border border-stone-200 p-2 rounded-full shadow-sm text-stone-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 opacity-0 group-hover:opacity-100 transition-all z-20 active:scale-90"
+                  >
+                    <Trash2 size={14} strokeWidth={2.5} />
+                  </button>
 
-                {/* CARD EXPANDIDO (CONTEÚDO) */}
-                {isExpanded && (
-                  <div className="p-4 sm:p-6 bg-stone-50/50 animate-in fade-in slide-in-from-top-4 duration-300">
+                  <div 
+                    onClick={() => setExpandedMealId(isExpanded ? null : meal.id)}
+                    className={`p-4 flex items-center justify-between relative z-10 ${isExpanded ? 'border-b border-stone-100 bg-stone-50/50' : ''}`}
+                  >
+                    <div className="flex items-center gap-3 w-full pr-10">
+                      <div className={`p-2.5 rounded-xl shrink-0 transition-colors shadow-sm border ${
+                        isComplete 
+                          ? 'bg-emerald-100 border-emerald-200 text-emerald-600' 
+                          : isExpanded 
+                            ? 'bg-stone-800 border-stone-800 text-white'
+                            : 'bg-stone-50 border-stone-200 text-stone-400'
+                      }`}>
+                        {isComplete ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <Clock size={18} strokeWidth={2.5} />}
+                      </div>
+                      
+                      <div className="w-full">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          {!isExpanded && (
+                            <span className="text-[9px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md">
+                              {meal.time || '--:--'}
+                            </span>
+                          )}
+                          {meal.options[0]?.kcal > 0 && !isExpanded && (
+                            <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider hidden sm:flex">
+                              <span className="text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded-md">{Math.round(meal.options[0]?.kcal)} kcal</span>
+                              <span className="text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">P {Math.round(meal.options[0]?.macros?.p || 0)}g</span>
+                              <span className="text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md">C {Math.round(meal.options[0]?.macros?.c || 0)}g</span>
+                              <span className="text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-md">G {Math.round(meal.options[0]?.macros?.g || 0)}g</span>
+                            </div>
+                          )}
+                        </div>
+                        <h3 className={`text-base sm:text-lg font-extrabold tracking-tight ${isComplete && !isExpanded ? 'text-emerald-900' : 'text-stone-900'}`}>
+                          {meal.name}
+                        </h3>
+                      </div>
+                    </div>
                     
-                    {/* LINHA 1: NOME E HORÁRIO */}
-                    <div className="flex flex-col sm:flex-row gap-5 mb-8 bg-white p-5 rounded-[1.5rem] border border-stone-200 shadow-sm">
-                      <div className="flex-1">
-                        <label className="text-[9px] font-black uppercase tracking-[0.15em] text-stone-400 mb-2 block ml-1">
-                          Refeição
-                        </label>
-                        <div className="relative">
+                    <div className={`shrink-0 transition-transform duration-300 bg-white shadow-sm border border-stone-100 rounded-full p-1 ${isExpanded ? 'text-stone-800 rotate-180' : 'text-stone-400'}`}>
+                      <ChevronDown size={16} strokeWidth={2.5} />
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="p-4 bg-stone-50/50 animate-in fade-in slide-in-from-top-4 duration-300">
+                      
+                      <div className="flex items-center justify-between gap-3 mb-4 bg-white px-3 py-2.5 rounded-xl border border-stone-200 shadow-sm">
+                        <div className="flex items-center gap-1.5 min-w-0 bg-stone-50 hover:bg-stone-100 px-2 py-1.5 rounded-lg transition-colors border border-stone-100">
+                          <Utensils size={14} className="text-stone-500 shrink-0 ml-0.5" />
                           <select 
                             value={meal.name}
                             onChange={(e) => updateMealName(meal.id, e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border border-stone-200 font-extrabold text-stone-800 outline-none focus:border-stone-800 focus:ring-4 focus:ring-stone-800/10 bg-stone-50 appearance-none transition-all cursor-pointer text-sm"
+                            className="text-sm font-extrabold text-stone-800 bg-transparent outline-none cursor-pointer appearance-none truncate pr-2 pl-1"
                           >
                             {MEAL_TYPES.map(type => (
                               <option key={type} value={type}>{type}</option>
                             ))}
                           </select>
-                          <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                          <ChevronDown size={12} className="text-stone-400 shrink-0 pointer-events-none -ml-1 mr-0.5" />
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Clock size={14} className="text-stone-400 hidden sm:block" />
+                          <button
+                            onClick={() => setActiveTimeMealId(activeTimeMealId === meal.id ? null : meal.id)}
+                            className="text-sm font-bold bg-stone-100 text-stone-700 hover:bg-stone-200 hover:text-stone-900 px-3 py-1.5 rounded-lg transition-colors active:scale-95 border border-stone-200/50"
+                          >
+                            {meal.time || '--:--'}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex-[2]">
-                        <label className="text-[9px] font-black uppercase tracking-[0.15em] text-stone-400 mb-2 block ml-1">
-                          Horário Previsto
-                        </label>
-                        <TimeSelector
-                          value={meal.time}
-                          onChange={(time) => updateMealTime(meal.id, time)}
-                          mealType={meal.name}
-                        />
-                      </div>
-                    </div>
+                      {activeTimeMealId === meal.id && (
+                        <div className="mb-4 p-3 bg-white border border-stone-200 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-2">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black uppercase text-stone-400 tracking-wider ml-1">Selecione o Horário</span>
+                            <button 
+                              onClick={() => setActiveTimeMealId(null)} 
+                              className="text-stone-400 hover:text-stone-800 p-1 bg-stone-50 rounded-lg"
+                            >
+                              <X size={14} strokeWidth={2.5}/>
+                            </button>
+                          </div>
+                          <TimeSelector
+                            value={meal.time}
+                            onChange={(time) => { 
+                              updateMealTime(meal.id, time); 
+                              setActiveTimeMealId(null); 
+                            }}
+                            mealType={meal.name}
+                          />
+                        </div>
+                      )}
 
-                    {/* OPÇÕES (DIAS) */}
-                    <div className="space-y-6">
-                      {meal.options.map((option) => (
-                        <div key={option.id} className="bg-white p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-stone-200 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative transition-all">
-                          
-                          {/* Dia Header */}
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-5 border-b border-stone-100">
+                      <div className="space-y-4">
+                        {meal.options.map((option) => (
+                          <div key={option.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                             
-                            <div className="relative inline-block w-full sm:w-auto">
-                              <select 
-                                value={option.day}
-                                onChange={(e) => updateOptionDay(meal.id, option.id, e.target.value)}
-                                className={`w-full sm:w-auto pl-4 pr-10 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-[0.15em] outline-none transition-all cursor-pointer shadow-sm appearance-none ${
-                                  option.day === 'Todos os dias' 
-                                    ? 'bg-stone-900 text-white border-stone-900' 
-                                    : 'bg-stone-100 text-stone-700 border-stone-200'
-                                }`}
-                              >
-                                {ALL_DAYS.map(day => (
-                                  <option key={day} value={day}>{day}</option>
-                                ))}
-                              </select>
-                              <ChevronDown size={14} className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none ${option.day === 'Todos os dias' ? 'text-white/50' : 'text-stone-400'}`} />
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-stone-100">
                               
-                              {/* BARRA DE MACROS UNIFICADA */}
-                              <div className="flex items-center bg-stone-50 rounded-xl border border-stone-200 p-1 shadow-inner overflow-hidden">
-                                 <div className="flex items-center pl-3 pr-2 py-1 border-r border-stone-200/60 group focus-within:bg-red-50 transition-colors">
-                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-2">P</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-8 bg-transparent text-sm font-bold text-red-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                 </div>
-                                 <div className="flex items-center px-2 py-1 border-r border-stone-200/60 group focus-within:bg-amber-50 transition-colors">
-                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-2">C</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-8 bg-transparent text-sm font-bold text-amber-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                 </div>
-                                 <div className="flex items-center px-2 py-1 group focus-within:bg-blue-50 transition-colors">
-                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-2">G</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-8 bg-transparent text-sm font-bold text-blue-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                 </div>
-                                 <div className="flex items-center pl-2 pr-1 py-1 bg-stone-800 rounded-lg shadow-sm ml-1">
-                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-10 bg-transparent text-sm font-black text-white outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                    <span className="text-[8px] font-black uppercase text-stone-400 ml-1">Kcal</span>
-                                 </div>
+                              <div className="relative inline-block w-full sm:w-auto">
+                                <select 
+                                  value={option.day}
+                                  onChange={(e) => updateOptionDay(meal.id, option.id, e.target.value)}
+                                  className={`w-full sm:w-auto pl-3 pr-8 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-[0.15em] outline-none transition-all cursor-pointer shadow-sm appearance-none ${
+                                    option.day === 'Todos os dias' 
+                                      ? 'bg-stone-900 text-white border-stone-900' 
+                                      : 'bg-stone-100 text-stone-700 border-stone-200'
+                                  }`}
+                                >
+                                  {ALL_DAYS.map(day => (
+                                    <option key={day} value={day}>{day}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown size={12} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${option.day === 'Todos os dias' ? 'text-white/50' : 'text-stone-400'}`} />
                               </div>
 
-                              {meal.options.length > 1 && option.foodItems.length > 0 && (
-                                <button 
-                                  onClick={() => duplicateToEmptyDays(meal.id, option)} 
-                                  title="Copiar para dias vazios"
-                                  className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors active:scale-95"
-                                >
-                                  <Copy size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
-
-                              {meal.options.length > 1 && (
-                                <button 
-                                  onClick={() => removeOption(meal.id, option.id)} 
-                                  className="p-2.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors rounded-xl border border-stone-200 active:scale-95"
-                                  title="Remover dia"
-                                >
-                                  <Trash2 size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* 🔥 ALIMENTOS SELECIONADOS (PRATO MONTADO) COM CONTROLE DE QUANTIDADE */}
-                          <div className="mb-6">
-                            <label className="text-[9px] font-black uppercase tracking-[0.15em] text-stone-400 mb-2.5 block ml-1">
-                              Prato Montado
-                            </label>
-
-                            <div className="flex flex-wrap gap-2 min-h-[56px] p-2 sm:p-3 bg-stone-50/80 rounded-2xl border border-stone-200 border-dashed">
-                              
-                              {option.foodItems && option.foodItems.length > 0 ? (
-                                option.foodItems.map((foodItem) => (
-                                  <div
-                                    key={foodItem.id}
-                                    className="group/food flex items-center gap-2 bg-white border border-stone-200 rounded-xl pl-3 pr-2 py-1.5 shadow-sm hover:border-stone-300 transition-all animate-in zoom-in-95 duration-200"
-                                  >
-                                    
-                                    {/* 🔥 NOME + BADGE QUANTIDADE */}
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-sm font-bold text-stone-700">
-                                        {foodItem.name}
-                                      </span>
-
-                                      {foodItem.quantity > 1 && (
-                                        <span className="text-[10px] font-black text-white bg-stone-800 px-1.5 py-0.5 rounded-md">
-                                          {foodItem.quantity}x
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* 🔥 CONTROLE DE QUANTIDADE */}
-                                    <div className="flex items-center bg-stone-50 rounded-lg border border-stone-100 ml-2 overflow-hidden">
-                                      
-                                      {/* ➖ DIMINUI */}
-                                      <button
-                                        onClick={() => decrementFoodItem(meal.id, option.id, foodItem.id)}
-                                        disabled={foodItem.quantity === 1}
-                                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                                      >
-                                        <Minus size={12} strokeWidth={3} />
-                                      </button>
-
-                                      {/* QUANTIDADE */}
-                                      <span className="px-2 text-xs font-bold text-stone-700 min-w-[20px] text-center select-none">
-                                        {foodItem.quantity}
-                                      </span>
-
-                                      {/* ➕ AUMENTA */}
-                                      <button
-                                        onClick={() => addFoodItem(meal.id, option.id, foodItem.id)}
-                                        className="p-1.5 text-white bg-stone-800 hover:bg-stone-700 transition-all active:scale-95"
-                                      >
-                                        <Plus size={12} strokeWidth={3} />
-                                      </button>
-
-                                    </div>
-
-                                    {/* ❌ REMOVER TOTAL */}
-                                    <button
-                                      onClick={() => deleteFoodItem(meal.id, option.id, foodItem.id)}
-                                      className="ml-1 text-stone-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg p-1.5 transition-all active:scale-95"
-                                      title="Remover alimento"
-                                    >
-                                      <X size={14} strokeWidth={3} />
-                                    </button>
-
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center bg-stone-50 rounded-xl border border-stone-200 p-0.5 shadow-inner overflow-hidden">
+                                  <div className="flex items-center pl-2 pr-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-red-50 transition-colors">
+                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">P</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-red-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                                   </div>
-                                ))
-                              ) : (
-                                <div className="w-full flex items-center justify-center p-3">
-                                  <p className="text-xs text-stone-400 font-medium">
-                                    Prato vazio. Adicione alimentos abaixo.
-                                  </p>
+                                  <div className="flex items-center px-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-amber-50 transition-colors">
+                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">C</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-amber-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                  </div>
+                                  <div className="flex items-center px-1.5 py-1 group focus-within:bg-blue-50 transition-colors">
+                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">G</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-blue-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                  </div>
+                                  <div className="flex items-center pl-1.5 pr-1 py-1 bg-stone-800 rounded-lg shadow-sm ml-0.5">
+                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-8 bg-transparent text-xs font-black text-white outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                    <span className="text-[7px] font-black uppercase text-stone-400 ml-0.5">Kcal</span>
+                                  </div>
                                 </div>
-                              )}
 
+                                {meal.options.length > 1 && option.foodItems.length > 0 && (
+                                  <button 
+                                    onClick={() => duplicateToEmptyDays(meal.id, option)} 
+                                    title="Copiar para dias vazios"
+                                    className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors active:scale-95"
+                                  >
+                                    <Copy size={14} strokeWidth={2.5} />
+                                  </button>
+                                )}
+
+                                {meal.options.length > 1 && (
+                                  <button 
+                                    onClick={() => removeOption(meal.id, option.id)} 
+                                    className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors rounded-lg border border-stone-200 active:scale-95"
+                                    title="Remover dia"
+                                  >
+                                    <Trash2 size={14} strokeWidth={2.5} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                            
+                            <div className="mb-4">
+                              <label className="text-[8px] font-black uppercase tracking-[0.15em] text-stone-400 mb-2 block ml-1">
+                                Prato Montado
+                              </label>
 
-                          {/* ================================================================ */}
-                          {/* BUSCA E CATEGORIAS BLINDADAS */}
-                          {/* ================================================================ */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-3 ml-1">
-                              <Plus size={12} className="text-stone-400" strokeWidth={3} />
-                              <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em]">Adicionar Alimentos</p>
+                              <div className="flex flex-col gap-2 min-h-[56px] p-3 bg-stone-50/80 rounded-xl border border-stone-200 border-dashed">
+                                {option.foodItems && option.foodItems.length > 0 ? (
+                                  option.foodItems.map((foodItem, foodIndex) => {
+                                    const foodKey = `${meal.id}-${option.id}-${foodItem.id}`;
+                                    return (
+                                      <FoodItemCard
+                                        key={foodItem.id}
+                                        foodItem={foodItem}
+                                        index={foodIndex}
+                                        isActive={activeFoodKey === foodKey}
+                                        onUpdateGrams={(grams) => updateFoodItemGrams(meal.id, option.id, foodItem.id, grams)}
+                                        onDelete={() => deleteFoodItem(meal.id, option.id, foodItem.id)}
+                                        onActivate={() => setActiveFoodKey(foodKey)}
+                                      />
+                                    );
+                                  })
+                                ) : (
+                                  <div className="w-full flex items-center justify-center p-4">
+                                    <p className="text-xs text-stone-400 font-medium">
+                                      Prato vazio. Adicione alimentos abaixo.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            {/* BUSCA RÁPIDA */}
-                            <div className="relative mb-4">
-                              <input
-                                type="text"
-                                placeholder="Buscar alimento em todo o banco..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full px-3 py-2 pl-8 text-sm border border-stone-200 rounded-xl focus:border-stone-400 focus:ring-2 focus:ring-stone-100 outline-none transition-all bg-white"
+                            {/* 🔥 NOVO: Busca com autocomplete (PATCH 1-7) */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-2 ml-1">
+                                <Plus size={10} className="text-stone-400" strokeWidth={3} />
+                                <p className="text-[8px] font-black text-stone-400 uppercase tracking-[0.15em]">Adicionar Alimentos</p>
+                              </div>
+
+                              <SearchableFoodList 
+                                onSelectFood={(foodId) => addFoodItem(meal.id, option.id, foodId)}
+                                blockedFoodIds={blockedFoodIds}
+                                foodRestrictions={foodRestrictions}
                               />
-                              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                            </div>
 
-                            {searchTerm.length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5 p-3 bg-stone-50 border border-stone-200 rounded-xl max-h-[300px] overflow-y-auto">
-                                {FOOD_REGISTRY.filter(f => 
-                                  f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                  f.aliases.some(a => a.toLowerCase().includes(searchTerm.toLowerCase()))
-                                ).map(food => {
-                                  const isBlocked = blockedFoodIds.has(food.id);
-                                  const restrictionInfo = getRestrictionInfo(food.id, foodRestrictions);
-                                  
-                                  let btnClass = "px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm border ";
-                                  let tooltipText = "Adicionar ao Prato";
-                                  
-                                  if (isBlocked) {
-                                    if (restrictionInfo?.type === 'allergy') {
-                                      btnClass += "bg-red-50 border-red-300 text-red-600 line-through cursor-not-allowed opacity-80";
-                                      tooltipText = "🚫 PROIBIDO - Alergia grave";
-                                    } else if (restrictionInfo?.type === 'intolerance') {
-                                      btnClass += "bg-amber-50 border-amber-300 text-amber-700 line-through cursor-not-allowed opacity-80";
-                                      tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
-                                    } else {
-                                      btnClass += "bg-blue-50 border-blue-300 text-blue-700 line-through cursor-not-allowed opacity-80";
-                                      tooltipText = "📋 EVITAR - Restrição alimentar";
-                                    }
-                                  } else {
-                                    btnClass += "bg-white border-stone-200 text-stone-500 hover:border-stone-800 hover:text-stone-800 active:scale-95";
-                                  }
-
-                                  return (
-                                    <button
-                                      key={food.id}
-                                      onClick={() => addFoodItem(meal.id, option.id, food.id)}
-                                      disabled={isBlocked}
-                                      title={tooltipText}
-                                      className={btnClass}
-                                    >
-                                      {food.name}
-                                      {isBlocked && restrictionInfo?.type === 'allergy' && <span className="text-red-500 text-[8px] ml-0.5">🚫</span>}
-                                      {isBlocked && restrictionInfo?.type === 'intolerance' && <span className="text-amber-500 text-[8px] ml-0.5">⚠️</span>}
-                                      {isBlocked && restrictionInfo?.type === 'restriction' && <span className="text-blue-500 text-[8px] ml-0.5">📋</span>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-200">
-                                {quickFoods.map((cat) => {
-                                  const isExpanded = expandedCategories[`${meal.id}-${option.id}-${cat.category}`] || false;
-                                  
-                                  return (
-                                    <div key={cat.category} className="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                                      <button
-                                        onClick={() => setExpandedCategories(prev => ({
-                                          ...prev,
-                                          [`${meal.id}-${option.id}-${cat.category}`]: !prev[`${meal.id}-${option.id}-${cat.category}`]
-                                        }))}
-                                        className="w-full flex items-center justify-between px-3 py-2.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <ChevronRight size={14} className={`text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
-                                          <span className="text-[11px] font-extrabold text-stone-700 uppercase tracking-wider">{cat.category}</span>
-                                        </div>
-                                      </button>
-
-                                      {isExpanded && (
-                                        <div className="p-3 pt-2 border-t border-stone-100 animate-in fade-in slide-in-from-top-2 duration-200">
-                                          <div className="flex flex-wrap gap-1.5 max-h-[200px] overflow-y-auto">
-                                            {cat.items.map(foodUI => {
-                                              const registryMatch = FOOD_REGISTRY.find(f => f.id === foodUI.id);
-                                              
-                                              if (!registryMatch) return null;
-
-                                              const isBlocked = blockedFoodIds.has(registryMatch.id);
-                                              const restrictionInfo = getRestrictionInfo(registryMatch.id, foodRestrictions);
-                                              
-                                              let btnClass = "px-2.5 py-1.5 bg-white border border-stone-200 rounded-lg text-[10px] font-bold text-stone-500 hover:border-stone-800 hover:text-stone-800 transition-all active:scale-95 shadow-sm";
-                                              let tooltipText = "Adicionar ao Prato";
-                                              
-                                              if (isBlocked) {
-                                                if (restrictionInfo?.type === 'allergy') {
-                                                  btnClass = "px-2.5 py-1.5 bg-red-50 border border-red-300 rounded-lg text-[10px] font-bold text-red-600 line-through cursor-not-allowed opacity-80";
-                                                  tooltipText = "🚫 PROIBIDO - Alergia grave";
-                                                } else if (restrictionInfo?.type === 'intolerance') {
-                                                  btnClass = "px-2.5 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-[10px] font-bold text-amber-700 line-through cursor-not-allowed opacity-80";
-                                                  tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
-                                                } else {
-                                                  btnClass = "px-2.5 py-1.5 bg-blue-50 border border-blue-300 rounded-lg text-[10px] font-bold text-blue-700 line-through cursor-not-allowed opacity-80";
-                                                  tooltipText = "📋 EVITAR - Restrição alimentar";
-                                                }
-                                              }
-
-                                              return (
-                                                <button
-                                                  key={registryMatch.id}
-                                                  onClick={() => addFoodItem(meal.id, option.id, registryMatch.id)}
-                                                  disabled={isBlocked}
-                                                  title={tooltipText}
-                                                  className={btnClass}
-                                                >
-                                                  {foodUI.label}
-                                                  {isBlocked && restrictionInfo?.type === 'allergy' && <span className="text-red-500 text-[8px] ml-0.5">🚫</span>}
-                                                  {isBlocked && restrictionInfo?.type === 'intolerance' && <span className="text-amber-500 text-[8px] ml-0.5">⚠️</span>}
-                                                  {isBlocked && restrictionInfo?.type === 'restriction' && <span className="text-blue-500 text-[8px] ml-0.5">📋</span>}
-                                                </button>
-                                              );
-                                            })}
+                              {/* Categorias rápidas (sem busca) - mantidas para fallback */}
+                              <div className="mt-3">
+                                <div className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em] mb-2">
+                                  Ou escolha por categoria:
+                                </div>
+                                <div className="space-y-1 max-h-[250px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-200">
+                                  {quickFoods.map((cat) => {
+                                    const isExpanded = expandedCategories[`${meal.id}-${option.id}-${cat.category}`] || false;
+                                    
+                                    return (
+                                      <div key={cat.category} className="border border-stone-200 rounded-xl overflow-hidden bg-white">
+                                        <button
+                                          onClick={() => setExpandedCategories(prev => ({
+                                            ...prev,
+                                            [`${meal.id}-${option.id}-${cat.category}`]: !prev[`${meal.id}-${option.id}-${cat.category}`]
+                                          }))}
+                                          className="w-full flex items-center justify-between px-2 py-1.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
+                                        >
+                                          <div className="flex items-center gap-1.5">
+                                            <ChevronRight size={10} className={`text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                                            <span className="text-[9px] font-extrabold text-stone-700 uppercase tracking-wider">{cat.category}</span>
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                                        </button>
+
+                                        {isExpanded && (
+                                          <div className="p-2 pt-1.5 border-t border-stone-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
+                                              {cat.items.map(foodUI => {
+                                                const registryMatch = FOOD_REGISTRY.find(f => f.id === foodUI.id);
+                                                
+                                                if (!registryMatch) return null;
+
+                                                const isBlocked = blockedFoodIds.has(registryMatch.id);
+                                                const restrictionInfo = getRestrictionInfo(registryMatch.id, foodRestrictions);
+                                                
+                                                let btnClass = "px-2 py-1 bg-white border border-stone-200 rounded-lg text-[9px] font-bold text-stone-500 hover:border-stone-800 hover:text-stone-800 transition-all active:scale-95 shadow-sm";
+                                                let tooltipText = "Adicionar ao Prato";
+                                                
+                                                if (isBlocked) {
+                                                  if (restrictionInfo?.type === 'allergy') {
+                                                    btnClass = "px-2 py-1 bg-red-50 border border-red-300 rounded-lg text-[9px] font-bold text-red-600 line-through cursor-not-allowed opacity-80";
+                                                    tooltipText = "🚫 PROIBIDO - Alergia grave";
+                                                  } else if (restrictionInfo?.type === 'intolerance') {
+                                                    btnClass = "px-2 py-1 bg-amber-50 border border-amber-300 rounded-lg text-[9px] font-bold text-amber-700 line-through cursor-not-allowed opacity-80";
+                                                    tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
+                                                  } else {
+                                                    btnClass = "px-2 py-1 bg-blue-50 border border-blue-300 rounded-lg text-[9px] font-bold text-blue-700 line-through cursor-not-allowed opacity-80";
+                                                    tooltipText = "📋 EVITAR - Restrição alimentar";
+                                                  }
+                                                }
+
+                                                return (
+                                                  <button
+                                                    key={registryMatch.id}
+                                                    onClick={() => addFoodItem(meal.id, option.id, registryMatch.id)}
+                                                    disabled={isBlocked}
+                                                    title={tooltipText}
+                                                    className={btnClass}
+                                                  >
+                                                    {foodUI.label}
+                                                    {isBlocked && restrictionInfo?.type === 'allergy' && <span className="text-red-500 text-[7px] ml-0.5">🚫</span>}
+                                                    {isBlocked && restrictionInfo?.type === 'intolerance' && <span className="text-amber-500 text-[7px] ml-0.5">⚠️</span>}
+                                                    {isBlocked && restrictionInfo?.type === 'restriction' && <span className="text-blue-500 text-[7px] ml-0.5">📋</span>}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            )}
-
+                            </div>
                           </div>
+                        ))}
+                        
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {!meal.options.some(opt => opt.day === "Todos os dias") && meal.options.length < 7 && (
+                            <button 
+                              onClick={() => addOption(meal.id)} 
+                              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-600 bg-white shadow-sm border border-stone-200 hover:border-stone-800 hover:text-stone-800 px-3 py-1.5 rounded-xl transition-all active:scale-95"
+                            >
+                              <Plus size={12} strokeWidth={2.5} /> Adicionar Variação
+                            </button>
+                          )}
+
+                          {meal.options.length === 1 && meal.options[0].day === "Todos os dias" && (
+                            <button 
+                              onClick={() => splitIntoFullWeek(meal.id)} 
+                              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-800 bg-stone-100 border border-stone-200 hover:bg-stone-200 px-3 py-1.5 rounded-xl transition-all active:scale-95 shadow-sm"
+                            >
+                              <CalendarRange size={12} strokeWidth={2.5} /> Separar Seg a Dom
+                            </button>
+                          )}
                         </div>
-                      ))}
-                      
-                      {/* AÇÕES DE VARIAÇÃO DE DIAS */}
-                      <div className="flex flex-wrap gap-3 pt-2">
-                        {!meal.options.some(opt => opt.day === "Todos os dias") && meal.options.length < 7 && (
-                          <button 
-                            onClick={() => addOption(meal.id)} 
-                            className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-stone-600 bg-white shadow-sm border border-stone-200 hover:border-stone-800 hover:text-stone-800 px-5 py-3 rounded-xl transition-all active:scale-95"
-                          >
-                            <Plus size={16} strokeWidth={2.5} /> Adicionar Variação
-                          </button>
-                        )}
-
-                        {meal.options.length === 1 && meal.options[0].day === "Todos os dias" && (
-                          <button 
-                            onClick={() => splitIntoFullWeek(meal.id)} 
-                            className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-stone-800 bg-stone-100 border border-stone-200 hover:bg-stone-200 px-5 py-3 rounded-xl transition-all active:scale-95 shadow-sm"
-                          >
-                            <CalendarRange size={16} strokeWidth={2.5} /> Separar Seg a Dom
-                          </button>
-                        )}
                       </div>
-                    </div>
 
-                    {/* FECHAR ABA */}
-                    <div className="mt-8 flex justify-center">
-                       <button 
-                         onClick={() => setExpandedMealId(null)}
-                         className="flex items-center gap-2 text-xs font-bold text-stone-500 hover:text-stone-800 bg-white px-6 py-3 rounded-full border border-stone-200 shadow-sm transition-all active:scale-95"
-                       >
-                         <ChevronUp size={16} strokeWidth={3} /> {isComplete ? "Pronto, Fechar Aba" : "Fechar Aba"}
-                       </button>
-                    </div>
+                      <div className="mt-5 flex justify-center">
+                         <button 
+                           onClick={() => setExpandedMealId(null)}
+                           className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 hover:text-stone-800 bg-white px-4 py-2 rounded-full border border-stone-200 shadow-sm transition-all active:scale-95"
+                         >
+                           <ChevronUp size={12} strokeWidth={3} /> {isComplete ? "Pronto, Fechar Aba" : "Fechar Aba"}
+                         </button>
+                      </div>
 
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <button 
+              onClick={addMeal} 
+              className="w-full border-2 border-dashed border-stone-200/80 rounded-2xl py-8 flex flex-col items-center justify-center text-stone-400 hover:border-stone-400 hover:text-stone-800 hover:bg-stone-50/50 transition-all group mt-2 active:scale-[0.98]"
+            >
+              <div className="bg-white p-2 rounded-xl shadow-sm mb-2 group-hover:scale-110 group-hover:bg-stone-800 group-hover:text-white transition-all duration-300 border border-stone-100 group-hover:border-stone-800">
+                <Plus size={18} strokeWidth={2.5} />
               </div>
-            );
-          })}
-
-          {/* ADICIONAR NOVA REFEIÇÃO */}
-          <button 
-            onClick={addMeal} 
-            className="w-full border-2 border-dashed border-stone-200/80 rounded-[2rem] py-12 flex flex-col items-center justify-center text-stone-400 hover:border-stone-400 hover:text-stone-800 hover:bg-stone-50/50 transition-all group mt-6 active:scale-[0.98]"
-          >
-            <div className="bg-white p-3.5 rounded-2xl shadow-sm mb-3 group-hover:scale-110 group-hover:bg-stone-800 group-hover:text-white transition-all duration-300 border border-stone-100 group-hover:border-stone-800">
-              <Plus size={24} strokeWidth={2.5} />
-            </div>
-            <span className="font-black uppercase tracking-[0.15em] text-[11px]">Adicionar Refeição</span>
-          </button>
+              <span className="font-black uppercase tracking-[0.15em] text-[9px]">Adicionar Refeição</span>
+            </button>
+          </div>
         </div>
 
-        {/* FOOTER FIXO */}
-        <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-stone-100 p-4 sm:p-6 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-          <div className="max-w-4xl mx-auto flex flex-row items-center gap-2.5 sm:gap-3">
+        <div className="border-t border-stone-100 bg-white/95 p-3 sm:p-4 shrink-0">
+          <div className="flex flex-row items-center gap-2">
             <button 
               onClick={onClose} 
-              className="px-5 sm:px-6 py-4 font-bold text-stone-500 hover:text-stone-800 bg-stone-50 hover:bg-stone-100 rounded-2xl transition-all active:scale-[0.98] shrink-0 text-[13px] sm:text-base"
+              className="px-4 sm:px-5 py-2.5 font-bold text-stone-500 hover:text-stone-800 bg-stone-50 hover:bg-stone-100 rounded-xl transition-all active:scale-[0.98] shrink-0 text-xs sm:text-sm"
             >
               Cancelar
             </button>
             <button 
               onClick={handleSave} 
               disabled={isSaving} 
-              className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-8 py-4 rounded-2xl font-bold text-white transition-all duration-300 shadow-[0_8px_25px_rgba(0,0,0,0.15)] active:scale-[0.98] text-[13px] sm:text-base truncate ${
+              className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl font-bold text-white transition-all duration-300 shadow-md active:scale-[0.98] text-xs sm:text-sm ${
                 saved 
                   ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20' 
                   : 'bg-stone-900 hover:bg-stone-800'
               }`}
             >
               {isSaving ? (
-                <><Loader2 size={18} strokeWidth={2.5} className="animate-spin shrink-0"/> <span className="truncate">Salvando...</span></>
+                <><Loader2 size={16} strokeWidth={2.5} className="animate-spin shrink-0"/> <span className="truncate">Salvando...</span></>
               ) : saved ? (
-                <><CheckCircle2 size={18} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Salvo!</span></>
+                <><CheckCircle2 size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Salvo!</span></>
               ) : (
-                <><Save size={18} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Liberar Cardápio</span></>
+                <><Save size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Liberar Cardápio</span></>
               )}
             </button>
           </div>

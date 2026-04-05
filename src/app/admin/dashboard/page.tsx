@@ -182,6 +182,24 @@ const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
   });
 };
 
+function normalizeQFAAnswers(data: any): Record<string, string> {
+  if (!data) return {};
+
+  if (Array.isArray(data)) {
+    const result: Record<string, string> = {};
+
+    data.forEach((item: any) => {
+      if (item?.id && item?.value) {
+        result[item.id] = item.value;
+      }
+    });
+
+    return result;
+  }
+
+  return data;
+}
+
 // =========================================================================
 // HOOK DE LÓGICA E ESTADO
 // =========================================================================
@@ -408,7 +426,7 @@ function useAdminDashboard() {
       isOpen: true,
       data: patient.evaluation?.answers || null,
       name: patient.full_name,
-      qfaData: qfaData?.answers || null,
+      qfaData: normalizeQFAAnswers(qfaData?.answers),
       foodRestrictions: patient.food_restrictions || []
     });
     setEvalModalActiveTab('avaliacao');

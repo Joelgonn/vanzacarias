@@ -48,6 +48,11 @@ const FoodRestrictionSchema = z.object({
 const FoodItemSchema = z.object({
   id: z.string(),
   name: z.string(),
+
+  // 🔥 NOVO
+  grams: z.number().optional(),
+
+  // 🔥 LEGADO
   quantity: z.number().optional().default(1)
 });
 
@@ -223,7 +228,24 @@ function formatarCardapio(mealPlan: MealPlan): string {
     
     // 🔥 CORREÇÃO: Formatação priorizando foodItems (com fallback para description)
     const foods = option.foodItems?.length
-      ? option.foodItems.map(f => `${f.quantity}x ${f.name}`).join(', ')
+      ? option.foodItems.map(f => {
+          const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+          const baseGrams = registryItem?.baseGrams || 100;
+
+          // 🔥 PRIORIDADE: grams
+          if (f.grams != null) {
+            return `${Math.round(f.grams)}g ${f.name}`;
+          }
+
+          // 🔥 FALLBACK: quantity → grams
+          if (f.quantity != null) {
+            const grams = f.quantity * baseGrams;
+            return `${Math.round(grams)}g ${f.name}`;
+          }
+
+          // 🔥 fallback final
+          return `${baseGrams}g ${f.name}`;
+        }).join(', ')
       : option.description || 'Sem descrição';
 
     const kcal = option.kcal || 0;

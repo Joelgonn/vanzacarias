@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
+import { FOOD_REGISTRY } from '@/lib/foodRegistry'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -82,7 +83,26 @@ function formatMealPlan(mealPlan: any): string {
   return mealPlan.map(meal => {
     const option = meal?.options?.[0];
 
-    const foods = option?.foodItems?.map((f: any) => f.name).filter(Boolean) || [];
+    const foods = option?.foodItems?.length
+      ? option.foodItems.map((f: any) => {
+          const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+          const baseGrams = registryItem?.baseGrams || 100;
+
+          // 🔥 PRIORIDADE: grams
+          if (f.grams != null) {
+            return `${Math.round(f.grams)}g ${f.name}`;
+          }
+
+          // 🔥 FALLBACK: quantity → grams
+          if (f.quantity != null) {
+            const grams = f.quantity * baseGrams;
+            return `${Math.round(grams)}g ${f.name}`;
+          }
+
+          // 🔥 fallback final
+          return `${baseGrams}g ${f.name}`;
+        })
+      : [];
 
     const description = foods.length > 0
       ? foods.join(', ')

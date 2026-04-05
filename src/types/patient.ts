@@ -2,6 +2,32 @@
 // PATIENT DOMAIN TYPES (Single Source of Truth)
 // ============================================================================
 
+// ============================================================================
+// 🆕 FOOD ITEM (BASE DO SISTEMA DE DIETA - FASE 1 COMPATÍVEL)
+// ============================================================================
+
+export interface FoodItem {
+  id: string;
+  name: string;
+
+  kcal: number;
+  macros: {
+    p: number;
+    c: number;
+    g: number;
+  };
+
+  // 🔥 NOVO PADRÃO (FASE 1 - OPCIONAL)
+  grams?: number;
+
+  // 🔥 LEGADO (MANTIDO TEMPORARIAMENTE)
+  quantity?: number;
+}
+
+// ============================================================================
+// FOOD RESTRICTIONS
+// ============================================================================
+
 export type FoodRestrictionType = 'allergy' | 'intolerance' | 'restriction';
 
 export type FoodRestrictionSeverity = 'low' | 'medium' | 'high';
@@ -12,20 +38,12 @@ export type FoodRestrictionSeverity = 'low' | 'medium' | 'high';
 
 export interface FoodRestriction {
   id?: string;
-  food: string; // nome do alimento (ex: "leite", "amendoim") - Legado obrigatório
+  food: string;
   type: FoodRestrictionType;
-  severity?: FoodRestrictionSeverity; // útil principalmente para intolerâncias
+  severity?: FoodRestrictionSeverity;
   notes?: string;
-  
-  // ========================================================================
-  // NOVOS CAMPOS - OPÇÃO 3 (HÍBRIDO)
-  // ========================================================================
-  // foodId: Referência direta ao FoodEntity do foodRegistry
-  // Ex: "milk_whole", "egg_scrambled", "chicken_breast"
+
   foodId?: string;
-  
-  // tag: Restrição por categoria/componente (abrangente)
-  // Ex: "lactose" bloqueia leite, queijo, whey; "gluten" bloqueia pão, macarrão
   tag?: string;
 }
 
@@ -35,7 +53,7 @@ export interface FoodRestriction {
 
 export interface QFAItem {
   food: string;
-  frequency: number; // vezes por dia/semana dependendo do modelo
+  frequency: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -45,19 +63,14 @@ export interface QFAItem {
 export interface PatientBase {
   id: string;
 
-  // Dados básicos
   name?: string;
   age?: number;
   gender?: 'M' | 'F';
 
-  // Antropometria
   weight?: number;
   height?: number;
 
-  // 🔥 NOVO: Perfil alimentar
   foodRestrictions?: FoodRestriction[];
-
-  // 🔥 QFA vinculado
   qfa?: QFAItem[];
 }
 
@@ -96,23 +109,14 @@ export function isRestriction(restriction: FoodRestriction): boolean {
 // NOVOS HELPERS PARA OPÇÃO 3 (HÍBRIDO)
 // ============================================================================
 
-/**
- * Verifica se a restrição usa a nova arquitetura com foodId
- */
 export function hasFoodId(restriction: FoodRestriction): boolean {
   return !!restriction.foodId;
 }
 
-/**
- * Verifica se a restrição usa tag (restrição por categoria)
- */
 export function hasTag(restriction: FoodRestriction): boolean {
   return !!restriction.tag;
 }
 
-/**
- * Verifica se a restrição é do legado (apenas food string)
- */
 export function isLegacyRestriction(restriction: FoodRestriction): boolean {
   return !restriction.foodId && !restriction.tag;
 }

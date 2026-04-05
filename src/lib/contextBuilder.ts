@@ -137,6 +137,11 @@ NUNCA sugerir as categorias ou alimentos listados acima em nenhuma hipótese, ne
 
 [CARDÁPIO ATUAL]
 ${data.cardapioFormatado}
+
+📏 IMPORTANTE SOBRE MEDIDAS:
+- Todas as quantidades do cardápio estão em GRAMAS (g)
+- Ex: "150g frango" significa peso do alimento pronto/preparado
+- Use essas quantidades como base para cálculos e substituições
 `.trim();
 }
 
