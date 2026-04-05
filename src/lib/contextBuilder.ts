@@ -113,7 +113,7 @@ function buildClinicalContext(data: UserData): string {
     ? allRestrictions.join(', ')
     : 'Nenhuma relatada';
 
-  // 🔥 NOVO: Extração de TAGS (Semântica para o LLM)
+  // Extração de TAGS (Semântica para o LLM)
   const tags = (data.restrictions || [])
     .map(r => r.tag)
     .filter(Boolean) as string[];

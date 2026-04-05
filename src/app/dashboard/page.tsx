@@ -1194,7 +1194,7 @@ export default function Dashboard() {
       />
 
       {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE COM COMPOSIÇÃO CORPORAL */}
-      <ChatAssistant adminContext={adminContextForChat} />
+      <ChatAssistant role="patient" />
     </main>
   );
 }

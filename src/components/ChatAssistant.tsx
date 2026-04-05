@@ -25,7 +25,6 @@ export interface LeadData {
   status: string;
 }
 
-// 🔥 NOVA INTERFACE PARA COMPOSIÇÃO CORPORAL
 export interface BodyComposition {
   percentualGordura: number | null;
   massaGorda: number | null;
@@ -41,13 +40,13 @@ export interface AdminContext {
   usageStats?: Record<string, number>;
   todayTotalMessages?: number;
   onSendDirectMessage?: (patientId: string, message: string) => Promise<void>;
-  // 🔥 NOVO CAMPO PARA COMPOSIÇÃO CORPORAL
   bodyComposition?: BodyComposition | null;
 }
 
-export interface ChatAssistantProps {
-  adminContext?: AdminContext;
-}
+// 🔥 BLINDAGEM MÁXIMA (TypeScript Discriminated Union)
+export type ChatAssistantProps =
+  | { role: 'admin'; adminContext: AdminContext }
+  | { role: 'patient'; adminContext?: never };
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -141,7 +140,8 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      
+      if (!session?.user?.id) return;
 
       const todayStr = new Date().toLocaleDateString('en-CA');
       const { data: log } = await supabase
@@ -170,23 +170,44 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
     if ((!state.input.trim() && !state.selectedImage) || state.isLoading) return;
 
     const userMessage = state.input.trim() || "Analise esse prato";
+    const history = state.messages.slice(-6);
+    
     state.setInput('');
     state.setIsLoading(true);
     state.setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
       
-      const res = await fetch('/api/nutri-assistant', {
+      // 🔥 CORREÇÃO CRÍTICA APLICADA: Usando getSession para garantir extração no Client
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user?.id) {
+        state.setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: 'Sessão expirada. Faça login novamente.' }
+        ]);
+        throw new Error('Usuário não autenticado'); // Dispara erro forçado como instruído
+      }
+
+      const userId = session.user.id;
+
+      // 🧪 DEBUG RÁPIDO (Olhe o console do navegador ao enviar mensagem como Paciente)
+      console.log("🧪 DEBUG PAYLOAD PACIENTE:", {
+        userId: userId,
+        message: userMessage,
+        history: history
+      });
+      
+      // Enviando com o payload perfeitamente estruturado
+      const res = await fetch('/api/nutri-assistant/patient', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: session?.user?.id,
+          userId: userId, // 🔥 ESSENCIAL GARANTIDO AQUI
           message: userMessage,
-          history: state.messages.slice(-6),
-          image: state.selectedImage,
-          isAdmin: false
+          history: history,
+          image: state.selectedImage
         })
       });
 
@@ -200,6 +221,7 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
         state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
       }
     } catch (error: any) {
+      console.error("ERRO NO ENVIO (PACIENTE):", error);
       state.setMessages(prev => [...prev, { role: 'assistant', content: error.message || 'Ops, tive um probleminha técnico. Pode repetir?' }]);
     } finally {
       state.setIsLoading(false);
@@ -218,6 +240,12 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
   const handleSend = async () => {
     if ((!state.input.trim() && !state.selectedImage) || state.isLoading) return;
 
+    if (!adminContext) {
+      console.error("adminContext ausente. Requisição abortada para evitar erro 400 do Zod.");
+      state.setMessages(prev => [...prev, { role: 'assistant', content: 'Ops, não consegui carregar o contexto administrativo. Tente recarregar a página.' }]);
+      return;
+    }
+
     const userMessage = state.input.trim() || "Analise essa imagem";
     state.setInput('');
     state.setIsLoading(true);
@@ -225,18 +253,35 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
 
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
       
-      const res = await fetch('/api/nutri-assistant', {
+      // Por segurança, unifiquei para usar getSession no Admin também.
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      if (!userId) {
+        state.setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: 'Sessão expirada. Faça login novamente.' }
+        ]);
+        return;
+      }
+
+      console.log("ADMIN PAYLOAD:", {
+        userId,
+        message: userMessage,
+        history: state.messages.slice(-6),
+        adminData: adminContext
+      });
+
+      const res = await fetch('/api/nutri-assistant/admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: session?.user?.id,
+          userId,
           message: userMessage,
           history: state.messages.slice(-6),
           image: state.selectedImage,
-          isAdmin: true,
-          adminData: adminContext
+          adminData: adminContext 
         })
       });
 
@@ -263,14 +308,23 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
 // ===============================
 // 4. COMPONENTE PRINCIPAL (UI)
 // ===============================
-export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
-  const isRoleAdmin = !!adminContext;
+
+export default function ChatAssistant(props: ChatAssistantProps) {
+  const { role, adminContext } = props;
+  const isRoleAdmin = role === 'admin';
   
   const state = useChatState();
   const patientLogic = useChatPatient(state, !isRoleAdmin);
   const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin);
 
-  const handleSend = isRoleAdmin ? adminLogic.handleSend : patientLogic.handleSend;
+  const handleSend = () => {
+    if (role === 'admin') {
+      return adminLogic.handleSend();
+    }
+    if (role === 'patient') {
+      return patientLogic.handleSend();
+    }
+  };
 
   const getAvatarAnimation = () => {
     if (state.avatarMood === 'feliz') return 'animate-bounce'; 
@@ -282,7 +336,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
 
   return (
     <>
-      {/* BOTÃO FLUTUANTE FECHADO */}
       {!state.isOpen && (
         <div className="fixed bottom-5 right-5 sm:bottom-8 sm:right-8 z-50">
           <button 
@@ -290,7 +343,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
             className="relative group transition-all duration-300 hover:scale-110 active:scale-95 flex flex-col items-end"
             aria-label="Abrir assistente virtual"
           >
-            {/* Ponto verde de notificação com ring sutil */}
             <span className="absolute top-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full z-10 animate-pulse ring-4 ring-emerald-500/20"></span>
             
             <div className={`w-[68px] h-[68px] sm:w-[72px] sm:h-[72px] rounded-full overflow-hidden border-[3px] border-stone-900 shadow-[0_12px_30px_rgba(0,0,0,0.2)] bg-gradient-to-b from-stone-50 to-stone-200 flex items-end justify-center ${getAvatarAnimation()}`}>
@@ -301,7 +353,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                />
             </div>
             
-            {/* Tooltip Premium */}
             <div className="absolute right-[85px] sm:right-[90px] top-1/2 -translate-y-1/2 bg-stone-900 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0 whitespace-nowrap pointer-events-none">
               {isRoleAdmin 
                 ? 'Pronta para te ajudar com os pacientes! 🚀' 
@@ -310,25 +361,21 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                   : state.avatarMood === 'feliz' 
                     ? 'Você tá arrasando! 🎉' 
                     : 'Dúvidas sobre a dieta? 🍎'}
-              {/* Triângulo do tooltip */}
               <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-stone-900 rotate-45 rounded-sm"></div>
             </div>
           </button>
         </div>
       )}
 
-      {/* JANELA DO CHAT ABERTA - Fundo escuro sutil no mobile para destacar o Bottom Sheet */}
       {state.isOpen && (
         <div className="fixed inset-0 sm:inset-auto sm:bottom-8 sm:right-8 z-50 flex items-end sm:items-end justify-center pointer-events-none bg-stone-900/20 sm:bg-transparent backdrop-blur-sm sm:backdrop-blur-none transition-all duration-300">
           
           <div className="w-full sm:w-[400px] h-[85vh] sm:h-[600px] max-h-[800px] bg-[#f8f9fa] rounded-t-[2rem] sm:rounded-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] sm:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-stone-200/50 flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300 pointer-events-auto">
             
-            {/* Barra de puxar mobile */}
             <div className="w-full flex justify-center pt-3 pb-2 sm:hidden bg-stone-900 shrink-0">
               <div className="w-12 h-1.5 bg-stone-700 rounded-full" />
             </div>
 
-            {/* HEADER PREMIUM */}
             <div className="bg-stone-900 px-5 pt-2 pb-5 sm:py-5 text-white flex justify-between items-center shrink-0 shadow-sm relative z-10">
               <div className="flex items-center gap-3.5">
                 <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 border-white/10 shrink-0 bg-gradient-to-b from-stone-700 to-stone-800 flex items-end justify-center shadow-inner ${getAvatarAnimation()}`}>
@@ -381,10 +428,8 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
               </div>
             </div>
             
-            {/* CHAT BODY (Area de Rolagem) */}
             <div ref={state.scrollRef} className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-5 bg-[#f8f9fa] scrollbar-hide">
               
-              {/* EMPTY STATE PREMIUM */}
               {state.messages.length === 0 && (
                 <div className="flex flex-col items-center text-center mt-8 space-y-4 px-6 animate-in slide-in-from-bottom-4 duration-500">
                   <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200 flex items-end justify-center shadow-[0_8px_30px_rgba(0,0,0,0.08)] border-4 border-white ${getAvatarAnimation()}`}>
@@ -407,7 +452,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                 </div>
               )}
               
-              {/* CHAT BUBBLES */}
               {state.messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
                   <div className={`max-w-[85%] px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
@@ -420,7 +464,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                 </div>
               ))}
               
-              {/* LOADING STATE */}
               {state.isLoading && (
                 <div className="flex justify-start animate-in fade-in">
                   <div className="bg-white border border-stone-200/60 p-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2.5">
@@ -434,10 +477,8 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
               )}
             </div>
 
-            {/* ÁREA DE INPUT PREMIUM */}
             <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
               
-              {/* Preview de Imagem (Polaroid Style) */}
               {state.selectedImage && (
                 <div className="relative mb-3 inline-block animate-in fade-in slide-in-from-bottom-2">
                   <div className="p-1 bg-white border border-stone-200 rounded-xl shadow-sm">
@@ -457,7 +498,6 @@ export default function ChatAssistant({ adminContext }: ChatAssistantProps) {
                 </div>
               )}
 
-              {/* Barra de Digitação (Pill-shaped) */}
               <div className="flex gap-2 bg-stone-50 p-1.5 rounded-[2rem] border border-stone-200 focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-500/10 focus-within:bg-white transition-all items-center">
                 
                 <button

@@ -5,7 +5,8 @@ import {
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
   Copy, CheckCircle2, AlertCircle, CalendarRange, Loader2,
-  Beef, Wheat, Droplet, Target, X, Clock, ChevronRight, Search
+  Beef, Wheat, Droplet, Target, X, Clock, ChevronRight, Search,
+  Minus // 🔥 NOVO: Ícone para diminuir quantidade
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -22,7 +23,7 @@ import {
   resolveRestriction
 } from '@/lib/nutrition/restrictions';
 
-// 🔥 ADAPTADOR (REGISTRY → UI)
+// 🔥 ADAPTADOR (REGISTRY → UI) - AGORA COM QUANTITY DEFAULT
 function mapToFoodItem(food: FoodEntity): FoodItem {
   return {
     id: food.id,
@@ -32,7 +33,8 @@ function mapToFoodItem(food: FoodEntity): FoodItem {
       p: food.macros.p,
       c: food.macros.c,
       g: food.macros.g
-    }
+    },
+    quantity: 1 // 🔥 Default obrigatório ao mapear do banco
   };
 }
 
@@ -57,6 +59,7 @@ interface DietBuilderProps {
   foodRestrictions?: FoodRestriction[]; 
 }
 
+// 🔥 SSOT DA UI: AGORA INCLUI QUANTITY
 interface FoodItem {
   id: string;
   name: string;
@@ -66,6 +69,7 @@ interface FoodItem {
     c: number;
     g: number;
   };
+  quantity: number; // 🔥 NOVO
 }
 
 export interface Option {
@@ -202,7 +206,6 @@ interface QuickFoodCategoryConfig {
   items: QuickFoodConfigItem[];
 }
 
-// A configuração agora é estática e declarativa, agindo apenas como mapeamento.
 const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] =[
   { 
     category: "🥩 Proteínas (Carnes e Ovos)", 
@@ -458,7 +461,6 @@ const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] =[
 ];
 
 // 🔥 GERADOR DINÂMICO 10/10: Filtra a configuração estática validando contra a SSOT
-// Isso garante que NENHUM alimento quebre a UI se for removido/alterado no banco.
 const quickFoods: QuickFoodCategoryConfig[] = QUICK_FOODS_CONFIG.map(cat => {
   const validItems = cat.items.filter(uiItem => {
     const exists = FOOD_REGISTRY.some(f => f.id === uiItem.id);
@@ -524,22 +526,26 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   
-  // 🔥 ESTADO DA BUSCA VIVA NO REGISTRY
   const [searchTerm, setSearchTerm] = useState('');
 
   const supabase = createClient();
 
-  // 🔥 SSOT: PROCESSAMENTO DOS ALIMENTOS BLOQUEADOS VIA DOMÍNIO (O(1) Lookup)
   const blockedFoodIds = expandRestrictions(foodRestrictions);
-  
-  // 🔥 RESUMO DAS RESTRIÇÕES PARA ALERTA GLOBAL
   const restrictionsSummary = getRestrictionsSummary(foodRestrictions);
 
   // =========================================================================
-  // FUNÇÕES DE MIGRAÇÃO
+  // FUNÇÕES DE MIGRAÇÃO (AGORA ATRIBUINDO QUANTITY = 1 SE NÃO EXISTIR)
   // =========================================================================
   const migrateExistingOption = (option: any): Option => {
-    if (option.foodItems && Array.isArray(option.foodItems)) return option;
+    if (option.foodItems && Array.isArray(option.foodItems)) {
+      return {
+        ...option,
+        foodItems: option.foodItems.map((item: any) => ({
+          ...item,
+          quantity: item.quantity || 1 // 🔥 Fallback seguro
+        }))
+      };
+    }
     
     if (option.description && typeof option.description === 'string') {
       const lines = option.description.split('\n').filter((line: string) => line.trim().startsWith('- ') || line.trim().startsWith('+ '));
@@ -547,7 +553,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
         id: `food-${Date.now()}-${idx}-${Math.random()}`,
         name: line.replace(/^[-+]\s*/, '').trim(),
         kcal: 0,
-        macros: { p: 0, c: 0, g: 0 }
+        macros: { p: 0, c: 0, g: 0 },
+        quantity: 1 // 🔥 Default
       }));
       
       if (foodItems.length === 0 && option.description.trim()) {
@@ -555,7 +562,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           id: `food-${Date.now()}-${Math.random()}`,
           name: option.description,
           kcal: option.kcal || 0,
-          macros: option.macros || { p: 0, c: 0, g: 0 }
+          macros: option.macros || { p: 0, c: 0, g: 0 },
+          quantity: 1 // 🔥 Default
         });
       }
       return {
@@ -570,12 +578,11 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   // =========================================================================
-  // MANIPULAÇÃO DE DADOS (COM TRAVA DE SEGURANÇA BLINDADA)
+  // MANIPULAÇÃO DE DADOS (COM TRAVA E QUANTITY)
   // =========================================================================
   
-  // 🛡️ NOVO addFoodItem BLINDADO: Só aceita ID do FOOD_REGISTRY
+  // 🔥 ADICIONA OU INCREMENTA O ALIMENTO
   const addFoodItem = (mealId: string, optId: string, foodId: string) => {
-    // 1. Busca sempre na Fonte da Verdade (Registry)
     const registryFood = FOOD_REGISTRY.find(f => f.id === foodId);
 
     if (!registryFood) {
@@ -583,7 +590,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       return;
     }
 
-    // 2. Trava de Segurança Absoluta (Ignora UI e valida direto no Set do domínio)
     if (blockedFoodIds.has(registryFood.id)) {
       const restrictionType = resolveRestriction(registryFood.id, foodRestrictions);
       if (restrictionType === 'allergy') {
@@ -594,18 +600,34 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       return;
     }
 
-    // 3. Converte para o padrão da UI e insere
     const mappedFood = mapToFoodItem(registryFood);
 
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
-            const updatedFoodItems = [...(o.foodItems || []), mappedFood];
-            const newKcal = updatedFoodItems.reduce((sum, item) => sum + item.kcal, 0);
+            // Verifica se já existe para incrementar ou inserir novo
+            const existing = o.foodItems?.find(f => f.id === mappedFood.id);
+            let updatedFoodItems: FoodItem[];
+
+            if (existing) {
+              updatedFoodItems = (o.foodItems || []).map(f =>
+                f.id === mappedFood.id
+                  ? { ...f, quantity: f.quantity + 1 }
+                  : f
+              );
+            } else {
+              updatedFoodItems = [...(o.foodItems || []), mappedFood];
+            }
+
+            // Recalcula multiplicando por quantidade
+            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
             const newMacros = updatedFoodItems.reduce((acc, item) => ({
-              p: acc.p + item.macros.p, c: acc.c + item.macros.c, g: acc.g + item.macros.g
+              p: acc.p + (item.macros.p * item.quantity),
+              c: acc.c + (item.macros.c * item.quantity),
+              g: acc.g + (item.macros.g * item.quantity)
             }), { p: 0, c: 0, g: 0 });
+
             return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
           }
           return o;
@@ -616,20 +638,56 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }));
   };
 
-  const removeFoodItem = (mealId: string, optId: string, foodItemId: string) => {
+  // 🔥 DECREMENTA O ALIMENTO (REMOVE SE CHEGAR A 0)
+  const decrementFoodItem = (mealId: string, optId: string, foodItemId: string) => {
     setMeals(meals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optId) {
-            const itemToRemove = o.foodItems?.find(item => item.id === foodItemId);
-            if (!itemToRemove) return o;
-            const updatedFoodItems = o.foodItems.filter(item => item.id !== foodItemId);
-            const newKcal = Math.max(0, (o.kcal || 0) - itemToRemove.kcal);
-            const newMacros = {
-              p: Math.max(0, (o.macros?.p || 0) - itemToRemove.macros.p),
-              c: Math.max(0, (o.macros?.c || 0) - itemToRemove.macros.c),
-              g: Math.max(0, (o.macros?.g || 0) - itemToRemove.macros.g)
-            };
+            const updatedFoodItems = (o.foodItems || [])
+              .map(item => {
+                if (item.id === foodItemId) {
+                  if (item.quantity > 1) {
+                    return { ...item, quantity: item.quantity - 1 };
+                  }
+                  return null; // vai remover pelo filter
+                }
+                return item;
+              })
+              .filter(Boolean) as FoodItem[];
+
+            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
+            const newMacros = updatedFoodItems.reduce((acc, item) => ({
+              p: acc.p + (item.macros.p * item.quantity),
+              c: acc.c + (item.macros.c * item.quantity),
+              g: acc.g + (item.macros.g * item.quantity)
+            }), { p: 0, c: 0, g: 0 });
+
+            return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
+          }
+          return o;
+        });
+        return { ...m, options: newOptions };
+      }
+      return m;
+    }));
+  };
+
+  // 🔥 REMOVE COMPLETAMENTE O ALIMENTO (BOTÃO X)
+  const deleteFoodItem = (mealId: string, optId: string, foodItemId: string) => {
+    setMeals(meals.map(m => {
+      if (m.id === mealId) {
+        const newOptions = m.options.map(o => {
+          if (o.id === optId) {
+            const updatedFoodItems = (o.foodItems || []).filter(item => item.id !== foodItemId);
+
+            const newKcal = updatedFoodItems.reduce((sum, item) => sum + (item.kcal * item.quantity), 0);
+            const newMacros = updatedFoodItems.reduce((acc, item) => ({
+              p: acc.p + (item.macros.p * item.quantity),
+              c: acc.c + (item.macros.c * item.quantity),
+              g: acc.g + (item.macros.g * item.quantity)
+            }), { p: 0, c: 0, g: 0 });
+
             return { ...o, foodItems: updatedFoodItems, kcal: newKcal, macros: newMacros };
           }
           return o;
@@ -854,7 +912,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           </button>
         </div>
 
-        {/* 🔥 ALERTA GLOBAL DE RESTRIÇÕES (NOVO) */}
+        {/* ALERTA GLOBAL DE RESTRIÇÕES */}
         {restrictionsSummary.hasRestrictions && (
           <div className="mx-5 sm:mx-8 mt-4">
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -994,7 +1052,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                         )}
                         {meal.options[0]?.kcal > 0 && !isExpanded && (
                           <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider hidden sm:flex">
-                             <span className="text-stone-500 bg-stone-100 px-2 py-1 rounded-md">{meal.options[0]?.kcal} kcal</span>
+                             <span className="text-stone-500 bg-stone-100 px-2 py-1 rounded-md">{Math.round(meal.options[0]?.kcal)} kcal</span>
                              <span className="text-red-500 bg-red-50 px-2 py-1 rounded-md">P {Math.round(meal.options[0]?.macros?.p || 0)}g</span>
                              <span className="text-amber-500 bg-amber-50 px-2 py-1 rounded-md">C {Math.round(meal.options[0]?.macros?.c || 0)}g</span>
                              <span className="text-blue-500 bg-blue-50 px-2 py-1 rounded-md">G {Math.round(meal.options[0]?.macros?.g || 0)}g</span>
@@ -1117,34 +1175,80 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                             </div>
                           </div>
                           
-                          {/* ALIMENTOS SELECIONADOS */}
+                          {/* 🔥 ALIMENTOS SELECIONADOS (PRATO MONTADO) COM CONTROLE DE QUANTIDADE */}
                           <div className="mb-6">
                             <label className="text-[9px] font-black uppercase tracking-[0.15em] text-stone-400 mb-2.5 block ml-1">
                               Prato Montado
                             </label>
+
                             <div className="flex flex-wrap gap-2 min-h-[56px] p-2 sm:p-3 bg-stone-50/80 rounded-2xl border border-stone-200 border-dashed">
+                              
                               {option.foodItems && option.foodItems.length > 0 ? (
                                 option.foodItems.map((foodItem) => (
-                                  <div 
+                                  <div
                                     key={foodItem.id}
-                                    className="group/food flex items-center gap-1.5 bg-white border border-stone-200 rounded-xl pl-3 pr-1 py-1.5 shadow-sm hover:border-stone-300 transition-all animate-in zoom-in-95 duration-200"
+                                    className="group/food flex items-center gap-2 bg-white border border-stone-200 rounded-xl pl-3 pr-2 py-1.5 shadow-sm hover:border-stone-300 transition-all animate-in zoom-in-95 duration-200"
                                   >
-                                    <span className="text-sm font-bold text-stone-700">
-                                      {foodItem.name}
-                                    </span>
+                                    
+                                    {/* 🔥 NOME + BADGE QUANTIDADE */}
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-bold text-stone-700">
+                                        {foodItem.name}
+                                      </span>
+
+                                      {foodItem.quantity > 1 && (
+                                        <span className="text-[10px] font-black text-white bg-stone-800 px-1.5 py-0.5 rounded-md">
+                                          {foodItem.quantity}x
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* 🔥 CONTROLE DE QUANTIDADE */}
+                                    <div className="flex items-center bg-stone-50 rounded-lg border border-stone-100 ml-2 overflow-hidden">
+                                      
+                                      {/* ➖ DIMINUI */}
+                                      <button
+                                        onClick={() => decrementFoodItem(meal.id, option.id, foodItem.id)}
+                                        disabled={foodItem.quantity === 1}
+                                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                      >
+                                        <Minus size={12} strokeWidth={3} />
+                                      </button>
+
+                                      {/* QUANTIDADE */}
+                                      <span className="px-2 text-xs font-bold text-stone-700 min-w-[20px] text-center select-none">
+                                        {foodItem.quantity}
+                                      </span>
+
+                                      {/* ➕ AUMENTA */}
+                                      <button
+                                        onClick={() => addFoodItem(meal.id, option.id, foodItem.id)}
+                                        className="p-1.5 text-white bg-stone-800 hover:bg-stone-700 transition-all active:scale-95"
+                                      >
+                                        <Plus size={12} strokeWidth={3} />
+                                      </button>
+
+                                    </div>
+
+                                    {/* ❌ REMOVER TOTAL */}
                                     <button
-                                      onClick={() => removeFoodItem(meal.id, option.id, foodItem.id)}
-                                      className="text-stone-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg p-1 transition-all"
+                                      onClick={() => deleteFoodItem(meal.id, option.id, foodItem.id)}
+                                      className="ml-1 text-stone-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg p-1.5 transition-all active:scale-95"
+                                      title="Remover alimento"
                                     >
                                       <X size={14} strokeWidth={3} />
                                     </button>
+
                                   </div>
                                 ))
                               ) : (
-                                <div className="w-full flex items-center justify-center p-2">
-                                  <p className="text-xs text-stone-400 font-medium">Prato vazio. Adicione alimentos abaixo.</p>
+                                <div className="w-full flex items-center justify-center p-3">
+                                  <p className="text-xs text-stone-400 font-medium">
+                                    Prato vazio. Adicione alimentos abaixo.
+                                  </p>
                                 </div>
                               )}
+
                             </div>
                           </div>
 
@@ -1157,7 +1261,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                               <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em]">Adicionar Alimentos</p>
                             </div>
 
-                            {/* 🔥 CAMPO DE BUSCA RÁPIDA (PESQUISA DIRETO NO REGISTRY) */}
+                            {/* BUSCA RÁPIDA */}
                             <div className="relative mb-4">
                               <input
                                 type="text"
@@ -1170,7 +1274,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                             </div>
 
                             {searchTerm.length > 0 ? (
-                              /* RESULTADOS DA BUSCA (DIRETO DA FONTE DA VERDADE) */
                               <div className="flex flex-wrap gap-1.5 p-3 bg-stone-50 border border-stone-200 rounded-xl max-h-[300px] overflow-y-auto">
                                 {FOOD_REGISTRY.filter(f => 
                                   f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -1214,7 +1317,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                 })}
                               </div>
                             ) : (
-                              /* 🔥 CATEGORIAS EXPANSÍVEIS (MAPA VISUAL SEGURO POR ID) */
                               <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-200">
                                 {quickFoods.map((cat) => {
                                   const isExpanded = expandedCategories[`${meal.id}-${option.id}-${cat.category}`] || false;
@@ -1238,7 +1340,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                         <div className="p-3 pt-2 border-t border-stone-100 animate-in fade-in slide-in-from-top-2 duration-200">
                                           <div className="flex flex-wrap gap-1.5 max-h-[200px] overflow-y-auto">
                                             {cat.items.map(foodUI => {
-                                              // 🛡️ OBRIGATÓRIO: Match EXATO por ID (Fim do string match frágil)
                                               const registryMatch = FOOD_REGISTRY.find(f => f.id === foodUI.id);
                                               
                                               if (!registryMatch) return null;
@@ -1340,7 +1441,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           </button>
         </div>
 
-        {/* FOOTER FIXO (Bottom Sheet Premium) */}
+        {/* FOOTER FIXO */}
         <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-stone-100 p-4 sm:p-6 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
           <div className="max-w-4xl mx-auto flex flex-row items-center gap-2.5 sm:gap-3">
             <button 

@@ -1655,7 +1655,7 @@ export default function AdminDashboard() {
         patientName={state.selectedPatient?.name || ''} 
       />
       
-      <ChatAssistant adminContext={state.adminContext} />
+      <ChatAssistant role="admin" adminContext={state.adminContext} />
 
     </main>
   );
