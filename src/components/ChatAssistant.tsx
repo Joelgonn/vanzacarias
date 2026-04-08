@@ -64,6 +64,11 @@ const AVATAR_IMAGES = {
 
 const WHATSAPP_NUMBER = "5511999999999"; 
 
+// 🔥 NOVO: Sanitização de input para evitar injection básico
+const sanitizeInput = (text: string): string => {
+  return text.replace(/</g, '').replace(/>/g, '');
+};
+
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -169,17 +174,31 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
   const handleSend = async () => {
     if ((!state.input.trim() && !state.selectedImage) || state.isLoading) return;
 
-    const userMessage = state.input.trim() || "Analise esse prato";
-    const history = state.messages.slice(-6);
+    // 🔥 PATCH 1: Normalizar mensagem
+    const rawMessage = state.input.trim();
+    const finalMessage = rawMessage.length > 0
+      ? rawMessage
+      : state.selectedImage
+        ? "Analise este prato da imagem"
+        : "";
+    
+    if (!finalMessage) return;
+
+    // 🔥 PATCH 2: Sanitizar input
+    const sanitizedMessage = sanitizeInput(finalMessage);
+    
+    // 🔥 PATCH 3: History limpa (sem HTML)
+    const cleanHistory = state.messages.slice(-6).map(m => ({
+      role: m.role,
+      content: m.content
+    }));
     
     state.setInput('');
     state.setIsLoading(true);
-    state.setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    state.setMessages(prev => [...prev, { role: 'user', content: sanitizedMessage }]);
 
     try {
       const supabase = createClient();
-      
-      // 🔥 CORREÇÃO CRÍTICA APLICADA: Usando getSession para garantir extração no Client
       const { data: { session } } = await supabase.auth.getSession();
 
       if (!session?.user?.id) {
@@ -187,26 +206,27 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
           ...prev,
           { role: 'assistant', content: 'Sessão expirada. Faça login novamente.' }
         ]);
-        throw new Error('Usuário não autenticado'); // Dispara erro forçado como instruído
+        throw new Error('Usuário não autenticado');
       }
 
       const userId = session.user.id;
 
-      // 🧪 DEBUG RÁPIDO (Olhe o console do navegador ao enviar mensagem como Paciente)
-      console.log("🧪 DEBUG PAYLOAD PACIENTE:", {
-        userId: userId,
-        message: userMessage,
-        history: history
+      // 🔥 PATCH 4: Debug melhorado
+      console.log("🧪 CHAT PAYLOAD (PACIENTE):", {
+        role: 'patient',
+        userId,
+        message: sanitizedMessage,
+        historyLength: cleanHistory.length,
+        hasImage: !!state.selectedImage
       });
       
-      // Enviando com o payload perfeitamente estruturado
       const res = await fetch('/api/nutri-assistant/patient', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: userId, // 🔥 ESSENCIAL GARANTIDO AQUI
-          message: userMessage,
-          history: history,
+          userId,
+          message: sanitizedMessage,
+          history: cleanHistory,
           image: state.selectedImage
         })
       });
@@ -246,15 +266,31 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
       return;
     }
 
-    const userMessage = state.input.trim() || "Analise essa imagem";
+    // 🔥 PATCH 1: Normalizar mensagem (Admin)
+    const rawMessage = state.input.trim();
+    const finalMessage = rawMessage.length > 0
+      ? rawMessage
+      : state.selectedImage
+        ? "Analise esta imagem"
+        : "";
+    
+    if (!finalMessage) return;
+
+    // 🔥 PATCH 2: Sanitizar input
+    const sanitizedMessage = sanitizeInput(finalMessage);
+    
+    // 🔥 PATCH 3: History limpa (sem HTML)
+    const cleanHistory = state.messages.slice(-6).map(m => ({
+      role: m.role,
+      content: m.content
+    }));
+    
     state.setInput('');
     state.setIsLoading(true);
-    state.setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    state.setMessages(prev => [...prev, { role: 'user', content: sanitizedMessage }]);
 
     try {
       const supabase = createClient();
-      
-      // Por segurança, unifiquei para usar getSession no Admin também.
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
@@ -266,11 +302,14 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
         return;
       }
 
-      console.log("ADMIN PAYLOAD:", {
+      // 🔥 PATCH 4: Debug melhorado
+      console.log("🧪 CHAT PAYLOAD (ADMIN):", {
+        role: 'admin',
         userId,
-        message: userMessage,
-        history: state.messages.slice(-6),
-        adminData: adminContext
+        message: sanitizedMessage,
+        historyLength: cleanHistory.length,
+        hasImage: !!state.selectedImage,
+        adminDataKeys: adminContext ? Object.keys(adminContext) : []
       });
 
       const res = await fetch('/api/nutri-assistant/admin', {
@@ -278,8 +317,8 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
-          message: userMessage,
-          history: state.messages.slice(-6),
+          message: sanitizedMessage,
+          history: cleanHistory,
           image: state.selectedImage,
           adminData: adminContext 
         })

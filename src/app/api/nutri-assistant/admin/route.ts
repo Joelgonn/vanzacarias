@@ -75,48 +75,76 @@ function calcularMacrosDoCardapio(mealPlan: any): { macrosDiarios: MacrosDiarios
   return { macrosDiarios: { totalKcal, totalProtein, totalCarbs, totalFat }, macrosPorRefeicao };
 }
 
+// 🔥 1. FUNÇÃO CENTRAL (OBRIGATÓRIA)
+function formatFoodItem(f: any): string {
+  let grams = 0;
+  
+  // Mantemos a busca no registry para precisão (baseado no seu código original)
+  const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+  const baseGrams = registryItem?.baseGrams || 100;
+
+  if (f.grams != null) {
+    grams = Math.round(f.grams);
+  } else if (f.quantity != null) {
+    // 🔥 fallback legado (somente leitura)
+    grams = Math.round(f.quantity * baseGrams);
+  } else {
+    // 🔥 fallback final caso nenhum venha preenchido
+    grams = baseGrams;
+  }
+
+  return `${grams}g ${f.name}`;
+}
+
+// 🔥 2. FORMATADOR DE OPÇÃO (NÍVEL INTERMEDIÁRIO)
+function formatOption(option: any): string {
+  if (!option.foodItems || option.foodItems.length === 0) {
+    return option?.description || option?.name || 'Sem descrição detalhada';
+  }
+
+  const foods = option.foodItems.map(formatFoodItem);
+  return foods.join(', ');
+}
+
+// 🔥 3. FORMATADOR DE REFEIÇÃO
+function formatMeal(meal: any): string {
+  if (!meal.options || meal.options.length === 0) return '';
+
+  const optionsText = meal.options
+    .map((opt: any, index: number) => {
+      const text = formatOption(opt);
+      if (!text) return null;
+
+      const kcal = opt?.kcal || 0;
+      const p = opt?.macros?.p || 0;
+      const c = opt?.macros?.c || 0;
+      const g = opt?.macros?.g || 0;
+
+      const macrosText = `🔥 ${kcal} kcal | P:${p}g C:${c}g G:${g}g`;
+
+      // Se houver apenas 1 opção, simplifica a leitura da IA. Se houver mais, enumera.
+      if (meal.options.length === 1) {
+        return `  ${text}\n  ${macrosText}`;
+      }
+
+      return `  Opção ${index + 1}: ${text}\n  ${macrosText}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  return `- ${meal.name || 'Refeição'} (${meal.time || '--:--'}):\n${optionsText}`;
+}
+
+// 🔥 4. FORMATADOR DO CARDÁPIO COMPLETO
 function formatMealPlan(mealPlan: any): string {
   if (!Array.isArray(mealPlan) || mealPlan.length === 0) {
     return 'Cardápio não disponível ou vazio.';
   }
 
-  return mealPlan.map(meal => {
-    const option = meal?.options?.[0];
-
-    const foods = option?.foodItems?.length
-      ? option.foodItems.map((f: any) => {
-          const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-          const baseGrams = registryItem?.baseGrams || 100;
-
-          // 🔥 PRIORIDADE: grams
-          if (f.grams != null) {
-            return `${Math.round(f.grams)}g ${f.name}`;
-          }
-
-          // 🔥 FALLBACK: quantity → grams
-          if (f.quantity != null) {
-            const grams = f.quantity * baseGrams;
-            return `${Math.round(grams)}g ${f.name}`;
-          }
-
-          // 🔥 fallback final
-          return `${baseGrams}g ${f.name}`;
-        })
-      : [];
-
-    const description = foods.length > 0
-      ? foods.join(', ')
-      : option?.description || option?.name || 'Sem descrição detalhada';
-
-    const kcal = option?.kcal || 0;
-    const p = option?.macros?.p || 0;
-    const c = option?.macros?.c || 0;
-    const g = option?.macros?.g || 0;
-
-    return `- ${meal?.name || 'Refeição'} (${meal?.time || '--:--'}):
-  ${description}
-  🔥 ${kcal} kcal | P:${p}g C:${c}g G:${g}g`;
-  }).join('\n\n');
+  return mealPlan
+    .map(formatMeal)
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 // ==========================================

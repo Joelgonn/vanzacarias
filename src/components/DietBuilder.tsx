@@ -1,18 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
-  Copy, CheckCircle2, AlertCircle, CalendarRange, Loader2,
-  Beef, Wheat, Droplet, Target, X, Clock, ChevronRight, Search,
-  ChevronLeft
+  Copy, CheckCircle2, CheckCircle, AlertCircle, CalendarRange, Loader2,
+  Target, X, Clock, ChevronRight, Search,
+  ChevronLeft, Calendar
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
-import { FoodRestriction } from '@/types/patient';
-import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
+// ✅ CORREÇÃO: FoodItem agora é importado do SSOT correto (patient)
+import { FoodRestriction, FoodItem } from '@/types/patient';
+import { FOOD_REGISTRY, FoodEntity, getBaseGrams } from '@/lib/foodRegistry';
 
 import { 
   getRestrictionInfo, 
@@ -22,27 +23,51 @@ import {
 } from '@/lib/nutrition/restrictions';
 
 // ============================================================================
-// 🔥 NORMALIZAÇÃO CENTRAL (CORE DO NOVO SISTEMA)
+// 🔥 IMPORTS DA MACRO ENGINE
+// ============================================================================
+import { 
+  analyzeMacros, 
+  suggestAdjustments,
+  generateSuggestedMeal 
+} from '@/lib/macroEngine';
+
+// ✅ CORREÇÃO: Removido o FoodItem daqui, pois agora vem de patient
+import { 
+  Suggestion,
+  MacroAnalysis,
+  MacroTargets
+} from '@/types/macroEngine';
+
+import { MacroSuggestions } from '@/components/MacroSuggestions';
+
+// ============================================================================
+// 🔥 CONSTANTES DE DIAS (ORDEM CORRETA)
 // ============================================================================
 
-function getBaseGrams(foodId: string): number {
-  const food = FOOD_REGISTRY.find(f => f.id === foodId);
-  return food?.baseGrams || 100;
-}
+const ORDERED_DAYS = [
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+  "Domingo"
+];
 
-function normalizeGrams(item: FoodItem): number {
+const GROUP_DAYS = ["Todos os dias", "Segunda a Sexta", "Finais de Semana"];
+const ALL_DAYS = [...GROUP_DAYS, ...ORDERED_DAYS];
+
+// ============================================================================
+// 🔥 NORMALIZAÇÃO CENTRAL
+// ============================================================================
+
+function normalizeGrams(item: any): number {
   if (item.grams != null) return item.grams;
-
   if (item.quantity != null) {
     return item.quantity * getBaseGrams(item.id);
   }
-
   return getBaseGrams(item.id);
 }
-
-// ============================================================================
-// 🔥 CÁLCULO PROPORCIONAL (NOVO MOTOR)
-// ============================================================================
 
 function calculateTotals(foodItems: FoodItem[]) {
   return foodItems.reduce((acc, item) => {
@@ -64,7 +89,6 @@ function calculateTotals(foodItems: FoodItem[]) {
   });
 }
 
-// 🔥 ADAPTADOR (REGISTRY → UI)
 function mapToFoodItem(food: FoodEntity): FoodItem {
   return {
     id: food.id,
@@ -75,8 +99,7 @@ function mapToFoodItem(food: FoodEntity): FoodItem {
       c: food.macros.c,
       g: food.macros.g
     },
-    grams: food.baseGrams,
-    quantity: 1
+    grams: food.baseGrams
   };
 }
 
@@ -99,19 +122,6 @@ interface DietBuilderProps {
   onClose: () => void;
   targetRecommendation: TargetRecommendation | null;
   foodRestrictions?: FoodRestriction[]; 
-}
-
-interface FoodItem {
-  id: string;
-  name: string;
-  kcal: number;
-  macros: {
-    p: number;
-    c: number;
-    g: number;
-  };
-  grams: number;
-  quantity?: number;
 }
 
 export interface Option {
@@ -285,9 +295,10 @@ function RestrictionsSidebar({ restrictionsSummary }: RestrictionsSidebarProps) 
 interface MacrosSidebarProps {
   totals: { kcal: number; p: number; c: number; g: number };
   targets: { kcal: number; protein: number; carbs: number; fat: number };
+  analysis?: MacroAnalysis;
 }
 
-function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
+function MacrosSidebar({ totals, targets, analysis }: MacrosSidebarProps) {
   const getPercentage = (current: number, target: number) => {
     if (!target) return 0;
     return Math.min((current / target) * 100, 100);
@@ -302,6 +313,15 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
       default: return 'bg-stone-400';
     }
   };
+
+  const getStatusBadge = (status?: string) => {
+    if (!status) return null;
+    switch(status) {
+      case 'low': return <span className="text-red-500 text-[8px] font-black ml-1">▼</span>;
+      case 'high': return <span className="text-amber-500 text-[8px] font-black ml-1">▲</span>;
+      default: return <span className="text-emerald-500 text-[8px] font-black ml-1">✓</span>;
+    }
+  };
   
   return (
     <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-4 shadow-sm">
@@ -313,7 +333,10 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
       <div className="space-y-3">
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="font-bold text-stone-700">Kcal</span>
+            <div className="flex items-center">
+              <span className="font-bold text-stone-700">Kcal</span>
+              {analysis && getStatusBadge(analysis.status.kcal)}
+            </div>
             <span className="font-mono font-bold text-stone-900">{Math.round(totals.kcal)} / {targets.kcal}</span>
           </div>
           <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
@@ -326,7 +349,10 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
         
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="font-bold text-red-600">Proteína</span>
+            <div className="flex items-center">
+              <span className="font-bold text-red-600">Proteína</span>
+              {analysis && getStatusBadge(analysis.status.protein)}
+            </div>
             <span className="font-mono font-bold text-red-600">{Math.round(totals.p)}g / {targets.protein}g</span>
           </div>
           <div className="h-1.5 bg-red-100 rounded-full overflow-hidden">
@@ -339,7 +365,10 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
         
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="font-bold text-amber-600">Carboidrato</span>
+            <div className="flex items-center">
+              <span className="font-bold text-amber-600">Carboidrato</span>
+              {analysis && getStatusBadge(analysis.status.carbs)}
+            </div>
             <span className="font-mono font-bold text-amber-600">{Math.round(totals.c)}g / {targets.carbs}g</span>
           </div>
           <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
@@ -352,7 +381,10 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
         
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="font-bold text-blue-600">Gordura</span>
+            <div className="flex items-center">
+              <span className="font-bold text-blue-600">Gordura</span>
+              {analysis && getStatusBadge(analysis.status.fat)}
+            </div>
             <span className="font-mono font-bold text-blue-600">{Math.round(totals.g)}g / {targets.fat}g</span>
           </div>
           <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
@@ -368,7 +400,7 @@ function MacrosSidebar({ totals, targets }: MacrosSidebarProps) {
 }
 
 // =========================================================================
-// COMPONENTE DE FOOD ITEM COM CONTROLES AVANÇADOS (LAYOUT HORIZONTAL)
+// COMPONENTE DE FOOD ITEM
 // =========================================================================
 
 interface FoodItemCardProps {
@@ -486,7 +518,7 @@ function FoodItemCard({
 }
 
 // =========================================================================
-// 🧠 BANCO VISUAL CONECTADO AO DOMÍNIO
+// BANCO VISUAL
 // =========================================================================
 
 interface QuickFoodConfigItem {
@@ -499,7 +531,7 @@ interface QuickFoodCategoryConfig {
   items: QuickFoodConfigItem[];
 }
 
-const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] =[
+const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] = [
   { 
     category: "🥩 Proteínas (Carnes e Ovos)", 
     items:[
@@ -762,7 +794,6 @@ const quickFoods: QuickFoodCategoryConfig[] = QUICK_FOODS_CONFIG.map(cat => {
   return { ...cat, items: validItems };
 }).filter(cat => cat.items.length > 0);
 
-// 🔥 FLAT LIST PARA BUSCA (criada uma vez para performance)
 const flatFoodsList = quickFoods.flatMap(cat => cat.items);
 
 const MEAL_TYPES =[
@@ -782,12 +813,8 @@ const MEAL_TIMES: Record<string, string[]> = {
   "Refeição Livre": ["Quando desejar", "12:00", "19:00"]
 };
 
-const SINGLE_DAYS =["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
-const GROUP_DAYS = ["Todos os dias", "Segunda a Sexta", "Finais de Semana"];
-const ALL_DAYS = [...GROUP_DAYS, ...SINGLE_DAYS];
-
 // =========================================================================
-// COMPONENTE DE BUSCA COM AUTOCOMPLETE (PATCH 1-7)
+// COMPONENTE DE BUSCA
 // =========================================================================
 
 interface SearchableFoodListProps {
@@ -802,7 +829,6 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 🔥 PATCH 2: Ranking inteligente (startsWith + includes)
   const getFilteredFoods = () => {
     const normalizedSearch = searchTerm.toLowerCase().trim();
     if (!normalizedSearch) return [];
@@ -822,12 +848,10 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
 
   const filteredFoods = getFilteredFoods();
 
-  // 🔥 PATCH 3: Reset do highlight quando busca muda
   useEffect(() => {
     setHighlightIndex(0);
   }, [searchTerm]);
 
-  // 🔥 PATCH 6: Scroll automático para o item destacado
   useEffect(() => {
     const el = listRef.current?.children[highlightIndex] as HTMLElement;
     if (el) {
@@ -835,7 +859,6 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
     }
   }, [highlightIndex]);
 
-  // 🔥 PATCH 4: Controle de teclado
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!filteredFoods.length) return;
 
@@ -875,7 +898,6 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
 
   return (
     <div className="space-y-3">
-      {/* PATCH 1: Input de busca com autofocus */}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
         <input
@@ -890,7 +912,6 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
         />
       </div>
 
-      {/* PATCH 5: Lista flat com highlight + kcal preview */}
       {searchTerm.length > 0 && (
         <div 
           ref={listRef}
@@ -906,18 +927,14 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
               const isBlocked = blockedFoodIds.has(item.id);
               const restrictionInfo = getRestrictionInfo(item.id, foodRestrictions);
               
-              let isDanger = false;
               let restrictionIcon = '';
               
               if (isBlocked) {
                 if (restrictionInfo?.type === 'allergy') {
-                  isDanger = true;
                   restrictionIcon = '🚫';
                 } else if (restrictionInfo?.type === 'intolerance') {
-                  isDanger = true;
                   restrictionIcon = '⚠️';
                 } else {
-                  isDanger = true;
                   restrictionIcon = '📋';
                 }
               }
@@ -970,22 +987,126 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const [activeFoodKey, setActiveFoodKey] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // ============================================================================
+  // 🔥 FLUXO GUIADO POR DIA (NOVO)
+  // ============================================================================
+  
+  const [activeDay, setActiveDay] = useState<string>("Segunda-feira");
+  const [autoAdvancedDays, setAutoAdvancedDays] = useState<Set<string>>(new Set());
+
   const supabase = createClient();
 
   const blockedFoodIds = expandRestrictions(foodRestrictions);
   const restrictionsSummary = getRestrictionsSummary(foodRestrictions);
 
+  // ============================================================================
+  // 🔥 FUNÇÃO: PRÓXIMO DIA
+  // ============================================================================
+  
+  function getNextDay(currentDay: string): string {
+    const index = ORDERED_DAYS.indexOf(currentDay);
+    if (index === -1 || index === ORDERED_DAYS.length - 1) {
+      return currentDay;
+    }
+    return ORDERED_DAYS[index + 1];
+  }
+
+  // ============================================================================
+  // 🔥 FUNÇÃO: VERIFICA SE DIA ESTÁ COMPLETO
+  // ============================================================================
+  
+  function isDayComplete(day: string): boolean {
+    return meals.every(meal => {
+      const options = meal.options.filter(opt => 
+        opt.day === day || opt.day === "Todos os dias"
+      );
+      return options.some(opt => opt.foodItems.length > 0);
+    });
+  }
+
+  // ============================================================================
+  // 🔥 FUNÇÃO: FILTRA OPÇÕES POR DIA ATIVO
+  // ============================================================================
+  
+  const getOptionsForDay = (meal: Meal) => {
+    return meal.options.filter(opt =>
+      opt.day === activeDay || opt.day === "Todos os dias"
+    );
+  };
+
+  // ============================================================================
+  // 🔥 AUTO-AVANÇO QUANDO DIA ESTÁ COMPLETO
+  // ============================================================================
+  
+  useEffect(() => {
+    if (autoAdvancedDays.has(activeDay)) return;
+    
+    if (isDayComplete(activeDay)) {
+      const nextDay = getNextDay(activeDay);
+      
+      if (nextDay !== activeDay) {
+        setActiveDay(nextDay);
+        setAutoAdvancedDays(prev => new Set(prev).add(activeDay));
+        toast.success(`✅ Dia ${activeDay} concluído! Avançando para ${nextDay}`);
+      } else if (activeDay === "Domingo" && isDayComplete("Domingo")) {
+        toast.success("🎉 Semana completa! Todos os dias estão montados.");
+      }
+    }
+  }, [meals, activeDay, autoAdvancedDays]);
+
+  // ============================================================================
+  // 🔥 CÁLCULO DIÁRIO (BASEADO NO DIA ATIVO)
+  // ============================================================================
+  
+  const allFoodItems = useMemo(() => {
+    return meals.flatMap(meal =>
+      getOptionsForDay(meal).flatMap(option => option.foodItems)
+    );
+  }, [meals, activeDay]);
+
+  const dailyTotals = useMemo(() => {
+    return calculateTotals(allFoodItems);
+  }, [allFoodItems]);
+
+  const analysis = useMemo(() => {
+    if (!targetRecommendation) return null;
+    
+    const targets: MacroTargets = {
+      kcal: targetRecommendation.calories,
+      macros: {
+        p: targetRecommendation.macros.protein,
+        c: targetRecommendation.macros.carbs,
+        g: targetRecommendation.macros.fat
+      }
+    };
+    
+    return analyzeMacros({
+      kcal: dailyTotals.kcal,
+      macros: {
+        p: dailyTotals.macros.p,
+        c: dailyTotals.macros.c,
+        g: dailyTotals.macros.g
+      }
+    }, targets);
+  }, [dailyTotals, targetRecommendation]);
+
+  const suggestions = useMemo(() => {
+    if (!analysis) return [];
+    return suggestAdjustments(analysis, allFoodItems, foodRestrictions);
+  }, [analysis, allFoodItems, foodRestrictions]);
+
   // =========================================================================
-  // FUNÇÕES DE MIGRAÇÃO
+  // MIGRAÇÃO LIMPA
   // =========================================================================
+  
   const migrateExistingOption = (option: any): Option => {
     if (option.foodItems && Array.isArray(option.foodItems)) {
       return {
         ...option,
         foodItems: option.foodItems.map((item: any) => {
           const baseGrams = getBaseGrams(item.id);
-          
           let grams: number;
+
           if (item.grams != null) {
             grams = item.grams;
           } else if (item.quantity != null) {
@@ -993,48 +1114,24 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           } else {
             grams = baseGrams;
           }
-          
+
           return {
             id: item.id,
             name: item.name,
             kcal: item.kcal,
             macros: item.macros,
-            grams: grams,
-            quantity: Math.round(grams / baseGrams)
+            grams
           };
         })
       };
     }
-    
-    if (option.description && typeof option.description === 'string') {
-      const lines = option.description.split('\n').filter((line: string) => line.trim().startsWith('- ') || line.trim().startsWith('+ '));
-      const foodItems: FoodItem[] = lines.map((line: string, idx: number) => ({
-        id: `food-${Date.now()}-${idx}-${Math.random()}`,
-        name: line.replace(/^[-+]\s*/, '').trim(),
-        kcal: 0,
-        macros: { p: 0, c: 0, g: 0 },
-        grams: 100,
-        quantity: 1
-      }));
-      
-      if (foodItems.length === 0 && option.description.trim()) {
-        foodItems.push({
-          id: `food-${Date.now()}-${Math.random()}`,
-          name: option.description,
-          kcal: option.kcal || 0,
-          macros: option.macros || { p: 0, c: 0, g: 0 },
-          grams: 100,
-          quantity: 1
-        });
-      }
-      return {
-        id: option.id, day: option.day || "Todos os dias", foodItems,
-        kcal: option.kcal || 0, macros: option.macros || { p: 0, c: 0, g: 0 }
-      };
-    }
+
     return {
-      id: option.id, day: option.day || "Todos os dias", foodItems: [],
-      kcal: option.kcal || 0, macros: option.macros || { p: 0, c: 0, g: 0 }
+      id: option.id,
+      day: option.day || "Todos os dias",
+      foodItems: [],
+      kcal: option.kcal || 0,
+      macros: option.macros || { p: 0, c: 0, g: 0 }
     };
   };
 
@@ -1046,109 +1143,117 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     const registryFood = FOOD_REGISTRY.find(f => f.id === foodId);
 
     if (!registryFood) {
-      toast.error("Erro estrutural: Alimento não encontrado no banco de dados.");
+      toast.error("Erro estrutural: Alimento não encontrado.");
       return;
     }
 
     if (blockedFoodIds.has(registryFood.id)) {
       const restrictionType = resolveRestriction(registryFood.id, foodRestrictions);
-      if (restrictionType === 'allergy') {
-        toast.error(`❌ Bloqueado: Risco de alergia grave ao adicionar ${registryFood.name}.`);
-      } else {
-        toast.error(`❌ Bloqueado: ${registryFood.name} fere uma restrição clínica.`);
-      }
+      toast.error(
+        restrictionType === 'allergy'
+          ? `❌ Alergia: ${registryFood.name}`
+          : `❌ Restrição: ${registryFood.name}`
+      );
       return;
     }
 
     setMeals(meals.map(m => {
-      if (m.id === mealId) {
-        const newOptions = m.options.map(o => {
-          if (o.id === optId) {
-            const existing = o.foodItems?.find(f => f.id === registryFood.id);
-            let updatedFoodItems: FoodItem[];
+      if (m.id !== mealId) return m;
 
-            if (existing) {
-              const baseGrams = getBaseGrams(existing.id);
-              const newGrams = existing.grams + baseGrams;
-              
-              updatedFoodItems = (o.foodItems || []).map(f =>
-                f.id === registryFood.id
-                  ? { 
-                      ...f, 
-                      grams: newGrams,
-                      quantity: Math.round(newGrams / baseGrams)
-                    }
-                  : f
-              );
-            } else {
-              const newItem = mapToFoodItem(registryFood);
-              updatedFoodItems = [...(o.foodItems || []), newItem];
-            }
+      return {
+        ...m,
+        options: m.options.map(o => {
+          if (o.id !== optId) return o;
 
-            const totals = calculateTotals(updatedFoodItems);
+          const existing = o.foodItems.find(f => f.id === registryFood.id);
 
-            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
+          let updatedFoodItems: FoodItem[];
+
+          if (existing) {
+            const base = getBaseGrams(existing.id);
+            updatedFoodItems = o.foodItems.map(f =>
+              f.id === existing.id
+                ? { ...f, grams: f.grams + base }
+                : f
+            );
+          } else {
+            updatedFoodItems = [...o.foodItems, mapToFoodItem(registryFood)];
           }
-          return o;
-        });
-        return { ...m, options: newOptions };
-      }
-      return m;
+
+          const totals = calculateTotals(updatedFoodItems);
+
+          return {
+            ...o,
+            foodItems: updatedFoodItems,
+            kcal: totals.kcal,
+            macros: totals.macros
+          };
+        })
+      };
     }));
   };
 
-  const updateFoodItemGrams = (mealId: string, optId: string, foodItemId: string, newGrams: number) => {
+  const updateFoodItemGrams = (
+    mealId: string,
+    optId: string,
+    foodItemId: string,
+    newGrams: number
+  ) => {
     const safeGrams = Math.max(0, Math.floor(newGrams || 0));
-    
+
     setMeals(meals.map(m => {
-      if (m.id === mealId) {
-        const newOptions = m.options.map(o => {
-          if (o.id === optId) {
-            let updatedFoodItems = (o.foodItems || []);
-            
-            if (safeGrams === 0) {
-              updatedFoodItems = updatedFoodItems.filter(item => item.id !== foodItemId);
-            } else {
-              updatedFoodItems = updatedFoodItems.map(item => {
-                if (item.id === foodItemId) {
-                  const baseGrams = getBaseGrams(item.id);
-                  return {
-                    ...item,
-                    grams: safeGrams,
-                    quantity: Math.round(safeGrams / baseGrams)
-                  };
-                }
-                return item;
-              });
-            }
+      if (m.id !== mealId) return m;
 
-            const totals = calculateTotals(updatedFoodItems);
+      return {
+        ...m,
+        options: m.options.map(o => {
+          if (o.id !== optId) return o;
 
-            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
+          let updatedFoodItems: FoodItem[];
+
+          if (safeGrams === 0) {
+            updatedFoodItems = o.foodItems.filter(f => f.id !== foodItemId);
+          } else {
+            updatedFoodItems = o.foodItems.map(f =>
+              f.id === foodItemId
+                ? { ...f, grams: safeGrams }
+                : f
+            );
           }
-          return o;
-        });
-        return { ...m, options: newOptions };
-      }
-      return m;
+
+          const totals = calculateTotals(updatedFoodItems);
+
+          return {
+            ...o,
+            foodItems: updatedFoodItems,
+            kcal: totals.kcal,
+            macros: totals.macros
+          };
+        })
+      };
     }));
   };
 
   const deleteFoodItem = (mealId: string, optId: string, foodItemId: string) => {
     setMeals(meals.map(m => {
-      if (m.id === mealId) {
-        const newOptions = m.options.map(o => {
-          if (o.id === optId) {
-            const updatedFoodItems = (o.foodItems || []).filter(item => item.id !== foodItemId);
-            const totals = calculateTotals(updatedFoodItems);
+      if (m.id !== mealId) return m;
 
-            return { ...o, foodItems: updatedFoodItems, kcal: totals.kcal, macros: totals.macros };
-          }
-          return o;
-        });
-        return { ...m, options: newOptions };
-      }
-      return m;
+      return {
+        ...m,
+        options: m.options.map(o => {
+          if (o.id !== optId) return o;
+
+          const updatedFoodItems = o.foodItems.filter(f => f.id !== foodItemId);
+          const totals = calculateTotals(updatedFoodItems);
+
+          return {
+            ...o,
+            foodItems: updatedFoodItems,
+            kcal: totals.kcal,
+            macros: totals.macros
+          };
+        })
+      };
     }));
   };
 
@@ -1183,17 +1288,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const addOption = (mealId: string) => {
     setMeals(meals.map(m => {
       if (m.id === mealId) {
-        const lastOptionDay = m.options[m.options.length - 1].day;
-        let nextDay = "Terça-feira"; 
-        if (lastOptionDay === "Segunda a Sexta") nextDay = "Finais de Semana";
-        else {
-          const dayIndex = SINGLE_DAYS.indexOf(lastOptionDay);
-          if (dayIndex >= 0 && dayIndex < SINGLE_DAYS.length - 1) nextDay = SINGLE_DAYS[dayIndex + 1]; 
-          else nextDay = "Segunda-feira"; 
-        }
         return { 
           ...m, 
-          options: [...m.options, { id: `opt-${Date.now()}`, day: nextDay, foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
+          options: [...m.options, { id: `opt-${Date.now()}`, day: "Segunda-feira", foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
         };
       }
       return m;
@@ -1204,7 +1301,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     setMeals(meals.map(m => {
       if (m.id === mealId && m.options.length > 0) {
         const baseOption = m.options[0];
-        const newOptions = SINGLE_DAYS.map((day, idx) => ({
+        const newOptions = ORDERED_DAYS.map((day, idx) => ({
           id: `opt-${Date.now()}-${idx}`, day: day, foodItems: [...baseOption.foodItems],
           kcal: baseOption.kcal, macros: { ...baseOption.macros }
         }));
@@ -1257,14 +1354,12 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // TOTAIS PARA SIDEBAR
   // =========================================================================
   
-  const liveTotals = meals.reduce((acc, meal) => {
-    const relevantOption = meal.options[0];
-    if (!relevantOption) return acc;
-    return {
-      kcal: acc.kcal + (relevantOption.kcal || 0), p: acc.p + (relevantOption.macros?.p || 0),
-      c: acc.c + (relevantOption.macros?.c || 0), g: acc.g + (relevantOption.macros?.g || 0),
-    };
-  }, { kcal: 0, p: 0, c: 0, g: 0 });
+  const liveTotals = {
+    kcal: dailyTotals.kcal,
+    p: dailyTotals.macros.p,
+    c: dailyTotals.macros.c,
+    g: dailyTotals.macros.g
+  };
 
   // =========================================================================
   // INIT & LOAD
@@ -1279,7 +1374,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
         if (data?.meal_plan && Array.isArray(data.meal_plan) && data.meal_plan.length > 0) {
           const formattedPlan: Meal[] = data.meal_plan.map((m: any) => ({
             id: m.id || `meal-${Date.now()}`, time: m.time || "", name: m.name || "Refeição",
-            options: m.options.map((o: any) => migrateExistingOption({ ...o, day: o.day || "Todos os dias", kcal: o.kcal || 0, macros: o.macros || { p: 0, c: 0, g: 0 } }))
+            options: m.options.map((o: any) => migrateExistingOption({ ...o, day: o.day || "Segunda-feira", kcal: o.kcal || 0, macros: o.macros || { p: 0, c: 0, g: 0 } }))
           }));
           setMeals(formattedPlan);
           if (formattedPlan.length > 0) setExpandedMealId(formattedPlan[0].id);
@@ -1287,7 +1382,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
           const newMealId = `meal-${Date.now()}`;
           setMeals([{ 
             id: newMealId, time: "08:00", name: 'Café da Manhã', 
-            options: [{ id: `opt-${Date.now()}`, day: 'Todos os dias', foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
+            options: [{ id: `opt-${Date.now()}`, day: "Segunda-feira", foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
           }]);
           setExpandedMealId(newMealId);
         }
@@ -1314,16 +1409,38 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
 
   const { calories: kcalTarget, macros: { protein: proteinTarget, carbs: carbsTarget, fat: fatTarget } } = targetRecommendation;
 
-  const isMealComplete = (meal: Meal) => meal.options.length > 0 && meal.time !== '' && meal.options.some(opt => opt.foodItems.length > 0);
+  const isMealComplete = (meal: Meal) => {
+    const optionsForDay = getOptionsForDay(meal);
+    return meal.options.length > 0 && meal.time !== '' && optionsForDay.some(opt => opt.foodItems.length > 0);
+  };
 
+  // =========================================================================
+  // SAVE
+  // =========================================================================
   const handleSave = async () => {
     setIsSaving(true);
     setExpandedMealId(null);
-    const cleanedMeals = meals.map(m => ({ ...m, options: m.options.filter(o => o.foodItems.length > 0) })).filter(m => m.options.length > 0);
+    
+    const cleanedMeals = meals.map(m => ({
+      ...m,
+      options: m.options
+        .map(o => ({
+          ...o,
+          foodItems: o.foodItems.map(f => ({
+            id: f.id,
+            name: f.name,
+            kcal: f.kcal,
+            macros: f.macros,
+            grams: f.grams
+          }))
+        }))
+        .filter(o => o.foodItems.length > 0)
+    })).filter(m => m.options.length > 0);
     
     if (cleanedMeals.length === 0) {
       toast.warning("Não há nenhuma refeição preenchida para salvar.");
-      setIsSaving(false); return;
+      setIsSaving(false); 
+      return;
     }
     
     try {
@@ -1344,9 +1461,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       
       <div className="bg-[#fcfcfc] w-full max-w-[95vw] md:max-w-[1400px] h-[90vh] rounded-2xl sm:rounded-[2rem] flex flex-col shadow-2xl animate-in zoom-in-95 overflow-hidden">
         
-        {/* HEADER COMPACTADO */}
-        <div className="bg-white px-4 sm:px-6 py-3 border-b border-stone-100 shrink-0 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
+        {/* HEADER COM SELETOR DE DIA */}
+        <div className="bg-white px-4 sm:px-6 py-3 border-b border-stone-100 shrink-0">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <div className="bg-stone-50 p-2 rounded-xl border border-stone-200/60 text-stone-800 hidden sm:block">
                 <Utensils size={18} strokeWidth={2.5} />
@@ -1360,12 +1477,57 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                 </h2>
               </div>
             </div>
+            
+            {/* 🔥 SELETOR DE DIA (OVERRIDE MANUAL) */}
+            <div className="flex items-center gap-2 bg-stone-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <Calendar size={14} className="text-stone-500" />
+              <select
+                value={activeDay}
+                onChange={(e) => {
+                  setActiveDay(e.target.value);
+                  toast.info(`Visualizando: ${e.target.value}`);
+                }}
+                className="bg-transparent text-sm font-bold text-stone-800 outline-none cursor-pointer"
+              >
+                {ORDERED_DAYS.map(day => (
+                  <option key={day} value={day}>{day}</option>
+                ))}
+              </select>
+            </div>
+            
             <button 
               onClick={onClose} 
               className="p-2 bg-stone-50 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-full transition-all active:scale-95"
             >
               <X size={18} strokeWidth={2.5} />
             </button>
+          </div>
+          
+          {/* 🔥 INDICADOR DE PROGRESSO DA SEMANA */}
+          <div className="flex gap-1 mt-3">
+            {ORDERED_DAYS.map(day => {
+              const isComplete = isDayComplete(day);
+              const isActive = activeDay === day;
+              return (
+                <button
+                  key={day}
+                  onClick={() => {
+                    setActiveDay(day);
+                    toast.info(`Visualizando: ${day}`);
+                  }}
+                  className={`flex-1 text-[8px] font-black uppercase tracking-wider py-1.5 rounded-lg transition-all ${
+                    isActive
+                      ? 'bg-stone-800 text-white shadow-md'
+                      : isComplete
+                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                        : 'bg-stone-100 text-stone-400'
+                  }`}
+                >
+                  {day.substring(0, 3)}
+                  {isComplete && <Check size={8} className="inline ml-1" />}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1386,6 +1548,38 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
             md:block md:w-64 lg:w-72 shrink-0 border-r border-stone-100 bg-stone-50/30 p-4 overflow-y-auto
           `}>
             <div className="sticky top-4 space-y-4">
+              
+              {/* BADGE DO DIA ATIVO */}
+              <div className="bg-stone-100 rounded-xl p-3 text-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">Dia Ativo</span>
+                <p className="text-lg font-black text-stone-800">{activeDay}</p>
+                {isDayComplete(activeDay) && (
+                  <span className="inline-block mt-1 text-[8px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                    ✓ Completo
+                  </span>
+                )}
+              </div>
+              
+              {/* SUGESTÕES */}
+              {analysis && suggestions.length > 0 && (
+                <MacroSuggestions 
+                  suggestions={suggestions}
+                  analysis={analysis}
+                />
+              )}
+              
+              {analysis && suggestions.length === 0 && targetRecommendation && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle size={20} className="text-emerald-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-emerald-900">✅ Cardápio balanceado!</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">Macros dentro da meta para {activeDay}.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {targetRecommendation && (
                 <MacrosSidebar 
                   totals={liveTotals}
@@ -1395,17 +1589,21 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                     carbs: carbsTarget,
                     fat: fatTarget
                   }}
+                  analysis={analysis || undefined}
                 />
               )}
+              
               <RestrictionsSidebar restrictionsSummary={restrictionsSummary} />
             </div>
           </div>
           
-          {/* ÁREA PRINCIPAL */}
+          {/* ÁREA PRINCIPAL - REFEIÇÕES DO DIA ATIVO */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scrollbar-thin scrollbar-thumb-stone-200">
             
             {meals.map((meal) => {
+              const optionsForDay = getOptionsForDay(meal);
               const isExpanded = expandedMealId === meal.id;
+              const hasContentForDay = optionsForDay.some(opt => opt.foodItems.length > 0);
               const isComplete = isMealComplete(meal);
 
               return (
@@ -1414,7 +1612,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                   className={`rounded-2xl transition-all duration-300 relative group overflow-hidden ${
                     isExpanded 
                       ? 'bg-white border-2 border-stone-800 shadow-lg' 
-                      : isComplete 
+                      : hasContentForDay
                         ? 'bg-emerald-50/50 border border-emerald-100 hover:border-emerald-300 cursor-pointer shadow-sm' 
                         : 'bg-white border border-stone-200 hover:border-stone-300 cursor-pointer shadow-sm'
                   }`}
@@ -1433,13 +1631,13 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                   >
                     <div className="flex items-center gap-3 w-full pr-10">
                       <div className={`p-2.5 rounded-xl shrink-0 transition-colors shadow-sm border ${
-                        isComplete 
+                        hasContentForDay 
                           ? 'bg-emerald-100 border-emerald-200 text-emerald-600' 
                           : isExpanded 
                             ? 'bg-stone-800 border-stone-800 text-white'
                             : 'bg-stone-50 border-stone-200 text-stone-400'
                       }`}>
-                        {isComplete ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <Clock size={18} strokeWidth={2.5} />}
+                        {hasContentForDay ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <Clock size={18} strokeWidth={2.5} />}
                       </div>
                       
                       <div className="w-full">
@@ -1449,16 +1647,16 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                               {meal.time || '--:--'}
                             </span>
                           )}
-                          {meal.options[0]?.kcal > 0 && !isExpanded && (
+                          {optionsForDay[0]?.kcal > 0 && !isExpanded && (
                             <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider hidden sm:flex">
-                              <span className="text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded-md">{Math.round(meal.options[0]?.kcal)} kcal</span>
-                              <span className="text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">P {Math.round(meal.options[0]?.macros?.p || 0)}g</span>
-                              <span className="text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md">C {Math.round(meal.options[0]?.macros?.c || 0)}g</span>
-                              <span className="text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-md">G {Math.round(meal.options[0]?.macros?.g || 0)}g</span>
+                              <span className="text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded-md">{Math.round(optionsForDay[0]?.kcal)} kcal</span>
+                              <span className="text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">P {Math.round(optionsForDay[0]?.macros?.p || 0)}g</span>
+                              <span className="text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md">C {Math.round(optionsForDay[0]?.macros?.c || 0)}g</span>
+                              <span className="text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-md">G {Math.round(optionsForDay[0]?.macros?.g || 0)}g</span>
                             </div>
                           )}
                         </div>
-                        <h3 className={`text-base sm:text-lg font-extrabold tracking-tight ${isComplete && !isExpanded ? 'text-emerald-900' : 'text-stone-900'}`}>
+                        <h3 className={`text-base sm:text-lg font-extrabold tracking-tight ${hasContentForDay && !isExpanded ? 'text-emerald-900' : 'text-stone-900'}`}>
                           {meal.name}
                         </h3>
                       </div>
@@ -1521,67 +1719,41 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                       )}
 
                       <div className="space-y-4">
-                        {meal.options.map((option) => (
+                        {/* 🔥 MOSTRA APENAS A OPÇÃO DO DIA ATIVO */}
+                        {optionsForDay.map((option) => (
                           <div key={option.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                             
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-stone-100">
-                              
-                              <div className="relative inline-block w-full sm:w-auto">
-                                <select 
-                                  value={option.day}
-                                  onChange={(e) => updateOptionDay(meal.id, option.id, e.target.value)}
-                                  className={`w-full sm:w-auto pl-3 pr-8 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-[0.15em] outline-none transition-all cursor-pointer shadow-sm appearance-none ${
-                                    option.day === 'Todos os dias' 
-                                      ? 'bg-stone-900 text-white border-stone-900' 
-                                      : 'bg-stone-100 text-stone-700 border-stone-200'
-                                  }`}
-                                >
-                                  {ALL_DAYS.map(day => (
-                                    <option key={day} value={day}>{day}</option>
-                                  ))}
-                                </select>
-                                <ChevronDown size={12} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${option.day === 'Todos os dias' ? 'text-white/50' : 'text-stone-400'}`} />
+                              <div className="flex items-center gap-2">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-stone-400 bg-stone-100 px-2 py-1 rounded-md">
+                                  {option.day === "Todos os dias" ? "Base" : option.day}
+                                </span>
+                                {option.day !== activeDay && option.day !== "Todos os dias" && (
+                                  <span className="text-[8px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-md">
+                                    ⚠️ Não exibido hoje
+                                  </span>
+                                )}
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2">
                                 <div className="flex items-center bg-stone-50 rounded-xl border border-stone-200 p-0.5 shadow-inner overflow-hidden">
                                   <div className="flex items-center pl-2 pr-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-red-50 transition-colors">
                                     <span className="text-[8px] font-black uppercase text-stone-400 mr-1">P</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-red-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-red-600 outline-none text-center" />
                                   </div>
                                   <div className="flex items-center px-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-amber-50 transition-colors">
                                     <span className="text-[8px] font-black uppercase text-stone-400 mr-1">C</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-amber-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-amber-600 outline-none text-center" />
                                   </div>
                                   <div className="flex items-center px-1.5 py-1 group focus-within:bg-blue-50 transition-colors">
                                     <span className="text-[8px] font-black uppercase text-stone-400 mr-1">G</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-blue-600 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-blue-600 outline-none text-center" />
                                   </div>
                                   <div className="flex items-center pl-1.5 pr-1 py-1 bg-stone-800 rounded-lg shadow-sm ml-0.5">
-                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-8 bg-transparent text-xs font-black text-white outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-8 bg-transparent text-xs font-black text-white outline-none text-center" />
                                     <span className="text-[7px] font-black uppercase text-stone-400 ml-0.5">Kcal</span>
                                   </div>
                                 </div>
-
-                                {meal.options.length > 1 && option.foodItems.length > 0 && (
-                                  <button 
-                                    onClick={() => duplicateToEmptyDays(meal.id, option)} 
-                                    title="Copiar para dias vazios"
-                                    className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors active:scale-95"
-                                  >
-                                    <Copy size={14} strokeWidth={2.5} />
-                                  </button>
-                                )}
-
-                                {meal.options.length > 1 && (
-                                  <button 
-                                    onClick={() => removeOption(meal.id, option.id)} 
-                                    className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors rounded-lg border border-stone-200 active:scale-95"
-                                    title="Remover dia"
-                                  >
-                                    <Trash2 size={14} strokeWidth={2.5} />
-                                  </button>
-                                )}
                               </div>
                             </div>
                             
@@ -1616,7 +1788,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                               </div>
                             </div>
 
-                            {/* 🔥 NOVO: Busca com autocomplete (PATCH 1-7) */}
                             <div>
                               <div className="flex items-center gap-2 mb-2 ml-1">
                                 <Plus size={10} className="text-stone-400" strokeWidth={3} />
@@ -1629,7 +1800,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                 foodRestrictions={foodRestrictions}
                               />
 
-                              {/* Categorias rápidas (sem busca) - mantidas para fallback */}
                               <div className="mt-3">
                                 <div className="text-[9px] font-black text-stone-400 uppercase tracking-[0.15em] mb-2">
                                   Ou escolha por categoria:
@@ -1708,21 +1878,19 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                         ))}
                         
                         <div className="flex flex-wrap gap-2 pt-1">
-                          {!meal.options.some(opt => opt.day === "Todos os dias") && meal.options.length < 7 && (
-                            <button 
-                              onClick={() => addOption(meal.id)} 
-                              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-600 bg-white shadow-sm border border-stone-200 hover:border-stone-800 hover:text-stone-800 px-3 py-1.5 rounded-xl transition-all active:scale-95"
-                            >
-                              <Plus size={12} strokeWidth={2.5} /> Adicionar Variação
-                            </button>
-                          )}
+                          <button 
+                            onClick={() => addOption(meal.id)} 
+                            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-600 bg-white shadow-sm border border-stone-200 hover:border-stone-800 hover:text-stone-800 px-3 py-1.5 rounded-xl transition-all active:scale-95"
+                          >
+                            <Plus size={12} strokeWidth={2.5} /> Adicionar Variação para {activeDay}
+                          </button>
 
-                          {meal.options.length === 1 && meal.options[0].day === "Todos os dias" && (
+                          {meal.options.length === 1 && meal.options[0].day === "Segunda-feira" && (
                             <button 
                               onClick={() => splitIntoFullWeek(meal.id)} 
                               className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-800 bg-stone-100 border border-stone-200 hover:bg-stone-200 px-3 py-1.5 rounded-xl transition-all active:scale-95 shadow-sm"
                             >
-                              <CalendarRange size={12} strokeWidth={2.5} /> Separar Seg a Dom
+                              <CalendarRange size={12} strokeWidth={2.5} /> Copiar para Semana Inteira
                             </button>
                           )}
                         </div>
@@ -1733,7 +1901,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                            onClick={() => setExpandedMealId(null)}
                            className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 hover:text-stone-800 bg-white px-4 py-2 rounded-full border border-stone-200 shadow-sm transition-all active:scale-95"
                          >
-                           <ChevronUp size={12} strokeWidth={3} /> {isComplete ? "Pronto, Fechar Aba" : "Fechar Aba"}
+                           <ChevronUp size={12} strokeWidth={3} /> {hasContentForDay ? "Pronto, Fechar Aba" : "Fechar Aba"}
                          </button>
                       </div>
 

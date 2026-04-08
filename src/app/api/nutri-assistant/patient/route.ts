@@ -13,6 +13,33 @@ import { expandRestrictions } from '@/lib/nutrition/restrictions'
 import { FOOD_REGISTRY } from '@/lib/foodRegistry'
 
 // ==========================================
+// 🔥 FUNÇÃO CENTRAL (FORMATADOR OFICIAL)
+// Centraliza a regra de gramas e isola o legado.
+// A API e a IA NUNCA MAIS verão ".quantity".
+// ==========================================
+function formatFoodItem(f: any): string {
+  let grams = 0;
+
+  if (f.grams != null) {
+    // 1. Novo Padrão de Ouro (DietBuilder gera 'grams' nativo)
+    grams = f.grams;
+  } else if (f.quantity != null) {
+    // 2. Fallback Legado Protegido (última vez que 'quantity' é lido)
+    // Usamos o registry para precisão nutricional ao invés de fixar em 100
+    const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+    const baseGrams = registryItem?.baseGrams || 100;
+    grams = f.quantity * baseGrams;
+  } else {
+    // 3. Fallback absoluto de segurança
+    const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+    grams = registryItem?.baseGrams || 100;
+  }
+
+  // 👉 Padrão Imutável para IA (sempre "Xg Nome")
+  return `${Math.round(grams)}g ${f.name}`;
+}
+
+// ==========================================
 // 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD) - NÍVEL ELITE
 // ==========================================
 
@@ -36,7 +63,7 @@ const PatientRequestSchema = z.object({
   image: z.string().optional().nullable()
 }).passthrough(); // 🔥 CRÍTICO
 
-// 2. Schemas de Banco de Dados (Evitando 'any' do Supabase)
+// 2. Schemas de Banco de Dados
 const FoodRestrictionSchema = z.object({
   type: z.enum(['allergy', 'intolerance', 'preference', 'restriction']).catch('restriction'),
   foodId: z.string().optional(),
@@ -44,7 +71,6 @@ const FoodRestrictionSchema = z.object({
   food: z.string().optional()
 });
 
-// 🔥 NOVO: Schema dos itens de alimento para que o Zod não descarte os dados
 const FoodItemSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -52,7 +78,7 @@ const FoodItemSchema = z.object({
   // 🔥 NOVO
   grams: z.number().optional(),
 
-  // 🔥 LEGADO
+  // 🔥 LEGADO (Necessário ler, mas a função formatFoodItem resolve)
   quantity: z.number().optional().default(1)
 });
 
@@ -64,7 +90,6 @@ const MealOptionSchema = z.object({
     g: z.number().optional().default(0)
   }).optional(),
   description: z.string().optional(),
-  // 🔥 NOVO: O Zod agora reconhece e valida a estrutura visual montada no DietBuilder
   foodItems: z.array(FoodItemSchema).optional().default([])
 });
 
@@ -76,7 +101,6 @@ const MealPlanSchema = z.array(
   })
 ).nullable().default([]);
 
-// Tipagens Ingeridas
 type MealPlan = z.infer<typeof MealPlanSchema>;
 type FoodRestriction = z.infer<typeof FoodRestrictionSchema>;
 
@@ -158,7 +182,6 @@ async function ensureSafeResponse(
 ): Promise<string> {
   if (!restrictions || restrictions.length === 0) return initialReply;
 
-  // Usa o casting seguro já que o tipo base foi validado pelo Zod
   const blockedIds = expandRestrictions(restrictions as any[]);
   if (blockedIds.size === 0) return initialReply;
 
@@ -226,26 +249,10 @@ function formatarCardapio(mealPlan: MealPlan): string {
     const option = meal.options?.[0];
     if (!option) return `- ${meal.time} | ${meal.name}: Sem descrição`;
     
-    // 🔥 CORREÇÃO: Formatação priorizando foodItems (com fallback para description)
+    // ✅ REFATORAÇÃO DE SUCESSO APLICADA AQUI 
+    // Adeus lógica inline. Adeus quantity vazando.
     const foods = option.foodItems?.length
-      ? option.foodItems.map(f => {
-          const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-          const baseGrams = registryItem?.baseGrams || 100;
-
-          // 🔥 PRIORIDADE: grams
-          if (f.grams != null) {
-            return `${Math.round(f.grams)}g ${f.name}`;
-          }
-
-          // 🔥 FALLBACK: quantity → grams
-          if (f.quantity != null) {
-            const grams = f.quantity * baseGrams;
-            return `${Math.round(grams)}g ${f.name}`;
-          }
-
-          // 🔥 fallback final
-          return `${baseGrams}g ${f.name}`;
-        }).join(', ')
+      ? option.foodItems.map(formatFoodItem).join(', ')
       : option.description || 'Sem descrição';
 
     const kcal = option.kcal || 0;
@@ -312,7 +319,7 @@ export async function POST(req: Request) {
     const dailyLog = dailyLogRes.data?.[0];
     const evaluation = evalRes.data?.[0];
     
-    // 🔥 AQUI O ZOD NÃO VAI MAIS DESTRUIR OS ALIMENTOS MONTADOS NO FRONTEND
+    // AQUI O ZOD NÃO VAI MAIS DESTRUIR OS ALIMENTOS MONTADOS NO FRONTEND
     const safeMealPlan = MealPlanSchema.parse(profile?.meal_plan);
     
     const restrictionsValidation = z.array(FoodRestrictionSchema).safeParse(profile?.food_restrictions);
@@ -332,8 +339,8 @@ export async function POST(req: Request) {
       rotinaSono: evaluation?.answers?.["3"] || '',
       vontadesDoces: evaluation?.answers?.["7"] || '',
       alimentosEvitar,
-      restrictions: safeRestrictions as any, // Cast necessário para alinhar com a tipagem da biblioteca
-      cardapioFormatado: formatarCardapio(safeMealPlan),
+      restrictions: safeRestrictions as any,
+      cardapioFormatado: formatarCardapio(safeMealPlan), // Formatação gerada através da nova função segura
       evolucaoTxt: antroRes.data?.length === 2 ? `Reduziu ${antroRes.data[1].weight - antroRes.data[0].weight}kg` : 'Iniciando.',
       humorHoje: dailyLog?.mood || 'Não registrado',
       aguaHoje: dailyLog?.water_ml || 0,
@@ -361,7 +368,6 @@ ${semanticMemory || ''}`.trim();
 
     const model = genAI.getGenerativeModel({ model: modelName, systemInstruction: contextoInjetado });
     
-    // Converte o history de forma segura
     const mappedHistory = history.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]

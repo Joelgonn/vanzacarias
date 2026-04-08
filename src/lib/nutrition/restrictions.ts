@@ -1,4 +1,3 @@
-// lib/nutrition/restrictions.ts
 import { FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 
@@ -33,12 +32,25 @@ export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction 
   if (r.foodId) {
     // 1. Fonte da verdade mais forte: ID direto
     const exists = FOOD_REGISTRY.some(f => f.id === r.foodId);
+    
     if (exists) {
       foodIds.push(r.foodId);
+    } else {
+      console.warn(
+        `[Restriction] foodId inválido: ${r.foodId} | restriction:`,
+        r
+      );
     }
   } else if (r.tag) {
     // 2. Tag: Categoria inteira bloqueada -> mapeia para todos os IDs que possuem a tag
     foodIds = FOOD_REGISTRY.filter(f => f.tags.includes(r.tag as any)).map(f => f.id);
+    
+    if (foodIds.length === 0) {
+      console.warn(
+        `[Restriction] tag sem correspondência: ${r.tag} | restriction:`,
+        r
+      );
+    }
   } else if (r.food) {
     // 3. Fallback legado: Varre o registry fazendo fuzzy match em name e aliases
     const searchTerm = r.food.toLowerCase();
@@ -47,6 +59,13 @@ export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction 
       const matchesAlias = f.aliases.some(alias => alias.toLowerCase().includes(searchTerm));
       return matchesName || matchesAlias;
     }).map(f => f.id);
+    
+    if (foodIds.length === 0) {
+      console.warn(
+        `[Restriction] food sem correspondência: ${r.food} | restriction:`,
+        r
+      );
+    }
   }
 
   return {
@@ -57,10 +76,9 @@ export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction 
 
 /**
  * ==========================================
- * 2. EXPANSÃO COMPLETA (Substitui lógica do DietBuilder)
+ * 2. EXPANSÃO COMPLETA
  * ==========================================
  * Retorna um Set rápido com TODOS os foodIds que estão bloqueados.
- * Isso deve substituir a antiga função `resolveBlockedFoodIds` que ficava solta.
  */
 export function expandRestrictions(restrictions: FoodRestriction[]): Set<string> {
   const blockedIds = new Set<string>();
@@ -82,7 +100,6 @@ export function expandRestrictions(restrictions: FoodRestriction[]): Set<string>
  * 3. FUNÇÃO CORE DE RESOLUÇÃO (Single Source of Truth)
  * ==========================================
  * Avalia se um foodId específico bate com alguma restrição.
- * Substitui o QFA Matcher e centraliza a checagem.
  */
 export function resolveRestriction(
   foodId: string,
@@ -123,7 +140,7 @@ export function resolveRestriction(
 
 /**
  * ==========================================
- * 4. API PÚBLICA (Mantém contratos existentes intactos)
+ * 4. API PÚBLICA
  * ==========================================
  */
 
@@ -144,7 +161,6 @@ export function getRestrictionInfo(
   foodId: string,
   restrictions: FoodRestriction[]
 ): RestrictionInfo | null {
-  // Agora consome do Core
   const type = resolveRestriction(foodId, restrictions);
   if (!type) return null;
 
@@ -191,7 +207,6 @@ export function isFoodBlocked(
   foodId: string,
   restrictions: FoodRestriction[]
 ): boolean {
-  // Agora consome do Core
   return resolveRestriction(foodId, restrictions) !== null;
 }
 

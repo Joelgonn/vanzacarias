@@ -1,21 +1,21 @@
-// =========================================================================
+// ============================================================================
 // IMPORTS DA ENGINE DE NUTRIÇÃO
-// =========================================================================
+// ============================================================================
 import { expandRestrictions } from '@/lib/nutrition/restrictions';
 import { type FoodRestriction } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 
-// =========================================================================
-// TIPAGENS DO CONTEXTO
-// =========================================================================
+// ============================================================================
+// TIPAGENS ÚNICA DO SISTEMA (SSOT)
+// ============================================================================
 export type UserData = {
   nomePaciente: string;
   objetivoPrincipal: string;
   metaPeso: string;
   rotinaSono: string;
   vontadesDoces: string;
-  alimentosEvitar: string[]; 
-  restrictions?: FoodRestriction[]; 
+  alimentosEvitar: string[];
+  restrictions?: FoodRestriction[];
   cardapioFormatado: string;
   evolucaoTxt: string;
   humorHoje: string;
@@ -25,13 +25,15 @@ export type UserData = {
   activityKcal: number;
   todayStr: string;
   hasImage?: boolean;
-  // CAMPOS DE MACROS
+
+  // MACROS
   macrosDiarios?: {
     totalKcal: number;
     totalProtein: number;
     totalCarbs: number;
     totalFat: number;
   };
+
   macrosPorRefeicao?: Array<{
     nome: string;
     horario: string;
@@ -40,7 +42,8 @@ export type UserData = {
     carbs: number;
     fat: number;
   }>;
-  // CAMPOS DE COMPOSIÇÃO CORPORAL
+
+  // COMPOSIÇÃO CORPORAL
   composicaoCorporal?: {
     percentualGordura: number | null;
     massaGorda: number | null;
@@ -53,38 +56,49 @@ export type UserData = {
 
 type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
 
-// =========================================================================
-// 🔍 1. CLASSIFICADOR DE INTENÇÃO (Otimizado com Regex)
-// =========================================================================
+// ============================================================================
+// 🔍 1. CLASSIFICADOR DE INTENÇÃO
+// ============================================================================
 function detectIntent(message: string): IntentType {
-  const msg = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const msg = message
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 
   if (/(troca|substitui|lugar de|em vez de|posso comer)/.test(msg)) {
     return 'troca';
   }
 
-  if (/(emagrec|resultado|peso|medida|estagnei|nao perdi|balanca|quanto pes|quantos quilos)/.test(msg)) {
+  if (
+    /(emagrec|resultado|peso|medida|estagnei|nao perdi|balanca|quanto pes|quantos quilos|gordura|bf|percentual de gordura|massa gorda|massa magra|composicao corporal|jackson pollock|dobras)/.test(
+      msg
+    )
+  ) {
     return 'resultado';
   }
 
-  if (/(desanim|nao consegui|dificil|chutei o balde|jacad|compulsa|triste|ansios|culpa)/.test(msg)) {
+  if (
+    /(desanim|nao consegui|dificil|chutei o balde|jacad|compulsa|triste|ansios|culpa)/.test(
+      msg
+    )
+  ) {
     return 'motivacional';
   }
 
-  if (/(caloria|kcal|proteina|protein|carbo|carboidrato|gordura|macro|valor nutricional)/.test(msg)) {
-    return 'geral'; 
-  }
-
-  if (/(gordura|bf|percentual de gordura|massa gorda|massa magra|composicao corporal|jackson pollock|dobras)/.test(msg)) {
-    return 'resultado';
+  if (
+    /(caloria|kcal|proteina|protein|carbo|carboidrato|gordura|macro|valor nutricional)/.test(
+      msg
+    )
+  ) {
+    return 'geral';
   }
 
   return 'geral';
 }
 
-// =========================================================================
-// 🧩 2. MÓDULOS DE CONSTRUÇÃO DO PROMPT (Separação de Responsabilidades)
-// =========================================================================
+// ============================================================================
+// 🧩 2. MÓDULOS DE CONSTRUÇÃO DO PROMPT
+// ============================================================================
 
 function buildSystemPersona(): string {
   return `
@@ -97,27 +111,31 @@ Seu papel é atuar como uma extensão do atendimento dela, oferecendo suporte r�
 `.trim();
 }
 
+// ============================================================================
+// 🔥 ÚNICO buildClinicalContext (SSOT)
+// ============================================================================
 function buildClinicalContext(data: UserData): string {
-  // 1. Expande os IDs
+  // Expande os IDs de restrições
   const blockedIds = expandRestrictions(data.restrictions || []);
 
-  // 2. Nomes reais dos alimentos
-  const blockedFoods = FOOD_REGISTRY
-    .filter(f => blockedIds.has(f.id))
-    .map(f => f.name);
+  // Converte IDs em nomes reais
+  const blockedFoods = FOOD_REGISTRY.filter((f) => blockedIds.has(f.id)).map(
+    (f) => f.name
+  );
 
   const legacyAversoes = data.alimentosEvitar || [];
-  const allRestrictions = Array.from(new Set([...blockedFoods, ...legacyAversoes]));
+  const allRestrictions = Array.from(
+    new Set([...blockedFoods, ...legacyAversoes])
+  );
 
-  const restricoesTxt = allRestrictions.length > 0
-    ? allRestrictions.join(', ')
-    : 'Nenhuma relatada';
+  const restricoesTxt =
+    allRestrictions.length > 0 ? allRestrictions.join(', ') : 'Nenhuma relatada';
 
-  // Extração de TAGS (Semântica para o LLM)
+  // Extrai tags para semântica do LLM
   const tags = (data.restrictions || [])
-    .map(r => r.tag)
+    .map((r) => r.tag)
     .filter(Boolean) as string[];
-  
+
   const uniqueTags = Array.from(new Set(tags));
   const tagsTxt = uniqueTags.length > 0 ? uniqueTags.join(', ') : '';
 
@@ -128,7 +146,11 @@ function buildClinicalContext(data: UserData): string {
 - Meta de Peso: ${data.metaPeso}
 - Evolução até agora: ${data.evolucaoTxt}
 
-${tagsTxt ? `🚫 CATEGORIAS BLOQUEADAS (Atenção a derivados e generalizações):\n${tagsTxt}\n` : ''}
+${
+  tagsTxt
+    ? `🚫 CATEGORIAS BLOQUEADAS (Atenção a derivados e generalizações):\n${tagsTxt}\n`
+    : ''
+}
 🚫 ALIMENTOS BLOQUEADOS (OBRIGATÓRIO RESPEITAR):
 ${restricoesTxt}
 
@@ -145,9 +167,14 @@ ${data.cardapioFormatado}
 `.trim();
 }
 
-// MÓDULO: MACROS NUTRICIONAIS
+// ============================================================================
+// 📊 MÓDULO: MACROS NUTRICIONAIS
+// ============================================================================
 function buildMacrosContext(data: UserData): string {
-  if (!data.macrosDiarios && (!data.macrosPorRefeicao || data.macrosPorRefeicao.length === 0)) {
+  if (
+    !data.macrosDiarios &&
+    (!data.macrosPorRefeicao || data.macrosPorRefeicao.length === 0)
+  ) {
     return '';
   }
 
@@ -165,7 +192,7 @@ function buildMacrosContext(data: UserData): string {
 
   if (data.macrosPorRefeicao && data.macrosPorRefeicao.length > 0) {
     macrosText += '\n🍽️ **MACROS POR REFEIÇÃO:**\n';
-    data.macrosPorRefeicao.forEach(ref => {
+    data.macrosPorRefeicao.forEach((ref) => {
       macrosText += `- ${ref.nome} (${ref.horario}): ${ref.kcal} kcal | P: ${ref.protein}g | C: ${ref.carbs}g | G: ${ref.fat}g\n`;
     });
   }
@@ -173,14 +200,16 @@ function buildMacrosContext(data: UserData): string {
   return macrosText.trim();
 }
 
-// MÓDULO: COMPOSIÇÃO CORPORAL (Jackson & Pollock)
+// ============================================================================
+// 💪 MÓDULO: COMPOSIÇÃO CORPORAL
+// ============================================================================
 function buildBodyCompositionContext(data: UserData): string {
   const comp = data.composicaoCorporal;
-  
+
   if (!comp || !comp.percentualGordura) {
     return '';
   }
-  
+
   let context = `
 [COMPOSIÇÃO CORPORAL (Protocolo Jackson & Pollock - 7 Dobras)]
 📊 **ÚLTIMA AVALIAÇÃO:** ${comp.ultimaAvaliacao || 'Data não registrada'}
@@ -192,11 +221,11 @@ function buildBodyCompositionContext(data: UserData): string {
   if (comp.evolucaoGordura) {
     context += `- 📉 Evolução do % Gordura: ${comp.evolucaoGordura}\n`;
   }
-  
+
   if (comp.evolucaoMassaMagra) {
     context += `- 💪 Evolução da Massa Magra: ${comp.evolucaoMassaMagra}\n`;
   }
-  
+
   context += `
 **🔬 INTERPRETAÇÃO CLÍNICA (para você usar no atendimento):**
 - Percentual de gordura ideal para homens: 10-20% | Para mulheres: 18-28%
@@ -217,10 +246,13 @@ function buildBodyCompositionContext(data: UserData): string {
 4. **Para elogiar progresso:**
    "Você manteve a massa magra enquanto perdeu gordura - esse é exatamente o cenário ideal para emagrecimento saudável!"
 `;
-  
+
   return context;
 }
 
+// ============================================================================
+// 🌙 MÓDULO: COMPORTAMENTO E ROTINA
+// ============================================================================
 function buildBehavioralContext(data: UserData): string {
   return `
 [ROTINA E COMPORTAMENTO]
@@ -234,20 +266,27 @@ function buildBehavioralContext(data: UserData): string {
 `.trim();
 }
 
+// ============================================================================
+// ❤️ MÓDULO: CONTEXTO EMOCIONAL
+// ============================================================================
 function buildEmotionalContext(data: UserData): string {
   let alertas = '';
 
   if (data.humorHoje === 'dificil') {
-    alertas += '\n⚠️ ALERTA EMOCIONAL: O paciente relatou que o dia hoje está "difícil". Priorize o acolhimento, valide o esforço dele e pegue leve nas cobranças técnicas.';
+    alertas +=
+      '\n⚠️ ALERTA EMOCIONAL: O paciente relatou que o dia hoje está "difícil". Priorize o acolhimento, valide o esforço dele e pegue leve nas cobranças técnicas.';
   }
   if (data.aguaHoje < 1500 && data.aguaHoje > 0) {
-    alertas += '\n💧 ALERTA DE HIDRATAÇÃO: Paciente bebeu pouca água hoje. Lembre-o gentilmente de se hidratar.';
+    alertas +=
+      '\n💧 ALERTA DE HIDRATAÇÃO: Paciente bebeu pouca água hoje. Lembre-o gentilmente de se hidratar.';
   }
   if (data.refeicoesFeitas <= 2 && data.humorHoje !== 'Não registrado') {
-    alertas += '\n🍽️ ALERTA DE ADESÃO: Paciente pulou refeições hoje. Sugira uma retomada simples na próxima refeição, sem gerar culpa.';
+    alertas +=
+      '\n🍽️ ALERTA DE ADESÃO: Paciente pulou refeições hoje. Sugira uma retomada simples na próxima refeição, sem gerar culpa.';
   }
   if (data.activityKcal > 0) {
-    alertas += '\n🔥 ALERTA DE EXERCÍCIO: O paciente se exercitou hoje! Use isso para elogiá-lo e reforçar que a constância nos treinos potencializa os resultados.';
+    alertas +=
+      '\n🔥 ALERTA DE EXERCÍCIO: O paciente se exercitou hoje! Use isso para elogiá-lo e reforçar que a constância nos treinos potencializa os resultados.';
   }
 
   return `
@@ -257,7 +296,14 @@ ${alertas}
 `.trim();
 }
 
-function buildIntentInstructions(intent: IntentType, hasMacros: boolean, hasBodyComposition: boolean): string {
+// ============================================================================
+// 🎯 MÓDULO: INSTRUÇÕES POR INTENÇÃO
+// ============================================================================
+function buildIntentInstructions(
+  intent: IntentType,
+  hasMacros: boolean,
+  hasBodyComposition: boolean
+): string {
   if (hasMacros && intent === 'geral') {
     return `
 [INSTRUÇÃO DE TAREFA: CONSULTA DE MACROS NUTRICIONAIS]
@@ -340,6 +386,9 @@ Responda à dúvida do paciente baseando-se no plano alimentar dele, nas restri�
   }
 }
 
+// ============================================================================
+// 📸 MÓDULO: ANÁLISE DE IMAGEM
+// ============================================================================
 function buildImageAnalysisRules(): string {
   return `
 [INSTRUÇÃO DE TAREFA: ANÁLISE DE IMAGEM DO PRATO]
@@ -353,13 +402,18 @@ O paciente enviou uma foto da refeição.
 `.trim();
 }
 
-// =========================================================================
-// 🧠 3. CONSTRUTOR PRINCIPAL (Orquestrador)
-// =========================================================================
+// ============================================================================
+// 🧠 3. CONSTRUTOR PRINCIPAL (ÚNICA FUNÇÃO EXPORTADA)
+// ============================================================================
 export function buildContext(message: string, data: UserData): string {
   const intent = detectIntent(message);
-  const hasMacros = !!(data.macrosDiarios || (data.macrosPorRefeicao && data.macrosPorRefeicao.length > 0));
-  const hasBodyComposition = !!(data.composicaoCorporal && data.composicaoCorporal.percentualGordura);
+  const hasMacros = !!(
+    data.macrosDiarios ||
+    (data.macrosPorRefeicao && data.macrosPorRefeicao.length > 0)
+  );
+  const hasBodyComposition = !!(
+    data.composicaoCorporal && data.composicaoCorporal.percentualGordura
+  );
 
   const promptParts = [
     buildSystemPersona(),
@@ -378,8 +432,8 @@ export function buildContext(message: string, data: UserData): string {
 4. Nunca termine a frase pela metade.
 5. Quando citar macros, formate sempre como: "kcal | P: Xg | C: Yg | G: Zg" para fácil leitura.
 6. Quando citar composição corporal, destaque % de gordura e massa magra.
-    `.trim()
+    `.trim(),
   ];
 
-  return promptParts.filter(part => part.length > 0).join('\n\n');
+  return promptParts.filter((part) => part.length > 0).join('\n\n');
 }

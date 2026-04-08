@@ -14,25 +14,124 @@ export type FoodTag =
   | 'frutos_do_mar' | 'vegano' | 'vegetariano' | 'soja';
 
 // ============================================================================
-// 🔥 FUNÇÃO DE NORMALIZAÇÃO DE BASE (CRÍTICO)
+// 🔥 FUNÇÃO DE NORMALIZAÇÃO DE BASE (COMPLETA E DETERMINÍSTICA)
 // ============================================================================
 
 function resolveBaseGrams(baseUnit: string): number {
   const normalized = baseUnit.toLowerCase();
 
-  // 🔥 PRIORIDADE: unidades explícitas
+  // ==========================================
+  // 1. GRAMAS EXPLÍCITAS
+  // ==========================================
   if (normalized.includes('100g')) return 100;
   if (normalized.includes('50g')) return 50;
   if (normalized.includes('30g')) return 30;
+  if (normalized.includes('25g')) return 25;
+  if (normalized.includes('20g')) return 20;
   if (normalized.includes('15g')) return 15;
+  if (normalized.includes('12g')) return 12;
   if (normalized.includes('10g')) return 10;
+  if (normalized.includes('8g')) return 8;
   if (normalized.includes('5g')) return 5;
+  if (normalized.includes('3g')) return 3;
+  if (normalized.includes('2g')) return 2;
+  if (normalized.includes('1g')) return 1;
 
-  // 🔥 ml → tratar como g (aproximação aceitável)
-  if (normalized.includes('200ml')) return 200;
+  // ==========================================
+  // 2. ML → aproximação para gramas (água/densidade próxima)
+  // ==========================================
+  if (normalized.includes('350ml')) return 350;
   if (normalized.includes('300ml')) return 300;
+  if (normalized.includes('250ml')) return 250;
+  if (normalized.includes('200ml')) return 200;
+  if (normalized.includes('150ml')) return 150;
+  if (normalized.includes('120ml')) return 120;
+  if (normalized.includes('100ml')) return 100;
+  if (normalized.includes('60ml')) return 60;
+  if (normalized.includes('50ml')) return 50;
+  if (normalized.includes('30ml')) return 30;
 
-  // 🔥 unidade padrão fallback (CRÍTICO)
+  // ==========================================
+  // 3. UNIDADES (médias padrão nutricional)
+  // ==========================================
+  if (normalized.includes('unidade') || normalized.includes('un')) {
+    if (normalized.includes('2 un')) return 120;  // 2 ovos ≈ 120g
+    if (normalized.includes('10 un')) return 100; // 10 morangos
+    return 100; // 1 unidade média
+  }
+
+  // ==========================================
+  // 4. COLHERES (padrão nutricional médio)
+  // ==========================================
+  if (normalized.includes('colher de sopa') || normalized.includes('col. sopa')) {
+    if (normalized.includes('2 col')) return 30;
+    if (normalized.includes('3 col')) return 45;
+    return 15; // 1 colher de sopa
+  }
+  
+  if (normalized.includes('colher de chá') || normalized.includes('col. chá')) {
+    return 5; // 1 colher de chá
+  }
+
+  if (normalized.includes('colher') || normalized.includes('colheres')) {
+    if (normalized.includes('2 col')) return 30;
+    if (normalized.includes('3 col')) return 45;
+    return 15; // fallback para "colher" genérico
+  }
+
+  // ==========================================
+  // 5. FATIAS
+  // ==========================================
+  if (normalized.includes('fatia')) {
+    if (normalized.includes('2 fatias')) return 60;
+    return 30; // 1 fatia padrão
+  }
+
+  // ==========================================
+  // 6. XÍCARAS (padrão: 1 xícara = 240ml ≈ 240g para líquidos)
+  // ==========================================
+  if (normalized.includes('xícara') || normalized.includes('xicara')) {
+    return 240;
+  }
+
+  // ==========================================
+  // 7. PORÇÕES / CONCHAS / ESCUMADEIRAS
+  // ==========================================
+  if (normalized.includes('concha')) return 100;
+  if (normalized.includes('escumadeira')) return 100;
+  if (normalized.includes('escumad')) return 100;
+  if (normalized.includes('porção') || normalized.includes('porcao')) return 100;
+
+  // ==========================================
+  // 8. RAMOS / PEDAÇOS
+  // ==========================================
+  if (normalized.includes('ramos')) return 50;
+  if (normalized.includes('pedaço') || normalized.includes('pedaco')) return 100;
+
+  // ==========================================
+  // 9. À VONTADE (neutro mínimo para não distorcer cálculos)
+  // ==========================================
+  if (normalized.includes('à vontade') || normalized.includes('a vontade')) return 50;
+
+  // ==========================================
+  // 10. A GOSTO (zero caloria)
+  // ==========================================
+  if (normalized.includes('a gosto')) return 0;
+
+  // ==========================================
+  // 11. BOLAS DE SORVETE
+  // ==========================================
+  if (normalized.includes('bola')) return 60;
+
+  // ==========================================
+  // 12. LATAS
+  // ==========================================
+  if (normalized.includes('lata')) return 120;
+
+  // ==========================================
+  // 13. FALLBACK CONTROLADO COM WARNING
+  // ==========================================
+  console.warn(`[FoodRegistry] BaseUnit não reconhecida: "${baseUnit}" → usando fallback 100g`);
   return 100;
 }
 
@@ -2486,3 +2585,18 @@ export const searchFoods = (query: string): FoodEntity[] => {
     return false;
   });
 };
+
+// ============================================================================
+// 🔥 HELPERS PÚBLICOS (ACCESSORS) - ADICIONADO PARA CORRIGIR O ERRO
+// ============================================================================
+
+export function getBaseGrams(foodId: string): number {
+  const food = FOOD_REGISTRY.find(f => f.id === foodId);
+
+  if (!food) {
+    console.warn(`[FoodRegistry] alimento não encontrado: ${foodId}`);
+    return 100;
+  }
+
+  return food.baseGrams;
+}

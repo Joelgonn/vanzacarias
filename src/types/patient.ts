@@ -3,7 +3,7 @@
 // ============================================================================
 
 // ============================================================================
-// 🆕 FOOD ITEM (BASE DO SISTEMA DE DIETA - FASE 1 COMPATÍVEL)
+// 🧠 FOOD ITEM (SSOT FINAL - BASEADO EM GRAMS)
 // ============================================================================
 
 export interface FoodItem {
@@ -17,11 +17,8 @@ export interface FoodItem {
     g: number;
   };
 
-  // 🔥 NOVO PADRÃO (FASE 1 - OPCIONAL)
-  grams?: number;
-
-  // 🔥 LEGADO (MANTIDO TEMPORARIAMENTE)
-  quantity?: number;
+  // 🔥 ÚNICA FONTE DE VERDADE
+  grams: number;
 }
 
 // ============================================================================
@@ -43,6 +40,7 @@ export interface FoodRestriction {
   severity?: FoodRestrictionSeverity;
   notes?: string;
 
+  // 🔥 NOVA ARQUITETURA
   foodId?: string;
   tag?: string;
 }
@@ -106,7 +104,7 @@ export function isRestriction(restriction: FoodRestriction): boolean {
 }
 
 // ============================================================================
-// NOVOS HELPERS PARA OPÇÃO 3 (HÍBRIDO)
+// HELPERS NOVOS (ARQUITETURA HÍBRIDA)
 // ============================================================================
 
 export function hasFoodId(restriction: FoodRestriction): boolean {
