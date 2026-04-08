@@ -303,97 +303,109 @@ function MacrosSidebar({ totals, targets, analysis }: MacrosSidebarProps) {
     if (!target) return 0;
     return Math.min((current / target) * 100, 100);
   };
-  
-  const getBarColor = (type: string) => {
-    switch (type) {
-      case 'kcal': return 'bg-stone-800';
-      case 'p': return 'bg-red-500';
-      case 'c': return 'bg-amber-500';
-      case 'g': return 'bg-blue-500';
-      default: return 'bg-stone-400';
-    }
-  };
 
   const getStatusBadge = (status?: string) => {
     if (!status) return null;
-    switch(status) {
-      case 'low': return <span className="text-red-500 text-[8px] font-black ml-1">▼</span>;
-      case 'high': return <span className="text-amber-500 text-[8px] font-black ml-1">▲</span>;
-      default: return <span className="text-emerald-500 text-[8px] font-black ml-1">✓</span>;
+    switch (status) {
+      case 'low':
+        return <span className="ml-1 text-[8px] font-black text-red-500">v</span>;
+      case 'high':
+        return <span className="ml-1 text-[8px] font-black text-amber-500">^</span>;
+      default:
+        return <span className="ml-1 text-[8px] font-black text-emerald-500">ok</span>;
     }
   };
-  
+
+  const rows = [
+    {
+      key: 'kcal',
+      label: 'Kcal',
+      current: Math.round(totals.kcal),
+      target: targets.kcal,
+      display: `${Math.round(totals.kcal)} / ${targets.kcal}`,
+      tone: 'text-stone-800',
+      track: 'bg-stone-100',
+      fill: 'bg-stone-800',
+      chip: 'bg-stone-900 text-white',
+      status: analysis?.status.kcal,
+    },
+    {
+      key: 'protein',
+      label: 'Proteina',
+      current: Math.round(totals.p),
+      target: targets.protein,
+      display: `${Math.round(totals.p)}g / ${targets.protein}g`,
+      tone: 'text-red-600',
+      track: 'bg-red-100',
+      fill: 'bg-red-500',
+      chip: 'border border-red-100 bg-red-50 text-red-700',
+      status: analysis?.status.protein,
+    },
+    {
+      key: 'carbs',
+      label: 'Carboidrato',
+      current: Math.round(totals.c),
+      target: targets.carbs,
+      display: `${Math.round(totals.c)}g / ${targets.carbs}g`,
+      tone: 'text-amber-600',
+      track: 'bg-amber-100',
+      fill: 'bg-amber-500',
+      chip: 'border border-amber-100 bg-amber-50 text-amber-700',
+      status: analysis?.status.carbs,
+    },
+    {
+      key: 'fat',
+      label: 'Gordura',
+      current: Math.round(totals.g),
+      target: targets.fat,
+      display: `${Math.round(totals.g)}g / ${targets.fat}g`,
+      tone: 'text-blue-600',
+      track: 'bg-blue-100',
+      fill: 'bg-blue-500',
+      chip: 'border border-blue-100 bg-blue-50 text-blue-700',
+      status: analysis?.status.fat,
+    },
+  ];
+
   return (
-    <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-4 shadow-sm">
-      <div className="flex items-center gap-2 pb-2 border-b border-stone-100">
-        <Target size={14} className="text-stone-500" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">Metas do Dia</span>
+    <div className="space-y-3.5 rounded-[1.7rem] border border-stone-200/90 bg-[radial-gradient(circle_at_top_left,rgba(214,211,209,0.16),transparent_38%),linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(250,250,249,0.98)_100%)] p-4 shadow-[0_14px_40px_-28px_rgba(28,25,23,0.32)]">
+      <div className="flex items-center gap-2 border-b border-stone-100 pb-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600 ring-1 ring-stone-200/80">
+          <Target size={14} />
+        </div>
+        <div>
+          <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-stone-500">Metas do Dia</span>
+          <span className="block text-[11px] font-semibold text-stone-400">Comparativo ao vivo</span>
+        </div>
       </div>
-      
+
       <div className="space-y-3">
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <div className="flex items-center">
-              <span className="font-bold text-stone-700">Kcal</span>
-              {analysis && getStatusBadge(analysis.status.kcal)}
+        {rows.map((row) => (
+          <div key={row.key} className="rounded-[1.05rem] border border-stone-200/80 bg-white/80 px-3 py-2 shadow-[0_10px_24px_-22px_rgba(28,25,23,0.32)] backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center">
+                  <span className={`text-[11px] font-black tracking-[0.01em] ${row.tone}`}>{row.label}</span>
+                  {getStatusBadge(row.status)}
+                </div>
+                <p className="mt-0.5 text-[9px] font-medium text-stone-400">
+                  Meta {row.target}{row.key === 'kcal' ? '' : 'g'}
+                </p>
+              </div>
+
+              <div className={`shrink-0 rounded-full px-2.5 py-[0.3rem] text-[9px] font-black tracking-tight ${row.chip}`}>
+                {row.display}
+              </div>
             </div>
-            <span className="font-mono font-bold text-stone-900">{Math.round(totals.kcal)} / {targets.kcal}</span>
-          </div>
-          <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${getBarColor('kcal')} transition-all duration-300`}
-              style={{ width: `${getPercentage(totals.kcal, targets.kcal)}%` }}
-            />
-          </div>
-        </div>
-        
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <div className="flex items-center">
-              <span className="font-bold text-red-600">Proteína</span>
-              {analysis && getStatusBadge(analysis.status.protein)}
+
+            <div className={`mt-1.5 h-1.5 overflow-hidden rounded-full ${row.track}`}>
+              <div
+                className={`h-full rounded-full ${row.fill} transition-all duration-500`}
+                style={{ width: `${getPercentage(row.current, row.target)}%` }}
+              />
             </div>
-            <span className="font-mono font-bold text-red-600">{Math.round(totals.p)}g / {targets.protein}g</span>
           </div>
-          <div className="h-1.5 bg-red-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${getBarColor('p')} transition-all duration-300`}
-              style={{ width: `${getPercentage(totals.p, targets.protein)}%` }}
-            />
-          </div>
-        </div>
-        
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <div className="flex items-center">
-              <span className="font-bold text-amber-600">Carboidrato</span>
-              {analysis && getStatusBadge(analysis.status.carbs)}
-            </div>
-            <span className="font-mono font-bold text-amber-600">{Math.round(totals.c)}g / {targets.carbs}g</span>
-          </div>
-          <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${getBarColor('c')} transition-all duration-300`}
-              style={{ width: `${getPercentage(totals.c, targets.carbs)}%` }}
-            />
-          </div>
-        </div>
-        
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <div className="flex items-center">
-              <span className="font-bold text-blue-600">Gordura</span>
-              {analysis && getStatusBadge(analysis.status.fat)}
-            </div>
-            <span className="font-mono font-bold text-blue-600">{Math.round(totals.g)}g / {targets.fat}g</span>
-          </div>
-          <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${getBarColor('g')} transition-all duration-300`}
-              style={{ width: `${getPercentage(totals.g, targets.fat)}%` }}
-            />
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -821,9 +833,10 @@ interface SearchableFoodListProps {
   onSelectFood: (foodId: string) => void;
   blockedFoodIds: Set<string>;
   foodRestrictions: FoodRestriction[];
+  autoFocus?: boolean;
 }
 
-function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: SearchableFoodListProps) {
+function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions, autoFocus = false }: SearchableFoodListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -908,7 +921,7 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions }: 
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={handleKeyDown}
           className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-stone-800 focus:ring-4 focus:ring-stone-800/10 transition-all"
-          autoFocus
+          autoFocus={autoFocus}
         />
       </div>
 
@@ -985,7 +998,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const [activeTimeMealId, setActiveTimeMealId] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [activeFoodKey, setActiveFoodKey] = useState<string | null>(null);
+  const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ============================================================================
   // 🔥 FLUXO GUIADO POR DIA (NOVO)
@@ -1003,12 +1018,19 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // 🔥 FUNÇÃO: PRÓXIMO DIA
   // ============================================================================
   
-  function getNextDay(currentDay: string): string {
-    const index = ORDERED_DAYS.indexOf(currentDay);
-    if (index === -1 || index === ORDERED_DAYS.length - 1) {
-      return currentDay;
-    }
-    return ORDERED_DAYS[index + 1];
+  function isDayCompleteForMeals(day: string, mealsToCheck: Meal[]): boolean {
+    if (mealsToCheck.length === 0) return false;
+
+    return mealsToCheck.every(meal => {
+      const options = meal.options.filter(opt =>
+        opt.day === day || opt.day === "Todos os dias"
+      );
+      return options.some(opt => opt.foodItems.length > 0);
+    });
+  }
+
+  function getFirstIncompleteDay(mealsToCheck: Meal[]): string {
+    return ORDERED_DAYS.find(day => !isDayCompleteForMeals(day, mealsToCheck)) || ORDERED_DAYS[0];
   }
 
   // ============================================================================
@@ -1016,12 +1038,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // ============================================================================
   
   function isDayComplete(day: string): boolean {
-    return meals.every(meal => {
-      const options = meal.options.filter(opt => 
-        opt.day === day || opt.day === "Todos os dias"
-      );
-      return options.some(opt => opt.foodItems.length > 0);
-    });
+    return isDayCompleteForMeals(day, meals);
   }
 
   // ============================================================================
@@ -1042,9 +1059,11 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     if (autoAdvancedDays.has(activeDay)) return;
     
     if (isDayComplete(activeDay)) {
-      const nextDay = getNextDay(activeDay);
+      const nextDay = ORDERED_DAYS.find(day =>
+        ORDERED_DAYS.indexOf(day) > ORDERED_DAYS.indexOf(activeDay) && !isDayComplete(day)
+      );
       
-      if (nextDay !== activeDay) {
+      if (nextDay) {
         setActiveDay(nextDay);
         setAutoAdvancedDays(prev => new Set(prev).add(activeDay));
         toast.success(`✅ Dia ${activeDay} concluído! Avançando para ${nextDay}`);
@@ -1053,6 +1072,18 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       }
     }
   }, [meals, activeDay, autoAdvancedDays]);
+
+  useEffect(() => {
+    if (!activeOptionId) return;
+
+    const optionEl = optionRefs.current[activeOptionId];
+    if (!optionEl) return;
+
+    optionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const searchInput = optionEl.querySelector('input[type="text"]') as HTMLInputElement | null;
+    searchInput?.focus();
+  }, [activeOptionId, meals, activeDay, expandedMealId]);
 
   // ============================================================================
   // 🔥 CÁLCULO DIÁRIO (BASEADO NO DIA ATIVO)
@@ -1286,15 +1317,20 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const updateMealName = (mealId: string, name: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, name } : m));
 
   const addOption = (mealId: string) => {
+    const newOptionId = `opt-${Date.now()}`;
+
     setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
         return {
           ...m,
-          options: [...m.options, { id: `opt-${Date.now()}`, day: activeDay, foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }]
+          options: [...m.options, { id: newOptionId, day: activeDay, foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }]
         };
       }
       return m;
     }));
+
+    setExpandedMealId(mealId);
+    setActiveOptionId(newOptionId);
   };
 
   const splitIntoFullWeek = (mealId: string) => {
@@ -1377,6 +1413,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
             options: m.options.map((o: any) => migrateExistingOption({ ...o, day: o.day || "Segunda-feira", kcal: o.kcal || 0, macros: o.macros || { p: 0, c: 0, g: 0 } }))
           }));
           setMeals(formattedPlan);
+          setActiveDay(getFirstIncompleteDay(formattedPlan));
+          setAutoAdvancedDays(new Set());
           if (formattedPlan.length > 0) setExpandedMealId(formattedPlan[0].id);
         } else {
           const newMealId = `meal-${Date.now()}`;
@@ -1384,6 +1422,8 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
             id: newMealId, time: "08:00", name: 'Café da Manhã', 
             options: [{ id: `opt-${Date.now()}`, day: "Segunda-feira", foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
           }]);
+          setActiveDay("Segunda-feira");
+          setAutoAdvancedDays(new Set());
           setExpandedMealId(newMealId);
         }
       } catch (error) {
@@ -1721,7 +1761,17 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                       <div className="space-y-4">
                         {/* 🔥 MOSTRA APENAS A OPÇÃO DO DIA ATIVO */}
                         {optionsForDay.map((option) => (
-                          <div key={option.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                          <div
+                            key={option.id}
+                            ref={(el) => {
+                              optionRefs.current[option.id] = el;
+                            }}
+                            className={`bg-white p-4 rounded-xl shadow-sm transition-all ${
+                              activeOptionId === option.id
+                                ? 'border-2 border-stone-800 ring-4 ring-stone-800/5'
+                                : 'border border-stone-200'
+                            }`}
+                          >
                             
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-stone-100">
                               <div className="flex items-center gap-2">
@@ -1798,6 +1848,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                 onSelectFood={(foodId) => addFoodItem(meal.id, option.id, foodId)}
                                 blockedFoodIds={blockedFoodIds}
                                 foodRestrictions={foodRestrictions}
+                                autoFocus={activeOptionId === option.id}
                               />
 
                               <div className="mt-3">
