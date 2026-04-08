@@ -1286,11 +1286,11 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const updateMealName = (mealId: string, name: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, name } : m));
 
   const addOption = (mealId: string) => {
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
-        return { 
-          ...m, 
-          options: [...m.options, { id: `opt-${Date.now()}`, day: "Segunda-feira", foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
+        return {
+          ...m,
+          options: [...m.options, { id: `opt-${Date.now()}`, day: activeDay, foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }]
         };
       }
       return m;
