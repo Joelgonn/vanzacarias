@@ -10,7 +10,7 @@ import {
   Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
   Smile, Frown, Meh, BellRing, Scale, Layers, Activity as ActivityIcon, Syringe,
   Target, Calendar, ArrowDown, ArrowUp, Minus, ChevronRight, ShieldAlert, ShieldCheck,
-  Brain, Sparkles
+  Brain, Sparkles, LayoutDashboard, ClipboardList, CalendarDays, UserCircle, LogOut, Compass
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -38,7 +38,6 @@ function MetricCard({ label, value, subtext, icon: Icon, highlight, iconColor }:
       {highlight && <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>}
       <div className="flex justify-between items-start mb-3 relative z-10">
         <p className={`text-[10px] md:text-xs uppercase font-bold tracking-widest ${highlight ? 'text-nutri-200' : 'text-stone-400'}`}>{label}</p>
-        {/* Renderiza a cor do ícone passada por prop ou usa o padrão */}
         {Icon && <Icon size={20} strokeWidth={2.5} className={iconColor || (highlight ? "text-nutri-400" : "text-stone-300")} />}
       </div>
       <div className="relative z-10">
@@ -593,7 +592,7 @@ export default function Dashboard() {
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
       const rawPeso = checkin?.peso || antro?.weight;
-      const rawCintura = antro?.waist || checkin?.cintura; // Tenta pegar a cintura do check-in também
+      const rawCintura = antro?.waist || checkin?.cintura; 
       
       const pesoAtual = rawPeso ? parseFloat(rawPeso) : null;
       const cinturaAtual = rawCintura ? parseFloat(rawCintura) : null;
@@ -713,8 +712,8 @@ export default function Dashboard() {
   const foodRestrictions = profile?.food_restrictions || [];
   const hasFoodRestrictions = foodRestrictions.length > 0;
   const foodStatusConfig = hasFoodRestrictions 
-    ? { icon: <ShieldAlert size={20} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
-    : { icon: <ShieldCheck size={20} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
+    ? { icon: <ShieldAlert size={20} strokeWidth={2.5} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
+    : { icon: <ShieldCheck size={20} strokeWidth={2.5} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
 
   const adminContextForChat: AdminContext = {
     patients: [],
@@ -724,7 +723,6 @@ export default function Dashboard() {
     bodyComposition: bodyComposition
   };
 
-  // Verifica quantos pontos válidos temos para o gráfico (para mostrar o aviso caso só haja 1 ponto)
   const validWeightsCount = timelineData.filter(d => d.peso !== null).length;
   const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;
 
@@ -740,19 +738,62 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-[#F9FAFB] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
       
-      {/* SIDEBAR DESKTOP */}
+      {/* ========================================================================= */}
+      {/* 🔥 SIDEBAR DESKTOP PREMIUM (Com Ícones em Containers) */}
+      {/* ========================================================================= */}
       <aside className="w-64 bg-white/60 backdrop-blur-xl border-r border-stone-200/50 hidden md:flex flex-col p-8 sticky top-20 h-[calc(100vh-80px)] z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)]">
-        <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-10">Navegação</h2>        
+        <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-8 flex items-center gap-2">
+          <Compass size={14} /> Navegação
+        </h2>
+        
         <nav className="flex-1 space-y-2">
-          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 bg-white text-nutri-900 font-bold text-sm rounded-2xl shadow-md border border-stone-100 transition-all">Painel Geral</Link>
-          <Link href="/paciente/avaliacao" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Avaliação (QFA)</Link>
-          <Link href="/dashboard/meu-plano" className="flex items-center justify-between px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">
-            Meu Plano {!canAccessMealPlan && <Lock size={14} className="text-stone-300"/>}
+          {/* MENU ATIVO */}
+          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3.5 bg-white text-nutri-900 font-bold text-sm rounded-2xl shadow-[0_4px_20px_rgba(28,25,23,0.05)] border border-stone-100 transition-all group">
+            <div className="p-2 bg-nutri-50 rounded-xl text-nutri-600 group-hover:scale-110 transition-transform">
+              <LayoutDashboard size={18} strokeWidth={2.5} />
+            </div>
+            Painel Geral
           </Link>
-          <Link href="/dashboard/agendamentos" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Agendamentos</Link>
-          <Link href="/dashboard/perfil" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Meu Perfil</Link>
+
+          {/* MENUS INATIVOS (Com Glow Dourado no Hover) */}
+          <Link href="/paciente/avaliacao" className="flex items-center gap-3 px-4 py-3.5 text-stone-500 hover:bg-white hover:text-stone-900 hover:shadow-sm font-semibold text-sm rounded-2xl transition-all border border-transparent hover:border-stone-100 group">
+            <div className="p-2 bg-stone-50 rounded-xl text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-colors">
+              <ClipboardList size={18} strokeWidth={2.5} />
+            </div>
+            Avaliação (QFA)
+          </Link>
+
+          <Link href="/dashboard/meu-plano" className="flex items-center justify-between px-4 py-3.5 text-stone-500 hover:bg-white hover:text-stone-900 hover:shadow-sm font-semibold text-sm rounded-2xl transition-all border border-transparent hover:border-stone-100 group">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-stone-50 rounded-xl text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-colors">
+                <Utensils size={18} strokeWidth={2.5} />
+              </div>
+              Meu Plano
+            </div>
+            {!canAccessMealPlan && <Lock size={14} className="text-stone-300"/>}
+          </Link>
+
+          <Link href="/dashboard/agendamentos" className="flex items-center gap-3 px-4 py-3.5 text-stone-500 hover:bg-white hover:text-stone-900 hover:shadow-sm font-semibold text-sm rounded-2xl transition-all border border-transparent hover:border-stone-100 group">
+            <div className="p-2 bg-stone-50 rounded-xl text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-colors">
+              <CalendarDays size={18} strokeWidth={2.5} />
+            </div>
+            Agendamentos
+          </Link>
+
+          <Link href="/dashboard/perfil" className="flex items-center gap-3 px-4 py-3.5 text-stone-500 hover:bg-white hover:text-stone-900 hover:shadow-sm font-semibold text-sm rounded-2xl transition-all border border-transparent hover:border-stone-100 group">
+            <div className="p-2 bg-stone-50 rounded-xl text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-colors">
+              <UserCircle size={18} strokeWidth={2.5} />
+            </div>
+            Meu Perfil
+          </Link>
         </nav>
-        <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} className="text-stone-400 text-xs font-bold uppercase tracking-wider hover:text-red-500 transition-colors mt-auto pt-8 border-t border-stone-200/60 w-full text-left flex items-center gap-2">Sair da Conta</button>
+
+        <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} className="text-stone-400 text-xs font-bold uppercase tracking-wider hover:text-red-500 transition-colors mt-auto pt-8 border-t border-stone-200/60 w-full text-left flex items-center gap-3 group">
+          <div className="p-2 bg-stone-50 rounded-xl text-stone-400 group-hover:bg-red-50 group-hover:text-red-500 transition-colors">
+             <LogOut size={16} strokeWidth={2.5} />
+          </div>
+          Sair da Conta
+        </button>
       </aside>
 
       {/* ÁREA PRINCIPAL DO DASHBOARD */}
@@ -1231,7 +1272,7 @@ export default function Dashboard() {
                 {canAccessMealPlan ? <Utensils size={22} /> : <Lock size={22} />}
               </div>
               <div>
-                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight transition-colors ${canAccessMealPlan ? 'text-stone-900 group-hover:text-amber-600' : 'text-stone-500'}`}>Plano Alimentar</h3>
+                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight transition-colors ${canAccessMealPlan ? 'text-stone-900 group-hover:text-amber-700' : 'text-stone-500'}`}>Plano Alimentar</h3>
                 <p className="text-xs md:text-sm text-stone-500 font-medium mt-0.5">{canAccessMealPlan ? (isMealPlanReady ? 'Ver cardápio liberado' : 'Em elaboração pela Nutri') : 'Desbloquear acesso'}</p>
               </div>
             </div>
@@ -1260,7 +1301,7 @@ export default function Dashboard() {
                 <Calendar size={22} />
               </div>
               <div>
-                <h3 className="font-bold text-stone-900 group-hover:text-amber-600 transition-colors text-base md:text-lg tracking-tight leading-tight">Agendamentos</h3>
+                <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition-colors text-base md:text-lg tracking-tight leading-tight">Agendamentos</h3>
                 <p className="text-xs md:text-sm text-stone-500 font-medium mt-0.5">
                   {nextAppointment ? `Retorno: ${new Date(nextAppointment.appointment_date).toLocaleDateString('pt-BR')} às ${nextAppointment.appointment_time}` : 'Marcar nova consulta'}
                 </p>
