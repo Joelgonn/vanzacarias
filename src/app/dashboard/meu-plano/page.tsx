@@ -7,12 +7,29 @@ import {
   Clock, Utensils, ChevronRight, Info, Filter, ShoppingCart, 
   X, CalendarDays, Copy, CheckCheck, ArrowLeftRight,
   Droplets, CheckCircle2, Circle, Flame, Plus, Minus, Search,
-  Beef, Wheat, TrendingUp, Zap, Target, Activity, Trophy
+  Beef, Wheat, TrendingUp, Zap, Target, Activity, Trophy,
+  Cookie, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
+
+// =========================================================================
+// IMPORTS DOS COMPONENTES DE BELISCO
+// =========================================================================
+import { BeliscoCard } from '@/components/BeliscoCard';
+import { BeliscoModal } from '@/components/BeliscoModal';
+import { FoodItem } from '@/types/patient';
+import { FOOD_REGISTRY, getBaseGrams } from '@/lib/foodRegistry';
+import { 
+  BeliscoItem, 
+  BeliscosTotals,
+  calculateBeliscosTotals,
+  createBeliscoItemFromFood,
+  createBeliscoItemManual,
+  migrateOldBeliscosFormat
+} from '@/lib/beliscoUtils';
 
 // =========================================================================
 // FUNÇÃO AUXILIAR DE NORMALIZAÇÃO PARA EVITAR DUPLICAÇÃO NO MARKET
@@ -32,6 +49,21 @@ const normalizeString = (str: string): string => {
 // =========================================================================
 const safeAdd = (a: number, b: number): number => {
   return parseFloat((a + b).toFixed(2));
+};
+
+// =========================================================================
+// FUNÇÃO PARA CALCULAR TOTAIS DE UM ALIMENTO COM BASE NAS GRAMAS
+// =========================================================================
+const calculateFoodTotals = (food: FoodItem, grams: number) => {
+  const baseGrams = getBaseGrams(food.id);
+  const factor = grams / baseGrams;
+  
+  return {
+    kcal: food.kcal * factor,
+    protein: food.macros.p * factor,
+    carbs: food.macros.c * factor,
+    fat: food.macros.g * factor
+  };
 };
 
 // =========================================================================
@@ -100,7 +132,7 @@ function MacroCard({
         <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-center">
           <div className="flex justify-between items-end mb-2">
             <span className="text-xs font-bold text-stone-500 uppercase flex items-center gap-1">
-              <Flame size={14} className="text-orange-500"/> Consumo Atual
+              <Flame size={14} className="text-orange-500"/> Consumo Real
             </span>
             <span className="text-xl font-black text-stone-800">
               {Math.round(consumedKcal)} <span className="text-xs font-bold text-stone-400 uppercase">/ {Math.round(totalKcal)} kcal</span>
@@ -181,17 +213,23 @@ function MacroCard({
           {expanded && (
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-in">
               {macrosPorRefeicao.map((ref) => (
-                <div key={`${ref.nome}-${ref.horario}`} className="flex items-center justify-between p-3 bg-stone-50 border border-stone-100 rounded-xl text-sm">
+                <div key={`${ref.nome}-${ref.horario}`} className="flex flex-col md:flex-row md:items-center justify-between p-3 bg-stone-50 border border-stone-100 rounded-xl text-sm gap-2">
                   <div>
                     <p className="font-bold text-stone-700 text-xs">{ref.nome}</p>
                     <p className="text-[10px] text-stone-400 font-bold uppercase">{ref.horario}</p>
                   </div>
-                  <div className="flex gap-2 text-[10px] font-black">
+                  <div className="flex flex-wrap gap-2 text-[10px] font-black">
                     <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">
                       {Math.round(ref.kcal)} kcal
                     </span>
                     <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
                       {Math.round(ref.protein)}g P
+                    </span>
+                    <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                      {Math.round(ref.carbs)}g C
+                    </span>
+                    <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                      {Math.round(ref.fat)}g G
                     </span>
                   </div>
                 </div>
@@ -530,6 +568,16 @@ export default function MeuPlano() {
   const [completedMeals, setCompletedMeals] = useState<string[]>([]);
   const [waterCount, setWaterCount] = useState<number>(0);
   const [currentMood, setCurrentMood] = useState<string | null>(null);
+  
+  // NOVOS STATES PARA BELISCOS (FORMATO COM HISTÓRICO)
+  const [beliscosItems, setBeliscosItems] = useState<BeliscoItem[]>([]);
+  const [beliscosTotals, setBeliscosTotals] = useState<BeliscosTotals>({
+    kcal: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0
+  });
+  const [isBeliscoModalOpen, setIsBeliscoModalOpen] = useState(false);
 
   const supabase = createClient();
   const router = useRouter();
@@ -604,6 +652,11 @@ export default function MeuPlano() {
             setCompletedMeals(logs.meals_checked || []);
             setWaterCount(logs.water_ml ? logs.water_ml / 250 : 0);
             setCurrentMood(logs.mood || null);
+            
+            // CARREGAR BELISCOS COM MIGRAÇÃO (suporte a formato antigo)
+            const migratedBeliscos = migrateOldBeliscosFormat(logs.beliscos);
+            setBeliscosItems(migratedBeliscos.items);
+            setBeliscosTotals(calculateBeliscosTotals(migratedBeliscos.items));
           }
         }
       } catch (err: any) {
@@ -623,6 +676,95 @@ export default function MeuPlano() {
       isMounted = false;
     };
   }, [supabase]);
+
+  // =========================================================================
+  // FUNÇÃO PARA ADICIONAR BELISCO A PARTIR DO FOOD_REGISTRY
+  // =========================================================================
+  const addBeliscoFromFood = async (food: FoodItem, grams: number) => {
+    const baseGrams = getBaseGrams(food.id);
+    const factor = grams / baseGrams;
+    
+    const newItem = createBeliscoItemFromFood(
+      food.name,
+      grams,
+      food.kcal * factor,
+      food.macros.p * factor,
+      food.macros.c * factor,
+      food.macros.g * factor
+    );
+    
+    const newItems = [...beliscosItems, newItem];
+    const newTotals = calculateBeliscosTotals(newItems);
+    
+    setBeliscosItems(newItems);
+    setBeliscosTotals(newTotals);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const today = getLocalTodayString();
+
+    await supabase.from('daily_logs').upsert({
+      user_id: session?.user.id,
+      date: today,
+      meals_checked: completedMeals,
+      water_ml: waterCount * 250,
+      mood: currentMood,
+      beliscos: { items: newItems }
+    }, { onConflict: 'user_id, date' });
+
+    toast.success(`✓ ${food.name} (${Math.round(grams)}g) - ${Math.round(newItem.kcal)} kcal`);
+  };
+
+  // =========================================================================
+  // FUNÇÃO PARA ADICIONAR BELISCO MANUAL (FALLBACK)
+  // =========================================================================
+  const addBeliscoManual = async (kcal: number, protein: number, carbs: number, fat: number) => {
+    const newItem = createBeliscoItemManual(kcal, protein, carbs, fat);
+    
+    const newItems = [...beliscosItems, newItem];
+    const newTotals = calculateBeliscosTotals(newItems);
+    
+    setBeliscosItems(newItems);
+    setBeliscosTotals(newTotals);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const today = getLocalTodayString();
+
+    await supabase.from('daily_logs').upsert({
+      user_id: session?.user.id,
+      date: today,
+      meals_checked: completedMeals,
+      water_ml: waterCount * 250,
+      mood: currentMood,
+      beliscos: { items: newItems }
+    }, { onConflict: 'user_id, date' });
+
+    toast.success(`✓ Belisco manual registrado: +${Math.round(kcal)} kcal`);
+  };
+
+  // =========================================================================
+  // FUNÇÃO PARA REMOVER BELISCO
+  // =========================================================================
+  const removeBeliscoItem = async (itemId: string) => {
+    const newItems = beliscosItems.filter(item => item.id !== itemId);
+    const newTotals = calculateBeliscosTotals(newItems);
+    
+    setBeliscosItems(newItems);
+    setBeliscosTotals(newTotals);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const today = getLocalTodayString();
+
+    await supabase.from('daily_logs').upsert({
+      user_id: session?.user.id,
+      date: today,
+      meals_checked: completedMeals,
+      water_ml: waterCount * 250,
+      mood: currentMood,
+      beliscos: { items: newItems }
+    }, { onConflict: 'user_id, date' });
+
+    toast.info(`Item removido do histórico`);
+  };
 
   // =========================================================================
   // MEMOS & CÁLCULOS PREMIUM
@@ -656,7 +798,8 @@ export default function MeuPlano() {
     return calcularMacrosDoCardapio(filteredMeals);
   }, [filteredMeals]);
 
-  const consumedStats = useMemo(() => {
+  // CONSUMO DAS REFEIÇÕES (SEM BELISCOS)
+  const mealsConsumed = useMemo(() => {
     let p = 0, c = 0, g = 0, kcal = 0;
     filteredMeals.forEach(meal => {
       if (completedMeals.includes(meal.name) && meal.options?.[0]) {
@@ -668,6 +811,16 @@ export default function MeuPlano() {
     });
     return { kcal, p, c, g };
   }, [filteredMeals, completedMeals]);
+
+  // CONSUMO REAL (REFEIÇÕES + BELISCOS) - USADO NO MACROCARD
+  const realConsumed = useMemo(() => {
+    return {
+      kcal: safeAdd(mealsConsumed.kcal, beliscosTotals.kcal),
+      p: safeAdd(mealsConsumed.p, beliscosTotals.protein),
+      c: safeAdd(mealsConsumed.c, beliscosTotals.carbs),
+      g: safeAdd(mealsConsumed.g, beliscosTotals.fat),
+    };
+  }, [mealsConsumed, beliscosTotals]);
 
   const totalMealsCount = filteredMeals.length;
   const completedCount = filteredMeals.filter(m => completedMeals.includes(m.name)).length;
@@ -698,14 +851,33 @@ export default function MeuPlano() {
       list.push({ text: "Mantenha o foco! Faltam poucas refeições para completar a meta.", bg: "bg-orange-50", textCol: "text-orange-800", icon: <TrendingUp size={16} className="text-orange-500"/> });
     }
     
-    if (consumedStats.p > 0 && consumedStats.p < (macros.totalProtein * 0.4) && completedCount >= (totalMealsCount / 2)) {
+    if (mealsConsumed.p > 0 && mealsConsumed.p < (macros.totalProtein * 0.4) && completedCount >= (totalMealsCount / 2)) {
       list.push({ text: "Seu consumo de proteína está baixo hoje. Capriche na próxima refeição!", bg: "bg-red-50", textCol: "text-red-800", icon: <Beef size={16} className="text-red-500"/> });
     }
 
-    return list.slice(0, 3);
-  }, [waterCount, completedCount, totalMealsCount, consumedStats, macros]);
+    // INSIGHT DE BELISCOS (usando beliscosTotals)
+    if (beliscosTotals.kcal > macros.totalKcal * 0.25) {
+      list.push({ 
+        text: "Beliscos já estão comprometendo seu resultado hoje. Prefira opções do protocolo.", 
+        bg: "bg-orange-50", 
+        textCol: "text-orange-800", 
+        icon: <Cookie size={16} className="text-orange-500"/> 
+      });
+    }
+    
+    if (beliscosTotals.kcal > macros.totalKcal * 0.4) {
+      list.push({ 
+        text: "⚠️ Atenção! Seu déficit calórico foi severamente impactado pelos beliscos.", 
+        bg: "bg-red-50", 
+        textCol: "text-red-800", 
+        icon: <AlertTriangle size={16} className="text-red-500"/> 
+      });
+    }
 
-  // =========================================================================
+    return list.slice(0, 4);
+  }, [waterCount, completedCount, totalMealsCount, mealsConsumed, macros, beliscosTotals]);
+
+    // =========================================================================
   // LOGICA DO MERCADO COM NORMALIZAÇÃO
   // =========================================================================
   const marketList = useMemo(() => {
@@ -823,7 +995,8 @@ export default function MeuPlano() {
       date: today,
       meals_checked: newList,
       water_ml: waterCount * 250,
-      mood: currentMood
+      mood: currentMood,
+      beliscos: { items: beliscosItems }
     }, { onConflict: 'user_id, date' });
 
     if (!isCompleted) {
@@ -843,7 +1016,8 @@ export default function MeuPlano() {
       date: today,
       water_ml: newValue * 250,
       meals_checked: completedMeals,
-      mood: currentMood
+      mood: currentMood,
+      beliscos: { items: beliscosItems }
     }, { onConflict: 'user_id, date' });
   };
 
@@ -1244,11 +1418,22 @@ export default function MeuPlano() {
                     totalProtein={macros.totalProtein} 
                     totalCarbs={macros.totalCarbs} 
                     totalFat={macros.totalFat}
-                    consumedKcal={consumedStats.kcal} 
-                    consumedProtein={consumedStats.p} 
-                    consumedCarbs={consumedStats.c} 
-                    consumedFat={consumedStats.g}
+                    consumedKcal={realConsumed.kcal} 
+                    consumedProtein={realConsumed.p} 
+                    consumedCarbs={realConsumed.c} 
+                    consumedFat={realConsumed.g}
                     macrosPorRefeicao={macros.macrosPorRefeicao}
+                  />
+                </section>
+
+                {/* BELISCO CARD - CORRIGIDO COM O NOVO FORMATO */}
+                <section className="animate-fade-in-up" style={{ animationDelay: '0.25s' }}>
+                  <BeliscoCard 
+                    beliscos={beliscosTotals ?? { kcal: 0, protein: 0, carbs: 0, fat: 0 }}
+                    items={beliscosItems ?? []}
+                    totalKcal={macros.totalKcal ?? 1}
+                    onOpenModal={() => setIsBeliscoModalOpen(true)}
+                    onRemoveItem={removeBeliscoItem}
                   />
                 </section>
 
@@ -1435,6 +1620,9 @@ export default function MeuPlano() {
                                         </span>
                                         <span className="bg-stone-50 border border-stone-100 text-stone-600 px-2 py-1 rounded-lg text-[10px] font-bold">
                                           C: {option.macros.c}g
+                                        </span>
+                                        <span className="bg-stone-50 border border-stone-100 text-stone-600 px-2 py-1 rounded-lg text-[10px] font-bold">
+                                          G: {option.macros.g}g
                                         </span>
                                       </>
                                     )}
@@ -1679,6 +1867,7 @@ export default function MeuPlano() {
                       <span className="bg-orange-100 text-orange-800 px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wide shadow-sm">{item.macros.kcal} kcal</span>
                       <span className="bg-white border border-stone-200 text-stone-600 px-2 py-1 rounded-lg text-[10px] font-bold">C: {item.macros.carbo}g</span>
                       <span className="bg-white border border-stone-200 text-stone-600 px-2 py-1 rounded-lg text-[10px] font-bold">P: {item.macros.proteina}g</span>
+                      <span className="bg-white border border-stone-200 text-stone-600 px-2 py-1 rounded-lg text-[10px] font-bold">G: {item.macros.gordura}g</span>
                     </div>
                   )}
                 </div>
@@ -1693,6 +1882,14 @@ export default function MeuPlano() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE BELISCO - CORRIGIDO COM OS NOVOS MÉTODOS */}
+      <BeliscoModal 
+        isOpen={isBeliscoModalOpen}
+        onClose={() => setIsBeliscoModalOpen(false)}
+        onAddFood={addBeliscoFromFood}
+        onAddManual={addBeliscoManual}
+      />
 
     </main>
   );
