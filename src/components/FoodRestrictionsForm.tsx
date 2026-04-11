@@ -1,14 +1,35 @@
 'use client';
 
-import { useState } from 'react';
-import { type FoodRestriction, type FoodTag } from '@/types/patient';
+import { useState, useEffect } from 'react';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
-import { X, Plus, ChevronDown, Search } from 'lucide-react';
+import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { motion, AnimatePresence } from 'framer-motion';
+import { X, Search } from 'lucide-react';
 
 // =========================================================================
-// TAGS PADRÃO
+// CONFIG
 // =========================================================================
+const TYPE_OPTIONS = [
+  {
+    label: 'Alergia',
+    value: 'allergy' as const,
+    emoji: '🚫',
+    description: 'Reação imune que pode ser grave'
+  },
+  {
+    label: 'Intolerância',
+    value: 'intolerance' as const,
+    emoji: '⚠️',
+    description: 'Dificuldade de digestão'
+  },
+  {
+    label: 'Restrição',
+    value: 'restriction' as const,
+    emoji: '📋',
+    description: 'Preferência ou escolha alimentar'
+  }
+];
+
 const TAG_OPTIONS: Array<{ label: string; value: FoodTag; emoji: string }> = [
   { label: 'Lactose', value: 'lactose', emoji: '🥛' },
   { label: 'Glúten', value: 'gluten', emoji: '🌾' },
@@ -17,271 +38,278 @@ const TAG_OPTIONS: Array<{ label: string; value: FoodTag; emoji: string }> = [
 ];
 
 // =========================================================================
-// TIPOS DE RESTRIÇÃO
+// COMPONENT
 // =========================================================================
-const TYPE_OPTIONS = [
-  { label: 'Alergia', value: 'allergy' as const, emoji: '🚫' },
-  { label: 'Intolerância', value: 'intolerance' as const, emoji: '⚠️' },
-  { label: 'Restrição', value: 'restriction' as const, emoji: '📋' },
-];
+export default function FoodRestrictionsForm({
+  value,
+  onChange
+}: {
+  value: FoodRestriction[];
+  onChange: (value: FoodRestriction[]) => void;
+}) {
+  const [step, setStep] = useState<'type' | 'search'>('type');
+  const [type, setType] = useState<FoodRestriction['type']>('allergy');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<typeof FOOD_REGISTRY>([]);
 
-// =========================================================================
-// DROPDOWN PREMIUM COM BUSCA
-// =========================================================================
-interface PremiumDropdownProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ value: string; label: string; emoji?: string }>;
-  placeholder: string;
-  searchable?: boolean;
-}
+  // 🔍 busca
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
 
-function PremiumDropdown({ value, onChange, options, placeholder, searchable = false }: PremiumDropdownProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const selected = options.find(opt => opt.value === value);
+    const filtered = FOOD_REGISTRY
+      .filter(f => f.name.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 6);
 
-  const filteredOptions = searchable && search
-    ? options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
+    setResults(filtered);
+  }, [query]);
 
+  // ➕ add direto (sem botão)
+  const handleAdd = (food: any) => {
+    const exists = value.some(
+      r => r.foodId === food.id && r.type === type
+    );
+    if (exists) return;
+
+    onChange([
+      ...value,
+      {
+        type,
+        foodId: food.id,
+        food: food.name
+      }
+    ]);
+
+    setQuery('');
+  };
+
+  const handleAddTag = (tag: FoodTag) => {
+    const exists = value.some(
+      r => r.tag === tag && r.type === type
+    );
+    if (exists) return;
+
+    onChange([
+      ...value,
+      {
+        type,
+        tag
+      }
+    ]);
+  };
+
+  const remove = (i: number) => {
+    const copy = [...value];
+    copy.splice(i, 1);
+    onChange(copy);
+  };
+
+  // =========================================================================
+  // UI
+  // =========================================================================
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-4 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 transition-all"
-      >
-        <span className="flex items-center gap-2">
-          {selected?.emoji && <span>{selected.emoji}</span>}
-          <span className={!selected ? 'text-stone-400' : 'text-stone-700'}>
-            {selected?.label || placeholder}
-          </span>
-        </span>
-        <ChevronDown size={18} className={`text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+    <div className="space-y-8">
+      {/* HERO */}
+      <div className="text-center space-y-3">
+        <h1 className="text-2xl font-black text-stone-900">
+          Seu corpo tem limites.
+        </h1>
+        <p className="text-sm text-stone-500 max-w-[280px] mx-auto">
+          Vamos respeitar isso para criar um plano seguro e personalizado.
+        </p>
+      </div>
 
-      <AnimatePresence>
-        {isOpen && (
+      {/* CHIPS ATIVOS (Lista do usuário) */}
+      <div className="min-h-[40px]">
+        <AnimatePresence>
+          {value.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-wrap gap-2 justify-center"
+            >
+              {value.map((r, i) => (
+                <motion.div
+                  key={`${r.type}-${r.foodId || r.tag}-${i}`}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  layout
+                  className="flex items-center gap-1 bg-white border border-stone-200 pl-3 pr-1 py-1.5 rounded-full text-sm font-medium text-stone-700 shadow-sm"
+                >
+                  <span className="text-base mr-1">
+                    {r.type === 'allergy' && '🚫'}
+                    {r.type === 'intolerance' && '⚠️'}
+                    {r.type === 'restriction' && '📋'}
+                  </span>
+                  <span className="capitalize">{r.food || r.tag}</span>
+                  {/* Área de toque maior (hitbox) para mobile */}
+                  <button 
+                    onClick={() => remove(i)}
+                    className="p-1.5 ml-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    aria-label="Remover"
+                  >
+                    <X size={14} />
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {/* STEP 1 - TYPE */}
+        {step === 'type' && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute z-20 mt-2 w-full bg-white border border-stone-100 rounded-2xl shadow-xl overflow-hidden"
+            key="type"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-4"
           >
-            {searchable && (
-              <div className="p-3 border-b border-stone-100">
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-nutri-800/20 focus:border-nutri-800 outline-none transition-all"
-                  />
+            <h2 className="text-lg font-bold text-center text-stone-800">
+              Você possui alguma restrição?
+            </h2>
+
+            <div className="space-y-3">
+              {TYPE_OPTIONS.map(opt => (
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  key={opt.value}
+                  onClick={() => {
+                    setType(opt.value);
+                    setStep('search');
+                  }}
+                  className="w-full text-left p-5 rounded-2xl border border-stone-200 bg-white hover:border-nutri-300 hover:shadow-md transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center text-2xl group-hover:bg-nutri-50 transition-colors">
+                      {opt.emoji}
+                    </div>
+                    <div>
+                      <p className="font-bold text-stone-800 text-base">{opt.label}</p>
+                      <p className="text-sm text-stone-500 mt-0.5">
+                        {opt.description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 2 - SEARCH */}
+        {step === 'search' && (
+          <motion.div
+            key="search"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-stone-500 text-center flex items-center justify-center gap-2">
+                Buscando: <span className="text-stone-800 font-bold bg-stone-100 px-2 py-0.5 rounded-md">{TYPE_OPTIONS.find(t => t.value === type)?.label}</span>
+              </p>
+
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
+                <input
+                  autoFocus
+                  placeholder="Ex: leite, pão, amendoim..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full pl-12 pr-12 py-4 text-base md:text-lg rounded-2xl border border-stone-200 bg-white shadow-sm focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-800 outline-none transition-all placeholder:text-stone-400"
+                />
+                {query && (
+                  <button 
+                    onClick={() => setQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-stone-400 hover:text-stone-600 rounded-full bg-stone-50"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* RESULTADOS DA BUSCA */}
+            {results.length > 0 && (
+              <div className="bg-white border border-stone-100 rounded-2xl shadow-sm overflow-hidden">
+                {results.map(food => (
+                  <button
+                    key={food.id}
+                    onClick={() => handleAdd(food)}
+                    className="w-full text-left py-4 px-5 text-base text-stone-700 border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors flex items-center justify-between"
+                  >
+                    <span>{food.name}</span>
+                    <span className="text-xs font-bold text-nutri-600 bg-nutri-50 px-2 py-1 rounded-md">Adicionar</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* TAGS RÁPIDAS (Com Scroll Horizontal Mobile-First) */}
+            {!query && (
+              <div className="space-y-2 pt-2">
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest pl-1">
+                  Adição Rápida
+                </p>
+                <div className="flex overflow-x-auto pb-2 -mx-4 px-4 gap-2 hide-scrollbar">
+                  {TAG_OPTIONS.map(tag => (
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      key={tag.value}
+                      onClick={() => handleAddTag(tag.value)}
+                      className="flex-shrink-0 flex items-center gap-2 px-4 py-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-sm font-medium text-stone-700 transition-colors"
+                    >
+                      <span className="text-lg">{tag.emoji}</span>
+                      {tag.label}
+                    </motion.button>
+                  ))}
                 </div>
               </div>
             )}
-            
-            <div className="max-h-60 overflow-y-auto">
-              {filteredOptions.length === 0 ? (
-                <div className="p-4 text-center text-stone-400 text-sm">Nenhum item encontrado</div>
-              ) : (
-                filteredOptions.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { onChange(opt.value); setIsOpen(false); setSearch(''); }}
-                    className={`w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-stone-50 transition-colors ${
-                      value === opt.value ? 'bg-nutri-50 text-nutri-800 font-medium' : 'text-stone-600'
-                    }`}
-                  >
-                    {opt.emoji && <span>{opt.emoji}</span>}
-                    {opt.label}
-                  </button>
-                ))
-              )}
+
+            {/* VOLTAR */}
+            <div className="pt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  setStep('type');
+                  setQuery('');
+                }}
+                className="text-sm font-medium text-stone-400 hover:text-stone-600 px-4 py-2 rounded-full hover:bg-stone-100 transition-all"
+              >
+                ← Escolher outro tipo
+              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-// =========================================================================
-// COMPONENTE PRINCIPAL
-// =========================================================================
-interface Props {
-  value: FoodRestriction[];
-  onChange: (value: FoodRestriction[]) => void;
-}
-
-export default function FoodRestrictionsForm({ value, onChange }: Props) {
-  const [type, setType] = useState<FoodRestriction['type']>('allergy');
-  const [selectedFoodId, setSelectedFoodId] = useState('');
-  const [selectedTag, setSelectedTag] = useState<FoodTag | ''>('');
-
-  // CORREÇÃO: uso de (food as any).emoji para evitar erro de tipagem
-  const foodOptions = FOOD_REGISTRY.map(food => ({
-    value: food.id,
-    label: food.name,
-    emoji: (food as any).emoji || '🍽️'
-  }));
-
-  const tagOptions = TAG_OPTIONS.map(tag => ({
-    value: tag.value,
-    label: tag.label,
-    emoji: tag.emoji
-  }));
-
-  const handleAdd = () => {
-    if (!selectedFoodId && !selectedTag) return;
-
-    const exists = value.some(r => 
-      r.type === type && 
-      r.foodId === (selectedFoodId || undefined) && 
-      r.tag === (selectedTag || undefined)
-    );
-
-    if (exists) {
-      setSelectedFoodId('');
-      setSelectedTag('');
-      return;
-    }
-
-    const newRestriction: FoodRestriction = {
-      type,
-      foodId: selectedFoodId || undefined,
-      tag: selectedTag || undefined,
-      food: selectedFoodId
-        ? FOOD_REGISTRY.find(f => f.id === selectedFoodId)?.name || ''
-        : ''
-    };
-
-    onChange([...value, newRestriction]);
-    setSelectedFoodId('');
-    setSelectedTag('');
-  };
-
-  const handleRemove = (index: number) => {
-    const updated = [...value];
-    updated.splice(index, 1);
-    onChange(updated);
-  };
-
-  const getTagLabel = (tagValue: string) => {
-    return TAG_OPTIONS.find(t => t.value === tagValue)?.label || tagValue;
-  };
-
-  const getTagEmoji = (tagValue: string) => {
-    return TAG_OPTIONS.find(t => t.value === tagValue)?.emoji || '🏷️';
-  };
-
-  const getTypeEmoji = (typeValue: string) => {
-    return TYPE_OPTIONS.find(t => t.value === typeValue)?.emoji || '📌';
-  };
-
-  return (
-    <div className="space-y-5">
-      
-      <div>
-        <h3 className="font-bold text-sm text-stone-800">Restrições Alimentares</h3>
-        <p className="text-xs text-stone-500">Adicione alergias, intolerâncias ou restrições</p>
-      </div>
-
-      {/* TYPE - CHIPS PREMIUM */}
-      <div className="flex gap-2">
-        {TYPE_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => setType(opt.value)}
-            className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all ${
-              type === opt.value
-                ? 'bg-nutri-900 text-white shadow-md'
-                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-            }`}
-          >
-            <span>{opt.emoji}</span>
-            <span>{opt.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* FOOD - DROPDOWN PREMIUM COM BUSCA */}
-      <PremiumDropdown
-        options={foodOptions}
-        value={selectedFoodId}
-        onChange={(val) => { setSelectedFoodId(val); setSelectedTag(''); }}
-        placeholder="Selecione um alimento"
-        searchable
-      />
-
-      {/* OU DIVIDER */}
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div>
-        <div className="relative flex justify-center text-xs"><span className="px-3 bg-white text-stone-400">ou</span></div>
-      </div>
-
-      {/* CATEGORY - DROPDOWN PREMIUM */}
-      <PremiumDropdown
-        options={tagOptions}
-        value={selectedTag}
-        onChange={(val) => { setSelectedTag(val as FoodTag); setSelectedFoodId(''); }}
-        placeholder="Selecione uma categoria"
-      />
-
-      {/* ADD BUTTON */}
-      <button
-        type="button"
-        onClick={handleAdd}
-        disabled={!selectedFoodId && !selectedTag}
-        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-nutri-900 to-nutri-800 text-white py-3 rounded-2xl font-bold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-      >
-        <Plus size={16} /> Adicionar restrição
-      </button>
-
-      {/* LISTA DE RESTRIÇÕES - CHIPS */}
-      {value.length > 0 && (
-        <div>
-          <label className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3 block">
-            Suas restrições ({value.length})
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {value.map((r, index) => (
-              <motion.div
-                key={`${r.type}-${r.foodId || r.tag}-${index}`}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="flex items-center gap-2 bg-nutri-50 text-nutri-800 px-3 py-2 rounded-full text-xs font-medium border border-nutri-100 shadow-sm"
-              >
-                <span>{getTypeEmoji(r.type)}</span>
-                <span className="max-w-[150px] truncate">
-                  {r.food || (r.tag ? `${getTagEmoji(r.tag)} ${getTagLabel(r.tag)}` : r.foodId)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(index)}
-                  className="ml-1 p-0.5 rounded-full hover:bg-nutri-100 transition-colors"
-                >
-                  <X size={12} className="text-nutri-600" />
-                </button>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* EMPTY STATE */}
-      {value.length === 0 && (
-        <div className="text-center py-6 bg-stone-50 rounded-2xl border border-stone-100 border-dashed">
-          <p className="text-xs text-stone-400">Nenhuma restrição adicionada ainda</p>
-          <p className="text-[10px] text-stone-300 mt-1">Adicione acima para personalizar seu plano</p>
+      {value.length === 0 && step === 'type' && (
+        <div className="text-center text-xs text-stone-400">
+          Nenhuma restrição informada. <br/>Seu plano será livre.
         </div>
       )}
+
+      {/* Estilos globais injetados para o hide-scrollbar */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}} />
     </div>
   );
 }
