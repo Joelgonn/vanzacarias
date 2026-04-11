@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
-import { FOOD_REGISTRY } from '@/lib/foodRegistry'
+
+import { buildContext } from '@/lib/contextBuilder'
+import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
+
+// IMPORTS CENTRALIZADOS
+import { processBeliscos, fetchHistoricoBeliscos } from '@/lib/beliscosProcessor'
+import { calcularMacrosDoCardapio } from '@/lib/macroCalculator'
+import { formatMealPlan } from '@/lib/mealPlanFormatter'
+import { normalizeRestrictions } from '@/lib/normalizeRestrictions'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,7 +18,7 @@ const supabaseAdmin = createClient(
 )
 
 // ==========================================
-// 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD) - ANTI-CRASH
+// 🛡️ SCHEMAS DE VALIDAÇÃO
 // ==========================================
 
 const FoodRestrictionSchema = z.object({
@@ -29,7 +37,7 @@ const AdminRequestSchema = z.object({
 });
 
 // ==========================================
-// 🛠️ FUNÇÕES AUXILIARES GERAIS
+// 🛠️ FUNÇÕES AUXILIARES
 // ==========================================
 
 function normalizeString(str: string): string {
@@ -38,120 +46,127 @@ function normalizeString(str: string): string {
 }
 
 // ==========================================
-// 🧮 FUNÇÕES PARA CALCULAR E FORMATAR CARDÁPIO
+// 🔥 FUNÇÃO PARA BUSCAR DADOS COMPLETOS DO PACIENTE
 // ==========================================
+async function getFullPatientData(patientId: string, todayStr: string) {
+  const [profileRes, logsRes, qfaRes, evalRes, antroRes] = await Promise.all([
+    supabaseAdmin.from('profiles').select('*').eq('id', patientId).single(),
+    supabaseAdmin.from('daily_logs').select('*').eq('user_id', patientId).order('date', { ascending: false }).limit(3),
+    supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', patientId).order('created_at', { ascending: false }).limit(1),
+    supabaseAdmin.from('evaluations').select('answers').eq('user_id', patientId).order('created_at', { ascending: false }).limit(1),
+    supabaseAdmin.from('anthropometry').select('weight').eq('user_id', patientId).order('measurement_date', { ascending: false }).limit(2)
+  ]);
 
-interface MacroPorRefeicao {
-  nome: string; horario: string; kcal: number; protein: number; carbs: number; fat: number;
-}
-interface MacrosDiarios {
-  totalKcal: number; totalProtein: number; totalCarbs: number; totalFat: number;
-}
-
-function calcularMacrosDoCardapio(mealPlan: any): { macrosDiarios: MacrosDiarios | null; macrosPorRefeicao: MacroPorRefeicao[]; } {
-  if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
-    return { macrosDiarios: null, macrosPorRefeicao: [] };
-  }
+  const patient = profileRes.data;
+  const logs = logsRes.data || [];
+  const todayLog = logs.find((log: any) => log.date === todayStr);
+  const historicoBeliscos = await fetchHistoricoBeliscos(supabaseAdmin, patientId, todayStr, 4);
   
-  const macrosPorRefeicao: MacroPorRefeicao[] = [];
-  let totalKcal = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-
-  for (const meal of mealPlan) {
-    const option = meal?.options?.[0];
-    if (option) {
-      const kcal = Number(option?.kcal) || 0;
-      const protein = Number(option?.macros?.p) || 0;
-      const carbs = Number(option?.macros?.c) || 0;
-      const fat = Number(option?.macros?.g) || 0;
-
-      totalKcal += kcal; totalProtein += protein; totalCarbs += carbs; totalFat += fat;
-      macrosPorRefeicao.push({ 
-        nome: meal?.name || 'Refeição', 
-        horario: meal?.time || '--:--', 
-        kcal, protein, carbs, fat 
-      });
-    }
+  let alimentosEvitar: string[] = [];
+  if (qfaRes.data?.[0]?.answers) {
+    alimentosEvitar = Object.entries(qfaRes.data[0].answers)
+      .filter(([_, f]) => f === "0")
+      .map(([a]) => a.replace(/_/g, ' '));
   }
-  return { macrosDiarios: { totalKcal, totalProtein, totalCarbs, totalFat }, macrosPorRefeicao };
+
+  const objetivoPrincipal = evalRes.data?.[0]?.answers?.["0"] || patient?.objetivo || 'Não informado';
+
+  let evolucaoTxt = 'Iniciando.';
+  if (antroRes.data && antroRes.data.length === 2 && antroRes.data[0]?.weight && antroRes.data[1]?.weight) {
+    const diff = (antroRes.data[1].weight - antroRes.data[0].weight).toFixed(1);
+    evolucaoTxt = `Variação de ${diff}kg na última medição`;
+  }
+
+  return {
+    patient,
+    todayLog,
+    historicoBeliscos,
+    alimentosEvitar,
+    objetivoPrincipal,
+    evolucaoTxt
+  };
 }
 
-// 🔥 1. FUNÇÃO CENTRAL (OBRIGATÓRIA)
-function formatFoodItem(f: any): string {
-  let grams = 0;
+// ==========================================
+// 🔥 FUNÇÃO PARA CONSTRUIR UserData DO PACIENTE
+// ==========================================
+async function buildPatientUserData(
+  patient: any,
+  todayLog: any,
+  historicoBeliscos: any[],
+  alimentosEvitar: string[],
+  objetivoPrincipal: string,
+  evolucaoTxt: string,
+  todayStr: string
+) {
+  const macros = calcularMacrosDoCardapio(patient?.meal_plan);
+  const beliscosProcessed = processBeliscos(todayLog?.beliscos);
   
-  // Mantemos a busca no registry para precisão (baseado no seu código original)
-  const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-  const baseGrams = registryItem?.baseGrams || 100;
+  // NORMALIZAR RESTRIÇÕES
+  const safeRestrictions = normalizeRestrictions(
+    Array.isArray(patient?.food_restrictions) ? patient.food_restrictions : []
+  );
 
-  if (f.grams != null) {
-    grams = Math.round(f.grams);
-  } else if (f.quantity != null) {
-    // 🔥 fallback legado (somente leitura)
-    grams = Math.round(f.quantity * baseGrams);
-  } else {
-    // 🔥 fallback final caso nenhum venha preenchido
-    grams = baseGrams;
+  const refeicoesFeitas = Array.isArray(todayLog?.meals_checked) 
+    ? todayLog.meals_checked.length 
+    : (typeof todayLog?.meals_checked === 'number' ? todayLog.meals_checked : 0);
+
+  let atividadesHojeFormatadas = 'Nenhuma';
+  if (todayLog?.activities && Array.isArray(todayLog.activities) && todayLog.activities.length > 0) {
+    atividadesHojeFormatadas = todayLog.activities.map((a: any) => `- ${a.name}`).join('\n');
   }
 
-  return `${grams}g ${f.name}`;
-}
+  const behaviorPattern = detectSabotagePattern({
+    beliscos: beliscosProcessed,
+    macrosDiarios: macros.macrosDiarios || undefined,
+    humorHoje: todayLog?.mood,
+    historicoBeliscos,
+    objetivoPrincipal,
+    refeicoesFeitas,
+    totalRefeicoesPlano: macros.macrosPorRefeicao?.length || 0,
+    aguaHoje: todayLog?.water_ml || 0,
+    activityKcal: todayLog?.activity_kcal || 0
+  });
+  
+  const interventionSuggestion = buildIntervention(behaviorPattern, objetivoPrincipal);
 
-// 🔥 2. FORMATADOR DE OPÇÃO (NÍVEL INTERMEDIÁRIO)
-function formatOption(option: any): string {
-  if (!option.foodItems || option.foodItems.length === 0) {
-    return option?.description || option?.name || 'Sem descrição detalhada';
-  }
-
-  const foods = option.foodItems.map(formatFoodItem);
-  return foods.join(', ');
-}
-
-// 🔥 3. FORMATADOR DE REFEIÇÃO
-function formatMeal(meal: any): string {
-  if (!meal.options || meal.options.length === 0) return '';
-
-  const optionsText = meal.options
-    .map((opt: any, index: number) => {
-      const text = formatOption(opt);
-      if (!text) return null;
-
-      const kcal = opt?.kcal || 0;
-      const p = opt?.macros?.p || 0;
-      const c = opt?.macros?.c || 0;
-      const g = opt?.macros?.g || 0;
-
-      const macrosText = `🔥 ${kcal} kcal | P:${p}g C:${c}g G:${g}g`;
-
-      // Se houver apenas 1 opção, simplifica a leitura da IA. Se houver mais, enumera.
-      if (meal.options.length === 1) {
-        return `  ${text}\n  ${macrosText}`;
-      }
-
-      return `  Opção ${index + 1}: ${text}\n  ${macrosText}`;
-    })
-    .filter(Boolean)
-    .join('\n\n');
-
-  return `- ${meal.name || 'Refeição'} (${meal.time || '--:--'}):\n${optionsText}`;
-}
-
-// 🔥 4. FORMATADOR DO CARDÁPIO COMPLETO
-function formatMealPlan(mealPlan: any): string {
-  if (!Array.isArray(mealPlan) || mealPlan.length === 0) {
-    return 'Cardápio não disponível ou vazio.';
-  }
-
-  return mealPlan
-    .map(formatMeal)
-    .filter(Boolean)
-    .join('\n\n');
+  return {
+    nomePaciente: patient?.full_name?.split(' ')[0] || 'Paciente',
+    objetivoPrincipal,
+    metaPeso: patient?.meta_peso ? `${patient.meta_peso}kg` : 'Manutenção',
+    rotinaSono: '',
+    vontadesDoces: '',
+    alimentosEvitar,
+    restrictions: safeRestrictions,
+    cardapioFormatado: formatMealPlan(patient?.meal_plan),
+    evolucaoTxt,
+    humorHoje: todayLog?.mood || 'Não registrado',
+    aguaHoje: todayLog?.water_ml || 0,
+    refeicoesFeitas,
+    atividadesHojeFormatadas,
+    activityKcal: todayLog?.activity_kcal || 0,
+    todayStr,
+    hasImage: false,
+    macrosDiarios: macros.macrosDiarios || undefined,
+    macrosPorRefeicao: macros.macrosPorRefeicao,
+    beliscosHoje: {
+      totalKcal: beliscosProcessed.totalKcal,
+      totalProtein: beliscosProcessed.totalProtein,
+      totalCarbs: beliscosProcessed.totalCarbs,
+      totalFat: beliscosProcessed.totalFat,
+      items: beliscosProcessed.items,
+      hasBeliscos: beliscosProcessed.hasBeliscos
+    },
+    behaviorPattern,
+    interventionSuggestion
+  };
 }
 
 // ==========================================
 // 🛠️ CONSTRUTOR DE CONTEXTO ADMIN
 // ==========================================
 
-function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: string): string {
+function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: string, deepContextRaw?: string): string {
   const patientsRaw = adminData?.patients;
   const patientsList = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
 
@@ -161,13 +176,16 @@ function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: s
     const humorHoje = p?.todayLog?.mood || 'Não registrou';
     const kcalHoje = p?.todayLog?.activity_kcal ? `${p.todayLog.activity_kcal} kcal gastas` : '0 kcal';
     
+    const hasBeliscos = p?.todayLog?.beliscos?.items?.length > 0;
+    const beliscosInfo = hasBeliscos ? '⚠️ COM BELISCOS' : '✅ SEM BELISCOS';
+    
     const macros = calcularMacrosDoCardapio(p?.meal_plan);
     let macrosText = '';
     if (macros.macrosDiarios) {
-      macrosText = `\n    📊 MACROS DIÁRIOS: ${macros.macrosDiarios.totalKcal}kcal | P:${macros.macrosDiarios.totalProtein}g | C:${macros.macrosDiarios.totalCarbs}g | G:${macros.macrosDiarios.totalFat}g`;
+      macrosText = `\n    📊 MACROS: ${macros.macrosDiarios.totalKcal}kcal | P:${macros.macrosDiarios.totalProtein}g | C:${macros.macrosDiarios.totalCarbs}g | G:${macros.macrosDiarios.totalFat}g`;
     }
 
-    return `- Nome: ${p?.full_name || 'Desconhecido'} \n    Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} \n    Atrasado: ${p?.isLate ? 'Sim' : 'Não'} \n    Meta: ${p?.meta_peso ? `${p.meta_peso}kg` : 'N/A'} \n    Água: ${aguaHoje} \n    Humor: ${humorHoje} \n    Atividade: ${kcalHoje}${macrosText}`;
+    return `- Nome: ${p?.full_name || 'Desconhecido'} ${beliscosInfo}\n    Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} \n    Atrasado: ${p?.isLate ? 'Sim' : 'Não'} \n    Meta: ${p?.meta_peso ? `${p.meta_peso}kg` : 'N/A'} \n    Água: ${aguaHoje} \n    Humor: ${humorHoje} \n    Atividade: ${kcalHoje}${macrosText}`;
   }).join('\n') || 'Nenhum paciente cadastrado.';
 
   const leadsRaw = adminData?.leads;
@@ -192,19 +210,21 @@ ${patientsResumo}
 🎯 OPORTUNIDADES (LEADS):
 ${leadsResumo}
 
-${deepContext ? `\n🔍 DADOS CLÍNICOS E CARDÁPIO PROFUNDO DO PACIENTE PESQUISADO:\n${deepContext}\n` : ''}
+${deepContext ? `\n🔍 ANÁLISE CLÍNICA PROFUNDA DO PACIENTE PESQUISADO (via motor de IA):\n${deepContext}\n` : ''}
+
+${deepContextRaw ? `\n📋 DADOS BRUTOS DO PACIENTE:\n${deepContextRaw}\n` : ''}
 
 🔥 REGRAS DE OURO:
 1. Aja como suporte direto da nutricionista e use TODOS os dados providenciados.
-2. O cardápio detalhado dos pacientes estará na seção "DADOS CLÍNICOS E CARDÁPIO PROFUNDO" se um paciente for pesquisado.
-3. Você DEVE utilizar essas informações para responder perguntas sobre refeições específicas (como almoço, jantar, alimentos, etc).
-4. Se o cardápio ou o dado estiver presente no contexto, você NUNCA deve dizer que não tem acesso. Responda diretamente com base na informação.
-5. Seja direta, profissional e proativa ao ajudar a Nutri.
+2. A "ANÁLISE CLÍNICA PROFUNDA" já contém interpretação comportamental, score de disciplina, risco e intervenção sugerida.
+3. Você DEVE utilizar essas informações para dar respostas clínicas de alto nível.
+4. Seja direta, profissional e proativa ao ajudar a Nutri.
+5. Destaque para a nutricionista: padrões de comportamento, recorrência de beliscos, score de disciplina e riscos identificados.
 `.trim();
 }
 
 // ==========================================
-// 🌐 MAIN POST FUNCTION - EXCLUSIVA ADMIN
+// 🌐 MAIN POST FUNCTION - ADMIN
 // ==========================================
 
 export async function POST(req: Request) {
@@ -222,7 +242,7 @@ export async function POST(req: Request) {
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {
-      return NextResponse.json({ reply: "Por favor, digite uma mensagem ou envie uma foto." }, { status: 200 });
+      return NextResponse.json({ reply: "Digite uma mensagem ou envie uma foto." }, { status: 200 });
     }
 
     const { data: profileCheck } = await supabaseAdmin
@@ -232,17 +252,19 @@ export async function POST(req: Request) {
       .single();
 
     if (profileCheck?.role !== 'admin' && profileCheck?.role !== 'nutricionista') {
-      return NextResponse.json({ reply: 'Acesso negado. Esta área é restrita para administradores.' }, { status: 403 });
+      return NextResponse.json({ reply: 'Acesso negado. Área restrita para administradores.' }, { status: 403 });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) return NextResponse.json({ reply: "Erro de configuração no servidor." }, { status: 500 });
+    if (!geminiKey) return NextResponse.json({ reply: "Erro de configuração." }, { status: 500 });
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     const dataAtual = new Date();
     const currentTimeBR = dataAtual.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+    const todayStr = dataAtual.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
     let deepContext = '';
+    let deepContextRaw = '';
     const normalizedMsg = normalizeString(safeMessage);
     
     const patientsRaw = adminData?.patients;
@@ -258,47 +280,45 @@ export async function POST(req: Request) {
     });
 
     if (mentionedPatient && mentionedPatient.id) {
-      const targetId = mentionedPatient.id;
+      const fullData = await getFullPatientData(mentionedPatient.id, todayStr);
       
-      const [antro, logs, evals, checkins, profileTargetData] = await Promise.all([
-        supabaseAdmin.from('anthropometry').select('*').eq('user_id', targetId).order('measurement_date', { ascending: false }).limit(2),
-        supabaseAdmin.from('daily_logs').select('*').eq('user_id', targetId).order('date', { ascending: false }).limit(3),
-        supabaseAdmin.from('evaluations').select('*').eq('user_id', targetId).limit(1),
-        supabaseAdmin.from('checkins').select('*').eq('user_id', targetId).order('created_at', { ascending: false }).limit(2),
-        supabaseAdmin.from('profiles').select('food_restrictions').eq('id', targetId).limit(1)
-      ]);
-
-      const rawRestrictions = profileTargetData.data?.[0]?.food_restrictions;
-      const restrictionsValidation = z.array(FoodRestrictionSchema)
-        .safeParse(Array.isArray(rawRestrictions) ? rawRestrictions : []);
-        
-      const safeRestrictions = restrictionsValidation.success ? restrictionsValidation.data : [];
-
-      const restricoesTxt = safeRestrictions.length > 0
-        ? safeRestrictions.map((r: any) => {
-            const icon = r.type === 'allergy' ? '🚫' : r.type === 'intolerance' ? '⚠️' : '📋';
-            return `${icon} ${r.food || r.tag || r.foodId}`;
-          }).join(', ')
-        : 'Nenhuma registrada';
-
-      const cardapioTxt = formatMealPlan(mentionedPatient.meal_plan);
-
-      deepContext = `
+      const userData = await buildPatientUserData(
+        fullData.patient,
+        fullData.todayLog,
+        fullData.historicoBeliscos,
+        fullData.alimentosEvitar,
+        fullData.objetivoPrincipal,
+        fullData.evolucaoTxt,
+        todayStr
+      );
+      
+      deepContext = buildContext(safeMessage, userData);
+      
+      deepContextRaw = `
       DADOS DO PACIENTE: ${mentionedPatient.full_name}
       
-      🚫 RESTRIÇÕES ALIMENTARES: ${restricoesTxt}
+      🚫 RESTRIÇÕES ALIMENTARES: ${userData.restrictions.map((r: any) => r.food || r.tag).join(', ') || 'Nenhuma'}
       
       🍽️ CARDÁPIO DETALHADO:
-      ${cardapioTxt}
+      ${userData.cardapioFormatado}
       
-      📋 AVALIAÇÃO: ${JSON.stringify(evals.data)}
-      ✅ CHECK-INS: ${JSON.stringify(checkins.data)}
-      📊 ANTROPOMETRIA: ${JSON.stringify(antro.data)}
-      💧 DIÁRIO: ${JSON.stringify(logs.data)}
+      💧 DIÁRIO DE HOJE:
+      - Água: ${userData.aguaHoje}ml
+      - Refeições feitas: ${userData.refeicoesFeitas}
+      - Humor: ${userData.humorHoje}
+      - Atividade: ${userData.activityKcal} kcal
+      
+      📊 MACROS DIÁRIOS:
+      - Calorias: ${userData.macrosDiarios?.totalKcal || 0} kcal
+      - Proteínas: ${userData.macrosDiarios?.totalProtein || 0}g
+      - Carboidratos: ${userData.macrosDiarios?.totalCarbs || 0}g
+      - Gorduras: ${userData.macrosDiarios?.totalFat || 0}g
       `;
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction: buildAdminContext(adminData, currentTimeBR, deepContext) });
+    const systemInstruction = buildAdminContext(adminData, currentTimeBR, deepContext, deepContextRaw);
+    
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
     
     const mappedHistory = history.map((msg: any) => ({
       role: msg?.role === 'user' ? 'user' : 'model',
@@ -306,12 +326,14 @@ export async function POST(req: Request) {
     }));
 
     const chat = model.startChat({ history: mappedHistory.slice(-10) });
-    const result = image ? await chat.sendMessage([safeMessage, { inlineData: { mimeType: "image/jpeg", data: image } }]) : await chat.sendMessage(safeMessage);
+    const result = image 
+      ? await chat.sendMessage([safeMessage || "Analise esta imagem", { inlineData: { mimeType: "image/jpeg", data: image } }]) 
+      : await chat.sendMessage(safeMessage || "Olá, preciso de ajuda com os pacientes.");
     
     return NextResponse.json({ reply: result.response.text(), remaining: 999 });
 
   } catch (error) {
     console.error('Erro na API Admin:', error);
-    return NextResponse.json({ reply: 'Ocorreu um erro no servidor ao processar sua solicitação.' }, { status: 500 });
+    return NextResponse.json({ reply: 'Ocorreu um erro no servidor.' }, { status: 500 });
   }
 }

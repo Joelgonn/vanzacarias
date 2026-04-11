@@ -562,3 +562,56 @@ export function generateSuggestedMeal(
     foods
   };
 }
+
+// ============================================================================
+// 🔥 FUNÇÃO PARA CALCULAR MACROS DO CARDÁPIO (ADICIONAR NO FINAL DO ARQUIVO)
+// ============================================================================
+
+export function calcularMacrosDoCardapio(mealPlan: any): { 
+  macrosDiarios: { totalKcal: number; totalProtein: number; totalCarbs: number; totalFat: number } | null; 
+  macrosPorRefeicao: Array<{ nome: string; horario: string; kcal: number; protein: number; carbs: number; fat: number }> 
+} {
+  if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
+    return { macrosDiarios: null, macrosPorRefeicao: [] };
+  }
+
+  const macrosPorRefeicao: Array<{ nome: string; horario: string; kcal: number; protein: number; carbs: number; fat: number }> = [];
+  let totalKcal = 0;
+  let totalProtein = 0;
+  let totalCarbs = 0;
+  let totalFat = 0;
+
+  for (const meal of mealPlan) {
+    const option = meal?.options?.[0];
+    if (option) {
+      const kcal = Number(option?.kcal) || 0;
+      const protein = Number(option?.macros?.p) || 0;
+      const carbs = Number(option?.macros?.c) || 0;
+      const fat = Number(option?.macros?.g) || 0;
+
+      totalKcal += kcal;
+      totalProtein += protein;
+      totalCarbs += carbs;
+      totalFat += fat;
+
+      macrosPorRefeicao.push({
+        nome: meal?.name || 'Refeição',
+        horario: meal?.time || '--:--',
+        kcal,
+        protein,
+        carbs,
+        fat
+      });
+    }
+  }
+
+  return {
+    macrosDiarios: {
+      totalKcal,
+      totalProtein,
+      totalCarbs,
+      totalFat
+    },
+    macrosPorRefeicao
+  };
+}

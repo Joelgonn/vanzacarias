@@ -52,6 +52,67 @@ export type UserData = {
     evolucaoGordura?: string;
     evolucaoMassaMagra?: string;
   };
+
+  // BELISCOS DO DIA
+  beliscosHoje?: {
+    totalKcal: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFat: number;
+    items: Array<{
+      id: string;
+      name?: string;
+      grams?: number;
+      kcal: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      timestamp?: string;
+    }>;
+    hasBeliscos: boolean;
+  };
+
+  // ANÁLISE COMPORTAMENTAL
+  behaviorPattern?: {
+    isSabotaging: boolean;
+    signals: {
+      highCalories: boolean;
+      frequentSnacks: boolean;
+      emotionalEating: boolean;
+      lateNightSnacking: boolean;
+      recorrente: boolean;
+    };
+    severity: 'critical' | 'high' | 'medium' | 'low' | 'none';
+    percent: number;
+    totalKcal: number;
+    itemsCount: number;
+    lateNightCount: number;
+    emotionalTrigger: boolean;
+    patternSummary: {
+      frequencia: 'ocasional' | 'frequente' | 'recorrente';
+      periodoCritico: 'manha' | 'tarde' | 'noite' | 'nenhum';
+      horarioPredominante?: string;
+      diasConsecutivos: number;
+      tendencia: string;
+    };
+    impactOnGoal: string;
+    riskLevel: {
+      level: 'baixo' | 'medio' | 'alto' | 'critico';
+      score: number;
+      description: string;
+    };
+    disciplineScore: {
+      score: number;
+      level: 'excelente' | 'bom' | 'regular' | 'atencao' | 'critico';
+      components: {
+        refeicoes: number;
+        agua: number;
+        beliscos: number;
+        atividade: number;
+      };
+    };
+  };
+  interventionSuggestion?: string | null;
 };
 
 type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
@@ -297,6 +358,146 @@ ${alertas}
 }
 
 // ============================================================================
+// 🍪 MÓDULO: BELISCOS DO DIA (APENAS DADOS, SEM INTERPRETAÇÃO)
+// ============================================================================
+function buildBeliscosContext(data: UserData): string {
+  const beliscos = data.beliscosHoje;
+
+  // Caso 1: Nenhum belisco registrado
+  if (!beliscos || !beliscos.hasBeliscos || beliscos.totalKcal === 0) {
+    return `
+[BELISCOS DO DIA]
+Nenhum belisco registrado hoje.
+`.trim();
+  }
+
+  // Calcula percentual de impacto na meta diária
+  const metaKcal = data.macrosDiarios?.totalKcal || 1;
+  const percentImpacto = (beliscos.totalKcal / metaKcal) * 100;
+
+  // Lista os itens (máximo 5 para não poluir o prompt)
+  let itensLista = '';
+  if (beliscos.items && beliscos.items.length > 0) {
+    const topItens = beliscos.items.slice(0, 5);
+    itensLista = '\nITENS REGISTRADOS:\n';
+    topItens.forEach(item => {
+      const nome = item.name || 'Belisco manual';
+      const horario = item.timestamp ? new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'horário não registrado';
+      itensLista += `  - ${nome}: ${Math.round(item.kcal)} kcal (${horario})`;
+      if (item.grams) itensLista += ` - ${Math.round(item.grams)}g`;
+      itensLista += `\n`;
+    });
+    if (beliscos.items.length > 5) {
+      itensLista += `  - ... e mais ${beliscos.items.length - 5} itens\n`;
+    }
+  }
+
+  return `
+[BELISCOS DO DIA - DADOS BRUTOS]
+- Calorias extras: ${Math.round(beliscos.totalKcal)} kcal (${percentImpacto.toFixed(1)}% da meta diária)
+- Proteínas extras: ${Math.round(beliscos.totalProtein)}g
+- Carboidratos extras: ${Math.round(beliscos.totalCarbs)}g
+- Gorduras extras: ${Math.round(beliscos.totalFat)}g
+- Número de episódios: ${beliscos.items.length}
+${itensLista}
+`.trim();
+}
+
+// ============================================================================
+// 🧠 MÓDULO: ANÁLISE COMPORTAMENTAL (INTERPRETAÇÃO + INTERVENÇÃO)
+// ============================================================================
+function buildBehaviorAnalysisContext(data: UserData): string {
+  if (!data.behaviorPattern || !data.behaviorPattern.isSabotaging) {
+    return '';
+  }
+
+  const pattern = data.behaviorPattern;
+  const intervention = data.interventionSuggestion;
+
+  const severityEmoji = {
+    critical: '🔴',
+    high: '🟠',
+    medium: '🟡',
+    low: '🟢',
+    none: '✅'
+  }[pattern.severity];
+
+  const severityText = {
+    critical: 'ALERTA CRÍTICO - AÇÃO NECESSÁRIA',
+    high: 'ATENÇÃO ALTA - MONITORAR',
+    medium: 'ATENÇÃO MODERADA - OBSERVAR',
+    low: 'IMPACTO LEVE - TUDO BEM',
+    none: 'CONTROLADO'
+  }[pattern.severity];
+
+  const riskLevelEmoji = {
+    critico: '🔴',
+    alto: '🟠',
+    medio: '🟡',
+    baixo: '🟢'
+  }[pattern.riskLevel.level];
+
+  const disciplineScoreEmoji = {
+    excelente: '🏆',
+    bom: '👍',
+    regular: '📊',
+    atencao: '⚠️',
+    critico: '🔴'
+  }[pattern.disciplineScore.level];
+
+  let signalsText = '';
+  if (pattern.signals.emotionalEating) signalsText += '\n- 🫂 Alimentação emocional detectada (humor difícil + beliscos)';
+  if (pattern.signals.lateNightSnacking) signalsText += '\n- 🌙 Beliscos noturnos detectados (após 18h)';
+  if (pattern.signals.highCalories) signalsText += `\n- ⚠️ Alto impacto calórico (${pattern.percent.toFixed(1)}% da meta)`;
+  if (pattern.signals.frequentSnacks) signalsText += `\n- 🔄 Frequência alta de beliscos (${pattern.itemsCount} episódios)`;
+  if (pattern.signals.recorrente) signalsText += '\n- 📅 Padrão recorrente identificado (vários dias seguidos)';
+
+  let patternSummaryText = '';
+  if (pattern.patternSummary.frequencia !== 'ocasional') {
+    patternSummaryText += `\n- 📊 Frequência: ${pattern.patternSummary.frequencia === 'recorrente' ? 'Recorrente' : 'Frequente'} (${pattern.patternSummary.diasConsecutivos} dias consecutivos)`;
+  }
+  if (pattern.patternSummary.periodoCritico !== 'nenhum') {
+    patternSummaryText += `\n- ⏰ Período crítico: ${pattern.patternSummary.periodoCritico === 'noite' ? 'Noturno' : pattern.patternSummary.periodoCritico === 'tarde' ? 'Vespertino' : 'Matutino'}`;
+  }
+  if (pattern.patternSummary.tendencia && pattern.patternSummary.tendencia !== 'sem padrão definido') {
+    patternSummaryText += `\n- 📈 Tendência: ${pattern.patternSummary.tendencia}`;
+  }
+
+  return `
+[ANÁLISE COMPORTAMENTAL - INTERPRETAÇÃO INTELIGENTE]
+${severityEmoji} Nível: ${severityText}
+- Impacto no objetivo: ${pattern.impactOnGoal}
+- Percentual da meta: ${pattern.percent.toFixed(1)}%
+- Calorias extras: ${Math.round(pattern.totalKcal)} kcal
+- Episódios hoje: ${pattern.itemsCount}
+${patternSummaryText}
+
+🎯 PADRÕES DETECTADOS:${signalsText}
+
+${riskLevelEmoji} PREVISÃO DE RISCO: ${pattern.riskLevel.level.toUpperCase()} - ${pattern.riskLevel.description}
+
+${disciplineScoreEmoji} SCORE DE DISCIPLINA: ${pattern.disciplineScore.score}/100 (${pattern.disciplineScore.level.toUpperCase()})
+- Componentes:
+  * Refeições seguidas: ${pattern.disciplineScore.components.refeicoes}/30
+  * Hidratação: ${pattern.disciplineScore.components.agua}/25
+  * Controle de beliscos: ${pattern.disciplineScore.components.beliscos}/30
+  * Atividade física: ${pattern.disciplineScore.components.atividade}/15
+
+💬 INTERVENÇÃO BASE (ADAPTE PARA SUA RESPOSTA DE FORMA NATURAL):
+${intervention || 'Observe o padrão com acolhimento e ofereça uma próxima ação prática.'}
+
+⚠️ REGRAS DE CONDUTA PARA VOCÊ (IA):
+1. NUNCA culpe o paciente
+2. Sempre inclua a "PRÓXIMA AÇÃO IMEDIATA" sugerida na intervenção
+3. Use linguagem acolhedora e empática
+4. Se for recorrente, mencione o padrão detectado naturalmente (ex: "Percebi que isso acontece mais à noite...")
+5. Adapte o tom conforme a gravidade
+6. Relacione com o objetivo do paciente quando relevante
+7. Use o Score de Disciplina para motivar: "Seu score hoje é X, está no caminho!"
+`.trim();
+}
+
+// ============================================================================
 // 🎯 MÓDULO: INSTRUÇÕES POR INTENÇÃO
 // ============================================================================
 function buildIntentInstructions(
@@ -422,6 +623,8 @@ export function buildContext(message: string, data: UserData): string {
     buildBodyCompositionContext(data),
     buildBehavioralContext(data),
     buildEmotionalContext(data),
+    buildBeliscosContext(data),
+    buildBehaviorAnalysisContext(data),
     buildIntentInstructions(intent, hasMacros, hasBodyComposition),
     data.hasImage ? buildImageAnalysisRules() : '',
     `

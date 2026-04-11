@@ -11,39 +11,37 @@ import { getSemanticMemories } from '@/lib/semanticSearch'
 import { generateEmbedding } from '@/lib/embeddingService'
 import { expandRestrictions } from '@/lib/nutrition/restrictions'
 import { FOOD_REGISTRY } from '@/lib/foodRegistry'
+import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
+
+// IMPORTS CENTRALIZADOS
+import { processBeliscos } from '@/lib/beliscosProcessor'
+import { calcularMacrosDoCardapio } from '@/lib/macroCalculator'
+import { formatMealPlan } from '@/lib/mealPlanFormatter'
+import { normalizeRestrictions } from '@/lib/normalizeRestrictions'
 
 // ==========================================
 // 🔥 FUNÇÃO CENTRAL (FORMATADOR OFICIAL)
-// Centraliza a regra de gramas e isola o legado.
-// A API e a IA NUNCA MAIS verão ".quantity".
 // ==========================================
-function formatFoodItem(f: any): string {
+function formatFoodItemWrapper(f: any): string {
+  const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
+  const baseGrams = registryItem?.baseGrams || 100;
   let grams = 0;
 
   if (f.grams != null) {
-    // 1. Novo Padrão de Ouro (DietBuilder gera 'grams' nativo)
-    grams = f.grams;
+    grams = Math.round(f.grams);
   } else if (f.quantity != null) {
-    // 2. Fallback Legado Protegido (última vez que 'quantity' é lido)
-    // Usamos o registry para precisão nutricional ao invés de fixar em 100
-    const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-    const baseGrams = registryItem?.baseGrams || 100;
-    grams = f.quantity * baseGrams;
+    grams = Math.round(f.quantity * baseGrams);
   } else {
-    // 3. Fallback absoluto de segurança
-    const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-    grams = registryItem?.baseGrams || 100;
+    grams = baseGrams;
   }
 
-  // 👉 Padrão Imutável para IA (sempre "Xg Nome")
-  return `${Math.round(grams)}g ${f.name}`;
+  return `${grams}g ${f.name}`;
 }
 
 // ==========================================
-// 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD) - NÍVEL ELITE
+// 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD)
 // ==========================================
 
-// 1. Schemas de Payload (Frontend)
 const MessageSchema = z.object({
   role: z.enum(['user', 'assistant', 'model']),
   content: z.string()
@@ -52,18 +50,15 @@ const MessageSchema = z.object({
 const PatientRequestSchema = z.object({
   userId: z.string().min(1),
   message: z.string().min(1),
-
   history: z.array(
     z.object({
       role: z.enum(['user', 'assistant']),
       content: z.string()
     })
   ).optional().default([]),
-
   image: z.string().optional().nullable()
-}).passthrough(); // 🔥 CRÍTICO
+}).passthrough();
 
-// 2. Schemas de Banco de Dados
 const FoodRestrictionSchema = z.object({
   type: z.enum(['allergy', 'intolerance', 'preference', 'restriction']).catch('restriction'),
   foodId: z.string().optional(),
@@ -74,11 +69,7 @@ const FoodRestrictionSchema = z.object({
 const FoodItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-
-  // 🔥 NOVO
   grams: z.number().optional(),
-
-  // 🔥 LEGADO (Necessário ler, mas a função formatFoodItem resolve)
   quantity: z.number().optional().default(1)
 });
 
@@ -131,7 +122,7 @@ function normalizeString(str: string): string {
 }
 
 // ==========================================
-// 🛡️ GUARDRAIL 10/10: AUTO-SYNC & SEMÂNTICA
+// 🛡️ GUARDRAIL: AUTO-SYNC & SEMÂNTICA
 // ==========================================
 
 const SEMANTIC_DICT = new Map<string, Set<string>>();
@@ -210,83 +201,29 @@ async function ensureSafeResponse(
 }
 
 // ==========================================
-// 🧮 FUNÇÃO PARA CALCULAR MACROS DO CARDÁPIO
-// ==========================================
-
-interface MacroPorRefeicao {
-  nome: string; horario: string; kcal: number; protein: number; carbs: number; fat: number;
-}
-interface MacrosDiarios {
-  totalKcal: number; totalProtein: number; totalCarbs: number; totalFat: number;
-}
-
-function calcularMacrosDoCardapio(mealPlan: MealPlan): { macrosDiarios: MacrosDiarios | null; macrosPorRefeicao: MacroPorRefeicao[]; } {
-  if (!mealPlan || mealPlan.length === 0) {
-    return { macrosDiarios: null, macrosPorRefeicao: [] };
-  }
-  const macrosPorRefeicao: MacroPorRefeicao[] = [];
-  let totalKcal = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-
-  for (const meal of mealPlan) {
-    const option = meal.options?.[0];
-    if (option) {
-      const kcal = option.kcal || 0;
-      const protein = option.macros?.p || 0;
-      const carbs = option.macros?.c || 0;
-      const fat = option.macros?.g || 0;
-
-      totalKcal += kcal; totalProtein += protein; totalCarbs += carbs; totalFat += fat;
-      macrosPorRefeicao.push({ nome: meal.name, horario: meal.time, kcal, protein, carbs, fat });
-    }
-  }
-  return { macrosDiarios: { totalKcal, totalProtein, totalCarbs, totalFat }, macrosPorRefeicao };
-}
-
-function formatarCardapio(mealPlan: MealPlan): string {
-  if (!mealPlan || mealPlan.length === 0) return 'Cardápio ainda não elaborado.';
-  
-  return mealPlan.map((meal) => {
-    const option = meal.options?.[0];
-    if (!option) return `- ${meal.time} | ${meal.name}: Sem descrição`;
-    
-    // ✅ REFATORAÇÃO DE SUCESSO APLICADA AQUI 
-    // Adeus lógica inline. Adeus quantity vazando.
-    const foods = option.foodItems?.length
-      ? option.foodItems.map(formatFoodItem).join(', ')
-      : option.description || 'Sem descrição';
-
-    const kcal = option.kcal || 0;
-    const macros = option.macros || { p: 0, c: 0, g: 0 };
-    
-    return `- ${meal.time} | ${meal.name}: ${foods} (${kcal} kcal | P:${macros.p}g | C:${macros.c}g | G:${macros.g}g)`;
-  }).join('\n');
-}
-
-// ==========================================
-// 🌐 MAIN POST FUNCTION - EXCLUSIVA PACIENTE
+// 🌐 MAIN POST FUNCTION - PACIENTE
 // ==========================================
 
 export async function POST(req: Request) {
   try {
     const rawBody = await req.json();
     
-    // 🔥 VALIDAÇÃO ZOD: Failsafe absoluto do payload
     const parsedData = PatientRequestSchema.safeParse(rawBody);
     
     if (!parsedData.success) {
-      console.error("❌ Payload inválido rejeitado pelo Zod:", parsedData.error.format());
-      return NextResponse.json({ reply: "Dados de requisição inválidos. Por favor, recarregue a página." }, { status: 400 });
+      console.error("❌ Payload inválido:", parsedData.error.format());
+      return NextResponse.json({ reply: "Dados de requisição inválidos." }, { status: 400 });
     }
 
     const { userId, message, history, image } = parsedData.data;
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {
-      return NextResponse.json({ reply: "Por favor, digite uma mensagem ou envie uma foto." }, { status: 200 });
+      return NextResponse.json({ reply: "Digite uma mensagem ou envie uma foto." }, { status: 200 });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) return NextResponse.json({ reply: "Erro de configuração no servidor." }, { status: 500 });
+    if (!geminiKey) return NextResponse.json({ reply: "Erro de configuração." }, { status: 500 });
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     const dataAtual = new Date();
@@ -298,18 +235,27 @@ export async function POST(req: Request) {
       const cached = await getCachedResponse(userId, safeMessage);
       if (cached) {
         const currentRate = await checkRateLimit(userId);
-        if (!currentRate.allowed) return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
-        return NextResponse.json({ reply: cached, cached: true, remaining: Math.max(currentRate.remaining - 1, 0), limit: currentRate.limit }, { status: 200 });
+        if (!currentRate.allowed) {
+          return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
+        }
+        return NextResponse.json({ 
+          reply: cached, 
+          cached: true, 
+          remaining: Math.max(currentRate.remaining - 1, 0), 
+          limit: currentRate.limit 
+        }, { status: 200 });
       }
     }
 
     const rate = await checkRateLimit(userId);
-    if (!rate.allowed) return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
+    if (!rate.allowed) {
+      return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
+    }
 
     // BUSCA DE DADOS DO PACIENTE
     const [profileRes, dailyLogRes, evalRes, qfaRes, antroRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan, food_restrictions').eq('id', userId).limit(1),
-      supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood, activities, activity_kcal').eq('user_id', userId).eq('date', todayStr).limit(1),
+      supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood, activities, activity_kcal, beliscos').eq('user_id', userId).eq('date', todayStr).limit(1),
       supabaseAdmin.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('anthropometry').select('weight, waist').eq('user_id', userId).order('measurement_date', { ascending: false }).limit(2)
@@ -319,29 +265,70 @@ export async function POST(req: Request) {
     const dailyLog = dailyLogRes.data?.[0];
     const evaluation = evalRes.data?.[0];
     
-    // AQUI O ZOD NÃO VAI MAIS DESTRUIR OS ALIMENTOS MONTADOS NO FRONTEND
+    // PROCESSAR BELISCOS
+    const beliscosProcessed = processBeliscos(dailyLog?.beliscos);
+    
+    // BUSCAR HISTÓRICO
+    const { data: historicoBeliscosRaw } = await supabaseAdmin
+      .from('daily_logs')
+      .select('date, beliscos')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(4);
+    
+    const historicoBeliscos = (historicoBeliscosRaw || [])
+      .map(log => {
+        const parsed = processBeliscos(log.beliscos);
+        return {
+          data: log.date,
+          totalKcal: parsed.totalKcal,
+          itemsCount: parsed.items.length
+        };
+      })
+      .filter(d => d.data !== todayStr);
+    
     const safeMealPlan = MealPlanSchema.parse(profile?.meal_plan);
     
-    const restrictionsValidation = z.array(FoodRestrictionSchema).safeParse(profile?.food_restrictions);
-    const safeRestrictions = restrictionsValidation.success ? restrictionsValidation.data : [];
+    // NORMALIZAR RESTRIÇÕES
+    const safeRestrictions = normalizeRestrictions(
+      Array.isArray(profile?.food_restrictions) ? profile.food_restrictions : []
+    );
 
     let alimentosEvitar: string[] = [];
     if (qfaRes.data?.[0]?.answers) {
-      alimentosEvitar = Object.entries(qfaRes.data[0].answers).filter(([_, f]) => f === "0").map(([a]) => a.replace(/_/g, ' '));
+      alimentosEvitar = Object.entries(qfaRes.data[0].answers)
+        .filter(([_, f]) => f === "0")
+        .map(([a]) => a.replace(/_/g, ' '));
     }
 
     const { macrosDiarios, macrosPorRefeicao } = calcularMacrosDoCardapio(safeMealPlan);
 
-    const baseContext = buildContext(safeMessage, {
+    // DETECTAR PADRÃO DE COMPORTAMENTO
+    const behaviorPattern = detectSabotagePattern({
+      beliscos: beliscosProcessed,
+      macrosDiarios: macrosDiarios || undefined,
+      humorHoje: dailyLog?.mood,
+      historicoBeliscos,
+      objetivoPrincipal: evaluation?.answers?.["0"],
+      refeicoesFeitas: dailyLog?.meals_checked?.length || 0,
+      totalRefeicoesPlano: macrosPorRefeicao?.length || 0,
+      aguaHoje: dailyLog?.water_ml || 0,
+      activityKcal: dailyLog?.activity_kcal || 0
+    });
+    
+    const interventionSuggestion = buildIntervention(behaviorPattern, evaluation?.answers?.["0"]);
+
+    // PREPARAR UserData
+    const userDataForContext = {
       nomePaciente: profile?.full_name?.split(' ')[0] || 'Paciente',
       objetivoPrincipal: evaluation?.answers?.["0"] || 'Não informado',
       metaPeso: profile?.meta_peso ? `${profile.meta_peso}kg` : 'Manutenção',
       rotinaSono: evaluation?.answers?.["3"] || '',
       vontadesDoces: evaluation?.answers?.["7"] || '',
       alimentosEvitar,
-      restrictions: safeRestrictions as any,
-      cardapioFormatado: formatarCardapio(safeMealPlan), // Formatação gerada através da nova função segura
-      evolucaoTxt: antroRes.data?.length === 2 ? `Reduziu ${antroRes.data[1].weight - antroRes.data[0].weight}kg` : 'Iniciando.',
+      restrictions: safeRestrictions,
+      cardapioFormatado: formatMealPlan(safeMealPlan),
+      evolucaoTxt: antroRes.data?.length === 2 ? `Reduziu ${(antroRes.data[0].weight - antroRes.data[1].weight).toFixed(1)}kg` : 'Iniciando.',
       humorHoje: dailyLog?.mood || 'Não registrado',
       aguaHoje: dailyLog?.water_ml || 0,
       refeicoesFeitas: dailyLog?.meals_checked?.length || 0,
@@ -350,8 +337,21 @@ export async function POST(req: Request) {
       todayStr,
       hasImage: !!image,
       macrosDiarios: macrosDiarios || undefined,
-      macrosPorRefeicao
-    });
+      macrosPorRefeicao,
+      beliscosHoje: {
+        totalKcal: beliscosProcessed.totalKcal,
+        totalProtein: beliscosProcessed.totalProtein,
+        totalCarbs: beliscosProcessed.totalCarbs,
+        totalFat: beliscosProcessed.totalFat,
+        items: beliscosProcessed.items,
+        hasBeliscos: beliscosProcessed.hasBeliscos
+      },
+      behaviorPattern,
+      interventionSuggestion
+    };
+
+        // CONTEXTO PRINCIPAL
+    const baseContext = buildContext(safeMessage, userDataForContext);
 
     const summary = await getUserSummary(userId);
     const msgLower = safeMessage.toLowerCase();
@@ -384,24 +384,34 @@ ${semanticMemory || ''}`.trim();
 
     reply = await ensureSafeResponse(reply, safeRestrictions, chat);
 
-    // Salvamento assíncrono na memória
+    // SALVAMENTO ASSÍNCRONO
     if (userId) {
       const qText = safeMessage || 'Enviou imagem';
-      const { data: insertedMsgs } = await supabaseAdmin.from('ai_messages').insert({ user_id: userId, question: qText, answer: reply }).select('id');
+      const { data: insertedMsgs } = await supabaseAdmin
+        .from('ai_messages')
+        .insert({ user_id: userId, question: qText, answer: reply })
+        .select('id');
+      
       if (insertedMsgs?.[0]) {
         (async () => {
           try {
             await updateUserSummary(userId, { question: qText, answer: reply });
             if (qText.length > 10) {
               const vector = await generateEmbedding(`Pergunta: ${qText}\nResposta: ${reply}`);
-              if (vector) await supabaseAdmin.from('ai_messages').update({ embedding: vector }).eq('id', insertedMsgs[0].id);
+              if (vector) {
+                await supabaseAdmin.from('ai_messages').update({ embedding: vector }).eq('id', insertedMsgs[0].id);
+              }
             }
           } catch (e) { console.error('Background Task Error', e); }
         })();
       }
     }
 
-    return NextResponse.json({ reply, remaining: Math.max(rate.remaining - 1, 0), limit: rate.limit });
+    return NextResponse.json({ 
+      reply, 
+      remaining: Math.max(rate.remaining - 1, 0), 
+      limit: rate.limit 
+    });
 
   } catch (error) {
     console.error('Erro na API Patient:', error);
