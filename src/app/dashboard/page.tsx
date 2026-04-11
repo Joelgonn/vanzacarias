@@ -26,15 +26,20 @@ import { Activity, getTotalActivityKcal } from '@/lib/activities';
 import { toast } from 'sonner';
 
 // =========================================================================
-// 🔥 COMPONENTES UI PREMIUM (NÍVEL SAAS)
+// 🔥 COMPONENTES UI PREMIUM (NÍVEL SAAS) COM ÍCONES COLORIDOS
 // =========================================================================
-function MetricCard({ label, value, subtext, icon: Icon, highlight }: any) {
+function MetricCard({ label, value, subtext, icon: Icon, highlight, iconColor }: any) {
   return (
-    <div className={`p-5 md:p-6 rounded-[2rem] border transition-all duration-300 hover:scale-[1.02] hover:shadow-md flex flex-col justify-between min-h-[140px] ${highlight ? 'bg-gradient-to-br from-nutri-900 to-stone-900 border-nutri-800 text-white shadow-lg relative overflow-hidden' : 'bg-white border-stone-100 shadow-sm'}`}>
+    <div className={`p-5 md:p-6 rounded-[2rem] border transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between min-h-[140px] ${
+      highlight 
+        ? 'bg-gradient-to-br from-nutri-900 to-stone-900 border-nutri-800 text-white shadow-md hover:shadow-xl hover:shadow-amber-500/30 relative overflow-hidden' 
+        : 'bg-white border-stone-100 shadow-md hover:shadow-xl hover:shadow-amber-500/20 hover:border-amber-200'
+    }`}>
       {highlight && <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>}
       <div className="flex justify-between items-start mb-3 relative z-10">
         <p className={`text-[10px] md:text-xs uppercase font-bold tracking-widest ${highlight ? 'text-nutri-200' : 'text-stone-400'}`}>{label}</p>
-        {Icon && <Icon size={18} className={highlight ? "text-nutri-400" : "text-stone-300"} />}
+        {/* Renderiza a cor do ícone passada por prop ou usa o padrão */}
+        {Icon && <Icon size={20} strokeWidth={2.5} className={iconColor || (highlight ? "text-nutri-400" : "text-stone-300")} />}
       </div>
       <div className="relative z-10">
         <p className={`text-2xl md:text-3xl font-black tracking-tight ${highlight ? 'text-white' : 'text-stone-900'}`}>
@@ -128,7 +133,6 @@ export default function Dashboard() {
     activity_kcal: 0
   });
 
-  // 🔥 COMPOSIÇÃO CORPORAL (integrada no loadData)
   const [bodyComposition, setBodyComposition] = useState<{
     percentualGordura: number | null;
     massaGorda: number | null;
@@ -154,7 +158,6 @@ export default function Dashboard() {
 
     const userId = session.user.id;
 
-    // Buscando o food_restrictions junto no perfil
     const { data: profileData } = await supabase
       .from('profiles')
       .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo')
@@ -205,9 +208,6 @@ export default function Dashboard() {
       .eq('date', todayStr)
       .single();
 
-    // ===============================================================
-    // 🔥 CÁLCULO DA COMPOSIÇÃO CORPORAL (integrado - sem duplicação)
-    // ===============================================================
     try {
       const latestSkin = skin?.[0];
       const latestWeight = antro?.find(a => a.weight) || antro?.[0];
@@ -227,7 +227,6 @@ export default function Dashboard() {
         if (sum === 0) {
           setBodyComposition(null);
         } else {
-          // Calcular idade
           let age: number | null = null;
           if (profileData?.data_nascimento) {
             const birthDate = new Date(profileData.data_nascimento);
@@ -246,7 +245,7 @@ export default function Dashboard() {
               sum,
               age,
               profileData?.sexo,
-              latestWeight.weight
+              parseFloat(latestWeight.weight)
             );
 
             if (result) {
@@ -367,8 +366,8 @@ export default function Dashboard() {
   };
 
   const latestWeightForWater = useMemo(() => {
-    if (checkins.length > 0) return checkins[checkins.length - 1].peso;
-    if (antroData.length > 0) return antroData[0].weight;
+    if (checkins.length > 0) return parseFloat(checkins[checkins.length - 1].peso);
+    if (antroData.length > 0) return parseFloat(antroData[0].weight);
     return 70; 
   }, [checkins, antroData]);
 
@@ -384,7 +383,6 @@ export default function Dashboard() {
   const mealProgress = totalMeals > 0 ? Math.round((completedMeals / totalMeals) * 100) : 0;
   const isMealGoalMet = mealProgress >= 100;
 
-  // 🔥 SCORE DIÁRIO GAMIFICADO
   const dailyScore = useMemo(() => {
     let moodScore = 0;
     if (dailyLog.mood === 'feliz') moodScore = 100;
@@ -516,15 +514,6 @@ export default function Dashboard() {
     return diffInDays <= 7;
   }, [checkins]);
 
-  const daysUntilNextCheckin = useMemo(() => {
-    if (!isCheckinDoneThisWeek || checkins.length === 0) return 0;
-    const lastDate = new Date(checkins[checkins.length - 1].created_at);
-    const nextDate = new Date(lastDate);
-    nextDate.setDate(nextDate.getDate() + 7);
-    const diff = Math.ceil((nextDate.getTime() - new Date().getTime()) / (1000 * 3600 * 24));
-    return diff > 0 ? diff : 0;
-  }, [isCheckinDoneThisWeek, checkins]);
-
   const currentStreak = useMemo(() => {
     if (checkins.length === 0) return 0;
     const sorted = [...checkins].reverse();
@@ -580,6 +569,9 @@ export default function Dashboard() {
     return 'Obesidade Grau III';
   };
 
+  // =========================================================================
+  // 🔥 CORREÇÃO DO GRÁFICO (Garante pontos e linhas visíveis)
+  // =========================================================================
   const timelineData = useMemo(() => {
     const dateSet = new Set<string>();
     const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
@@ -592,7 +584,7 @@ export default function Dashboard() {
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
     const checkinComAltura = [...checkins].reverse().find(c => c.altura);
-    const ultimaAltura = checkinComAltura?.altura || null;
+    const ultimaAltura = checkinComAltura?.altura ? parseFloat(checkinComAltura.altura) : null;
 
     return sortedDates.map(dateStr => {
       const checkin = checkins.find(h => formatD(h.created_at) === dateStr);
@@ -600,8 +592,12 @@ export default function Dashboard() {
       const skin = skinfoldsData.find(s => formatD(s.measurement_date) === dateStr);
       const bio = bioData.find(b => formatD(b.exam_date) === dateStr);
 
-      const pesoAtual = checkin?.peso || antro?.weight || null;
-      const imcAtual = pesoAtual && ultimaAltura ? getIMC(pesoAtual, ultimaAltura) : null;
+      const rawPeso = checkin?.peso || antro?.weight;
+      const rawCintura = antro?.waist || checkin?.cintura; // Tenta pegar a cintura do check-in também
+      
+      const pesoAtual = rawPeso ? parseFloat(rawPeso) : null;
+      const cinturaAtual = rawCintura ? parseFloat(rawCintura) : null;
+      const imcAtual = pesoAtual && ultimaAltura ? parseFloat(getIMC(pesoAtual, ultimaAltura) || "0") : null;
 
       let sumFolds: number | null = null;
       if (skin) {
@@ -618,11 +614,11 @@ export default function Dashboard() {
         date: dateStr,
         peso: pesoAtual,
         imc: imcAtual,
-        classificacao: imcAtual ? getClassificacaoIMC(parseFloat(imcAtual)) : '',
-        cintura: antro?.waist || null,
+        classificacao: imcAtual ? getClassificacaoIMC(imcAtual) : '',
+        cintura: cinturaAtual,
         somatorio_dobras: sumFolds,
         homair: homa,
-        adesao: checkin?.adesao_ao_plano || null,
+        adesao: checkin?.adesao_ao_plano ? parseFloat(checkin.adesao_ao_plano) : null,
         hasExam: !!bio, 
       };
     });
@@ -644,24 +640,22 @@ export default function Dashboard() {
     };
   }, [timelineData]);
 
-  const isGoalMet = profile?.meta_peso && deltas.currentWeight && deltas.currentWeight <= profile.meta_peso;
+  const isGoalMet = profile?.meta_peso && deltas.currentWeight && deltas.currentWeight <= parseFloat(profile.meta_peso);
 
   const weightProgressPercent = useMemo(() => {
     if (!profile?.meta_peso || !deltas.initialWeight || !deltas.currentWeight) return 0;
     const initial = deltas.initialWeight;
     const current = deltas.currentWeight;
-    const target = profile.meta_peso;
+    const target = parseFloat(profile.meta_peso);
     
     if (initial === target) return 100;
 
-    // Se a meta é perder peso
     if (initial > target) {
       if (current <= target) return 100;
       if (current >= initial) return 0;
       return Math.max(0, Math.min(100, ((initial - current) / (initial - target)) * 100));
     } 
     
-    // Se a meta é ganhar peso
     if (initial < target) {
       if (current >= target) return 100;
       if (current <= initial) return 0;
@@ -673,6 +667,7 @@ export default function Dashboard() {
 
   const projection = useMemo(() => {
     if (!profile?.meta_peso) return null;
+    const target = parseFloat(profile.meta_peso);
     
     const validPoints = timelineData.filter(d => d.peso !== null);
     if (validPoints.length < 2) return null; 
@@ -689,7 +684,7 @@ export default function Dashboard() {
     if (weeksPassed < 1) return null; 
 
     const ratePerWeek = weightLost / weeksPassed;
-    const weightLeft = lastPoint.peso! - profile.meta_peso;
+    const weightLeft = lastPoint.peso! - target;
     
     if (weightLeft <= 0) return { achieved: true };
 
@@ -702,7 +697,6 @@ export default function Dashboard() {
     };
   }, [timelineData, profile?.meta_peso]);
 
-  // 🔥 INSIGHT AUTOMÁTICO (IA)
   const smartInsight = useMemo(() => {
     if (!deltas.currentWeight || !deltas.initialWeight) return "Faça seu primeiro relato para destravar insights automáticos do seu corpo.";
     
@@ -716,16 +710,12 @@ export default function Dashboard() {
     return "Seu progresso está estável. Pequenos ajustes podem acelerar seus resultados.";
   }, [deltas, dailyLog.mood, dailyScore]);
 
-  // Lógica de status para o Card de Perfil Alimentar
   const foodRestrictions = profile?.food_restrictions || [];
   const hasFoodRestrictions = foodRestrictions.length > 0;
   const foodStatusConfig = hasFoodRestrictions 
     ? { icon: <ShieldAlert size={20} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
     : { icon: <ShieldCheck size={20} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
 
-  // =========================================================================
-  // 🔥 ADMIN CONTEXT PARA O CHATASSISTANT (com composição corporal)
-  // =========================================================================
   const adminContextForChat: AdminContext = {
     patients: [],
     leads: [],
@@ -733,6 +723,10 @@ export default function Dashboard() {
     todayTotalMessages: 0,
     bodyComposition: bodyComposition
   };
+
+  // Verifica quantos pontos válidos temos para o gráfico (para mostrar o aviso caso só haja 1 ponto)
+  const validWeightsCount = timelineData.filter(d => d.peso !== null).length;
+  const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
@@ -746,11 +740,11 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-[#F9FAFB] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
       
-      {/* SIDEBAR DESKTOP PREMIUM */}
+      {/* SIDEBAR DESKTOP */}
       <aside className="w-64 bg-white/60 backdrop-blur-xl border-r border-stone-200/50 hidden md:flex flex-col p-8 sticky top-20 h-[calc(100vh-80px)] z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)]">
         <h2 className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em] mb-10">Navegação</h2>        
         <nav className="flex-1 space-y-2">
-          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 bg-white text-nutri-900 font-bold text-sm rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-stone-100 transition-all">Painel Geral</Link>
+          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 bg-white text-nutri-900 font-bold text-sm rounded-2xl shadow-md border border-stone-100 transition-all">Painel Geral</Link>
           <Link href="/paciente/avaliacao" className="flex items-center gap-3 px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">Avaliação (QFA)</Link>
           <Link href="/dashboard/meu-plano" className="flex items-center justify-between px-4 py-3 text-stone-500 hover:bg-stone-50/80 hover:text-stone-900 font-semibold text-sm rounded-2xl transition-all">
             Meu Plano {!canAccessMealPlan && <Lock size={14} className="text-stone-300"/>}
@@ -794,7 +788,7 @@ export default function Dashboard() {
                   <p className={`font-bold text-sm md:text-base leading-tight ${trialData.isActive ? 'text-amber-900' : 'text-red-900'}`}>{trialData.isActive ? `${trialData.daysLeft} dias de teste` : 'Teste expirado'}</p>
                   <p className={`text-xs mt-0.5 line-clamp-1 md:line-clamp-none ${trialData.isActive ? 'text-amber-700/80' : 'text-red-700/80'}`}>Desbloqueie o acesso completo e tenha análises completas.</p>
                 </div>
-                <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="shrink-0 bg-stone-900 text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-800 transition-all flex items-center gap-1.5 shadow-md disabled:opacity-70">
+                <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="shrink-0 bg-stone-900 text-white px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg hover:shadow-amber-500/40 hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-md">
                   {processingCheckout ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} Assinar
                 </button>
               </div>
@@ -802,7 +796,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* 1. HERO SECTION (Storytelling) */}
+        {/* 1. HERO SECTION */}
         <header className="flex flex-col gap-2 animate-fade-in-up mt-2">
           <p className="text-sm font-bold text-stone-500 uppercase tracking-widest flex items-center gap-2">
             Seu progresso hoje 
@@ -824,36 +818,40 @@ export default function Dashboard() {
           </p>
         </header>
 
-        {/* 2. SUPER CARDS (Resumo Executivo Visual) */}
+        {/* 2. SUPER CARDS (AGORA COM ÍCONES COLORIDOS 🔥) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <MetricCard 
             label="Progresso" 
             value={`${Math.round(weightProgressPercent)}%`} 
             highlight 
             icon={Target}
+            iconColor="text-amber-400"
           />
           <MetricCard 
             label="Peso atual" 
             value={deltas.currentWeight ? `${deltas.currentWeight} kg` : '--'} 
             icon={Scale}
             subtext={deltas.initialWeight ? `Iniciou com ${deltas.initialWeight}kg` : ''}
+            iconColor="text-blue-500"
           />
           <MetricCard 
             label="Faltam" 
             value={projection?.weightLeft ? `${projection.weightLeft} kg` : '--'} 
             icon={ArrowDown}
             subtext={profile?.meta_peso ? `Meta: ${profile.meta_peso}kg` : 'Defina sua meta'}
+            iconColor="text-rose-500"
           />
           <MetricCard 
             label="Consistência" 
             value={`${currentStreak} sem`} 
             icon={Flame}
             subtext="Check-ins seguidos"
+            iconColor="text-orange-500"
           />
         </div>
 
-        {/* 3. INSIGHT INTELIGENTE (IA Perceived) */}
-        <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm flex items-start sm:items-center gap-5 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        {/* 3. INSIGHT INTELIGENTE */}
+        <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-md flex items-start sm:items-center gap-5 animate-fade-in-up hover:shadow-xl hover:shadow-amber-500/20 hover:-translate-y-1 transition-all duration-300" style={{ animationDelay: '0.2s' }}>
           <div className="p-3 bg-nutri-50 rounded-2xl text-nutri-800 shrink-0">
             <Brain size={28} />
           </div>
@@ -867,9 +865,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* FEEDBACK INTELIGENTE (Mantido da Lógica Original para não excluir) */}
+        {/* FEEDBACK INTELIGENTE */}
         {smartFeedback && (
-          <div className={`p-5 rounded-3xl border shadow-sm ${smartFeedback.bg} ${smartFeedback.border} flex items-start sm:items-center gap-4 animate-fade-in-up backdrop-blur-sm`}>
+          <div className={`p-5 rounded-3xl border shadow-md ${smartFeedback.bg} ${smartFeedback.border} flex items-start sm:items-center gap-4 animate-fade-in-up backdrop-blur-sm`}>
             <div className={`p-2.5 bg-white/80 backdrop-blur-md rounded-xl shadow-sm ${smartFeedback.color} shrink-0`}><smartFeedback.icon size={22} strokeWidth={2.5} /></div>
             <div>
               <h4 className={`font-bold text-base mb-0.5 tracking-tight ${smartFeedback.color}`}>{smartFeedback.title}</h4>
@@ -880,7 +878,7 @@ export default function Dashboard() {
 
         {/* 4. DIÁRIO GAMIFICADO */}
         {canAccessMealPlan && (
-          <div className="bg-white/80 backdrop-blur-xl p-5 md:p-8 rounded-[2rem] shadow-sm border border-stone-100 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+          <div className="bg-white/80 backdrop-blur-xl p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl hover:shadow-amber-500/20 hover:-translate-y-1 transition-all duration-300 border border-stone-100 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
             
             <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 gap-4">
               <div className="flex items-center gap-3">
@@ -893,8 +891,7 @@ export default function Dashboard() {
                 </div>
               </div>
               
-              {/* SCORE CIRCULAR DO DIA */}
-              <div className="flex items-center gap-4 bg-stone-50 px-4 py-2.5 rounded-2xl border border-stone-100">
+              <div className="flex items-center gap-4 bg-stone-50 px-4 py-2.5 rounded-2xl border border-stone-100 shadow-sm">
                 <div className="text-right">
                   <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest">Score do Dia</p>
                   <p className="text-xl md:text-2xl font-black text-nutri-900">{dailyScore}/100</p>
@@ -909,7 +906,6 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-6">
-              
               {/* CARD DE ÁGUA */}
               <div className="lg:col-span-6 flex flex-col justify-center relative p-6 rounded-[1.5rem] border overflow-hidden transition-all duration-500 min-h-[140px] shadow-sm bg-gradient-to-br from-white to-blue-50/30 border-blue-100 hover:shadow-md">
                 <div className={`absolute -right-10 -bottom-10 w-32 h-32 rounded-full blur-2xl opacity-40 pointer-events-none transition-all duration-700 ${isWaterGoalMet ? 'bg-blue-400' : 'bg-blue-300'}`}></div>
@@ -1026,7 +1022,7 @@ export default function Dashboard() {
         {/* 5. GRÁFICO E EVOLUÇÃO / PAYWALL */}
         {!isPremium && !trialData.isActive ? (
           
-          <div className="bg-white p-8 md:p-16 rounded-[3rem] shadow-xl border border-stone-100 text-center relative overflow-hidden animate-fade-in-up">
+          <div className="bg-white p-8 md:p-16 rounded-[3rem] shadow-md border border-stone-100 text-center relative overflow-hidden animate-fade-in-up">
             <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-nutri-50 to-amber-50 rounded-full blur-3xl opacity-60 -translate-y-1/2 translate-x-1/3 -z-10"></div>
             
             <div className="w-20 h-20 bg-gradient-to-tr from-nutri-900 to-nutri-700 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg rotate-3">
@@ -1040,7 +1036,7 @@ export default function Dashboard() {
               Desbloqueie análises inteligentes, previsões corporais, acompanhamento profissional e seu histórico de evolução ilimitado.
             </p>
 
-            <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="inline-flex items-center justify-center w-full sm:w-auto gap-3 bg-nutri-900 text-white px-10 py-5 rounded-full font-black text-lg hover:bg-nutri-800 transition-all shadow-xl hover:shadow-nutri-900/30 transform hover:-translate-y-1">
+            <button onClick={() => handleUpgradeClick('premium')} disabled={processingCheckout} className="inline-flex items-center justify-center w-full sm:w-auto gap-3 bg-nutri-900 text-white px-10 py-5 rounded-full font-black text-lg transition-all shadow-md hover:shadow-xl hover:shadow-amber-500/40 hover:-translate-y-1 disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-md">
               {processingCheckout ? <Loader2 size={24} className="animate-spin" /> : <Star size={24} />}
               Desbloquear Evolução Completa
             </button>
@@ -1049,7 +1045,7 @@ export default function Dashboard() {
 
         ) : (
           
-          <div className="bg-white/80 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-stone-100 animate-fade-in-up">
+          <div className="bg-white/80 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] shadow-md hover:shadow-xl hover:shadow-amber-500/20 transition-shadow duration-300 border border-stone-100 animate-fade-in-up">
             
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-5">
               <div>
@@ -1133,32 +1129,58 @@ export default function Dashboard() {
                       }}
                     />
                     
+                    {/* 🔥 RENDERIZAÇÃO MELHORADA DAS LINHAS (Com fallback para ponto único) */}
                     {activeLens === 'medidas' && (
                       <>
-                        {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" label={{ value: 'Meta', position: 'insideTopLeft', fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />}
-                        <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: isGoalMet ? "#22c55e" : "#166534" }} />
-                        <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: "#818cf8" }} connectNulls />
+                        {profile?.meta_peso && <ReferenceLine y={parseFloat(profile.meta_peso)} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" label={{ value: 'Meta', position: 'insideTopLeft', fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />}
                         
-                        {/* 🎯 HIGHLIGHT PONTO ATUAL (SCATTER) */}
-                        {timelineData[timelineData.length - 1]?.peso && (
-                          <Scatter yAxisId="left" data={[timelineData[timelineData.length - 1]]} fill="#166534" shape="circle" r={5} />
+                        {validWeightsCount > 1 ? (
+                          <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 8, strokeWidth: 2, stroke: '#fff', fill: isGoalMet ? "#22c55e" : "#166534" }} />
+                        ) : (
+                          <Scatter yAxisId="left" dataKey="peso" fill="#166534" shape="circle" r={6} />
+                        )}
+
+                        {validWaistsCount > 1 ? (
+                          <Line type="monotone" yAxisId="right" dataKey="cintura" stroke="#6366f1" strokeWidth={4} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 8, strokeWidth: 2, stroke: '#fff', fill: "#818cf8" }} connectNulls />
+                        ) : (
+                          <Scatter yAxisId="right" dataKey="cintura" fill="#6366f1" shape="circle" r={6} />
                         )}
                       </>
                     )}
 
                     {activeLens === 'composicao' && (
                       <>
-                        {profile?.meta_peso && <ReferenceLine y={profile.meta_peso} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" />}
-                        <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={3} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 6 }} />
-                        <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={3} dot={false} activeDot={{ r: 6 }} connectNulls />
+                        {profile?.meta_peso && <ReferenceLine y={parseFloat(profile.meta_peso)} yAxisId="left" stroke={isGoalMet ? "#22c55e" : "#cbd5e1"} strokeDasharray="5 5" />}
+                        
+                        {validWeightsCount > 1 ? (
+                          <Area type="monotone" yAxisId="left" dataKey="peso" stroke={isGoalMet ? "#16a34a" : "#166534"} strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" connectNulls activeDot={{ r: 8 }} />
+                        ) : (
+                          <Scatter yAxisId="left" dataKey="peso" fill="#166534" shape="circle" r={6} />
+                        )}
+
+                        {timelineData.filter(d => d.somatorio_dobras !== null).length > 1 ? (
+                          <Line type="monotone" yAxisId="right" dataKey="somatorio_dobras" stroke="#ec4899" strokeWidth={4} dot={{ r: 4 }} activeDot={{ r: 8 }} connectNulls />
+                        ) : (
+                          <Scatter yAxisId="right" dataKey="somatorio_dobras" fill="#ec4899" shape="circle" r={6} />
+                        )}
                       </>
                     )}
 
                     {activeLens === 'metabolico' && (
                       <>
                         <ReferenceLine y={2.0} yAxisId="right" stroke="#ef4444" strokeDasharray="3 3" />
-                        <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls activeDot={{ r: 6 }} />
-                        <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={3} dot={false} activeDot={{ r: 6 }} connectNulls />
+                        
+                        {validWaistsCount > 1 ? (
+                          <Area type="monotone" yAxisId="left" dataKey="cintura" stroke="#6366f1" strokeWidth={4} fillOpacity={1} fill="url(#colorAreaWaist)" connectNulls activeDot={{ r: 8 }} />
+                        ) : (
+                          <Scatter yAxisId="left" dataKey="cintura" fill="#6366f1" shape="circle" r={6} />
+                        )}
+
+                        {timelineData.filter(d => d.homair !== null).length > 1 ? (
+                          <Line type="monotone" yAxisId="right" dataKey="homair" stroke="#f59e0b" strokeWidth={4} dot={{ r: 4 }} activeDot={{ r: 8 }} connectNulls />
+                        ) : (
+                          <Scatter yAxisId="right" dataKey="homair" fill="#f59e0b" shape="circle" r={6} />
+                        )}
                       </>
                     )}
                     
@@ -1176,6 +1198,8 @@ export default function Dashboard() {
               <p className="text-sm text-stone-500 font-medium">
                 {weightProgressPercent > 0
                   ? `Você já avançou ${Math.round(weightProgressPercent)}% rumo à sua meta. Continue firme!`
+                  : validWeightsCount === 1 
+                  ? "Sua primeira medida foi registrada! Adicione mais check-ins para formar a linha do gráfico."
                   : "Seu progresso visual começará após os primeiros registros do seu diário e medidas."}
               </p>
             </div>
@@ -1183,65 +1207,66 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 6. AÇÕES INFERIORES PREMIUM (Navigation Grouping) */}
+        {/* 6. AÇÕES INFERIORES PREMIUM */}
         <div className="flex flex-col gap-4 animate-fade-in-up pb-8">
           
-          <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-center justify-between active:scale-[0.98] ${(!isPremium && !trialData.isActive) ? 'bg-stone-50 border-stone-200 opacity-80 cursor-not-allowed' : 'bg-nutri-900 text-white shadow-lg hover:bg-nutri-800 border-nutri-800'}`}>
+          <button onClick={() => setIsCheckinModalOpen(true)} disabled={!isPremium && !trialData.isActive} className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-center justify-between active:scale-[0.98] ${(!isPremium && !trialData.isActive) ? 'bg-stone-50 border-stone-200 opacity-80 cursor-not-allowed' : 'bg-nutri-900 text-white shadow-md hover:shadow-xl hover:shadow-amber-500/40 hover:-translate-y-1 hover:border-amber-500/50 border-nutri-800 group'}`}>
             <div className="flex items-center gap-4">
-              <div className={`p-3.5 rounded-2xl ${(!isPremium && !trialData.isActive) ? 'bg-stone-200 text-stone-500' : 'bg-white/20 text-white'}`}>
+              <div className={`p-3.5 rounded-2xl ${(!isPremium && !trialData.isActive) ? 'bg-stone-200 text-stone-500' : 'bg-white/20 text-white group-hover:bg-white/30 transition-colors'}`}>
                 {(!isPremium && !trialData.isActive) ? <Lock size={22} /> : <PlusCircle size={22} />}
               </div>
               <div className="text-left">
-                <h3 className="font-bold text-base md:text-lg tracking-tight">Check-in e Medidas</h3>
-                <p className={`text-xs md:text-sm font-medium mt-0.5 ${(!isPremium && !trialData.isActive) ? 'text-stone-400' : 'text-nutri-200'}`}>
+                <h3 className="font-bold text-base md:text-lg tracking-tight group-hover:text-amber-300 transition-colors">Check-in e Medidas</h3>
+                <p className={`text-xs md:text-sm font-medium mt-0.5 ${(!isPremium && !trialData.isActive) ? 'text-stone-400' : 'text-nutri-200 group-hover:text-amber-100/70 transition-colors'}`}>
                   {(!isPremium && !trialData.isActive) ? 'Acesso bloqueado' : isCheckinDoneThisWeek ? 'Relato enviado (Ver histórico)' : 'Adicione sua evolução semanal'}
                 </p>
               </div>
             </div>
-            <ChevronRight size={20} className={(!isPremium && !trialData.isActive) ? 'text-stone-300' : 'text-white/50'} />
+            <ChevronRight size={20} className={(!isPremium && !trialData.isActive) ? 'text-stone-300' : 'text-white/50 group-hover:text-amber-400 transition-colors group-hover:translate-x-1'} />
           </button>
 
-          <Link href="/dashboard/meu-plano" className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-center justify-between active:scale-[0.98] hover:shadow-md ${canAccessMealPlan ? 'bg-white shadow-sm border-stone-100 hover:border-nutri-200' : 'bg-stone-50 border-stone-200'}`}>
+          <Link href="/dashboard/meu-plano" className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-center justify-between active:scale-[0.98] hover:-translate-y-1 group ${canAccessMealPlan ? 'bg-white shadow-md border-stone-100 hover:border-amber-300 hover:shadow-xl hover:shadow-amber-500/20' : 'bg-stone-50 border-stone-200 shadow-sm'}`}>
             <div className="flex items-center gap-4">
-              <div className={`p-3.5 rounded-2xl ${canAccessMealPlan ? 'bg-green-50 text-green-600' : 'bg-stone-100 text-stone-400'}`}>
+              <div className={`p-3.5 rounded-2xl transition-colors ${canAccessMealPlan ? 'bg-green-50 text-green-600 group-hover:bg-amber-50 group-hover:text-amber-600' : 'bg-stone-100 text-stone-400'}`}>
                 {canAccessMealPlan ? <Utensils size={22} /> : <Lock size={22} />}
               </div>
               <div>
-                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight ${canAccessMealPlan ? 'text-stone-900' : 'text-stone-500'}`}>Plano Alimentar</h3>
+                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight transition-colors ${canAccessMealPlan ? 'text-stone-900 group-hover:text-amber-600' : 'text-stone-500'}`}>Plano Alimentar</h3>
                 <p className="text-xs md:text-sm text-stone-500 font-medium mt-0.5">{canAccessMealPlan ? (isMealPlanReady ? 'Ver cardápio liberado' : 'Em elaboração pela Nutri') : 'Desbloquear acesso'}</p>
               </div>
             </div>
-            <ChevronRight size={20} className="text-stone-300" />
+            <ChevronRight size={20} className="text-stone-300 group-hover:translate-x-1 group-hover:text-amber-500 transition-all" />
           </Link>
 
-          <Link href="/dashboard/completar-perfil" className="p-5 rounded-[2rem] shadow-sm border border-stone-100 transition-all duration-300 flex items-center justify-between active:scale-[0.98] bg-white hover:border-nutri-200 hover:shadow-md">
+          {/* 🔥 HOVER DOURADO CORRIGIDO NO TÍTULO DE ALERGIAS */}
+          <Link href="/dashboard/completar-perfil" className="p-5 rounded-[2rem] border border-stone-100 transition-all duration-300 flex items-center justify-between active:scale-[0.98] bg-white shadow-md hover:shadow-xl hover:shadow-amber-500/20 hover:border-amber-300 hover:-translate-y-1 group">
             <div className="flex items-center gap-4">
-              <div className={`p-3.5 rounded-2xl ${foodStatusConfig.bgClass}`}>
+              <div className={`p-3.5 rounded-2xl transition-colors ${foodStatusConfig.bgClass}`}>
                 {foodStatusConfig.icon}
               </div>
               <div>
-                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight ${foodStatusConfig.textClass}`}>Perfil Alimentar</h3>
+                <h3 className={`font-bold text-base md:text-lg tracking-tight leading-tight transition-colors group-hover:text-amber-600 ${!hasFoodRestrictions ? 'text-stone-900' : 'text-amber-900'}`}>Alergias Alimentares</h3>
                 <p className="text-xs md:text-sm text-stone-500 font-medium mt-0.5">
                   {!hasCompletedQFA ? 'Pendência (Preencha agora)' : foodStatusConfig.label}
                 </p>
               </div>
             </div>
-            <ChevronRight size={20} className="text-stone-300" />
+            <ChevronRight size={20} className="text-stone-300 group-hover:translate-x-1 group-hover:text-amber-500 transition-all" />
           </Link>
 
-          <Link href="/dashboard/agendamentos" className={`p-5 rounded-[2rem] shadow-sm border transition-all duration-300 flex items-center justify-between active:scale-[0.98] hover:shadow-md ${nextAppointment ? 'bg-nutri-50/30 border-nutri-100 hover:border-nutri-300' : 'bg-white border-stone-100 hover:border-nutri-200'}`}>
+          <Link href="/dashboard/agendamentos" className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-center justify-between active:scale-[0.98] hover:-translate-y-1 group shadow-md hover:shadow-xl hover:shadow-amber-500/20 hover:border-amber-300 ${nextAppointment ? 'bg-nutri-50/30 border-nutri-100' : 'bg-white border-stone-100'}`}>
             <div className="flex items-center gap-4">
-              <div className={`p-3.5 rounded-2xl ${nextAppointment ? 'bg-nutri-100 text-nutri-700' : 'bg-stone-50 text-stone-500 border border-stone-100'}`}>
+              <div className={`p-3.5 rounded-2xl transition-colors ${nextAppointment ? 'bg-nutri-100 text-nutri-700' : 'bg-stone-50 text-stone-500 border border-stone-100 group-hover:bg-amber-50 group-hover:text-amber-600 group-hover:border-amber-100'}`}>
                 <Calendar size={22} />
               </div>
               <div>
-                <h3 className="font-bold text-stone-900 text-base md:text-lg tracking-tight leading-tight">Agendamentos</h3>
+                <h3 className="font-bold text-stone-900 group-hover:text-amber-600 transition-colors text-base md:text-lg tracking-tight leading-tight">Agendamentos</h3>
                 <p className="text-xs md:text-sm text-stone-500 font-medium mt-0.5">
                   {nextAppointment ? `Retorno: ${new Date(nextAppointment.appointment_date).toLocaleDateString('pt-BR')} às ${nextAppointment.appointment_time}` : 'Marcar nova consulta'}
                 </p>
               </div>
             </div>
-            <ChevronRight size={20} className="text-stone-300" />
+            <ChevronRight size={20} className="text-stone-300 group-hover:translate-x-1 group-hover:text-amber-500 transition-all" />
           </Link>
         </div>
 
@@ -1266,7 +1291,7 @@ export default function Dashboard() {
         onSave={handleAddActivity}
       />
 
-      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE COM COMPOSIÇÃO CORPORAL */}
+      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE */}
       <ChatAssistant role="patient" />
     </main>
   );

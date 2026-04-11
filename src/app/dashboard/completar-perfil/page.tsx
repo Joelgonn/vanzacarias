@@ -437,7 +437,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
       <div>
         <motion.p className="text-xs uppercase tracking-widest text-nutri-600 font-bold mb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>Jornada Personalizada</motion.p>
         <motion.h1 className="text-3xl md:text-4xl font-black text-stone-900 mb-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25 }}>Vamos cuidar de você</motion.h1>
-        <motion.p className="text-stone-500 text-sm md:text-base leading-relaxed max-w-xs mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>Em poucos passos, vamos montar um plano alimentar totalmente adaptado ao seu estilo de vida.</motion.p>
+        <motion.p className="text-stone-500 text-sm md:text-base leading-relaxed max-w-xs mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>Para montarmos um plano alimentar seguro e adaptado às suas necessidades. Responda as perguntas a seguir.</motion.p>
       </div>
       <motion.div className="pt-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
         <button onClick={onNext} className="w-full bg-gradient-to-r from-nutri-900 to-nutri-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.98] transition-all group">Começar agora <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" /></button>
@@ -485,7 +485,7 @@ function StepBasic({ phone, setPhone, birthDate, setBirthDate, onNext, onBack }:
 
   return (
     <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} transition={{ duration: 0.3 }} className="space-y-6">
-      <div><h2 className="text-xl md:text-2xl font-black text-stone-900 mb-2">Seus dados</h2><p className="text-stone-500 text-sm">Vamos precisar dessas informações para personalizar seu plano.</p></div>
+      <div><h2 className="text-xl md:text-2xl font-black text-stone-900 mb-2">Seus dados</h2><p className="text-stone-500 text-sm">Fique tranquilo, suas informações estão seguras e criptografadas.</p></div>
       <div className="bg-nutri-50/50 p-4 rounded-2xl border border-nutri-100"><p className="text-xs text-nutri-800 font-bold mb-1 flex items-center gap-1"><Shield size={14}/> Por que pedimos isso?</p><p className="text-xs text-stone-600 leading-relaxed">Usamos sua idade e contato para adaptar seu plano com precisão e segurança.</p></div>
       <div className="space-y-4">
         <div className="relative group"><Phone className="absolute left-4 top-4 text-stone-400 group-focus-within:text-nutri-700 transition-colors" size={20} strokeWidth={2} /><input type="tel" placeholder="WhatsApp (DDD + Número)" required value={phone} onChange={e => setPhone(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-stone-200 rounded-2xl bg-white shadow-sm focus:shadow-md focus:ring-4 focus:ring-nutri-800/10 focus:border-nutri-700 outline-none transition-all text-stone-800 font-medium placeholder:text-stone-400 placeholder:font-normal" /></div>
