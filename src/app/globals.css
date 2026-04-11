@@ -2,6 +2,456 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   BASE
+   ============================================================ */
 html {
   scroll-behavior: smooth;
+}
+
+body {
+  @apply antialiased;
+}
+
+/* ============================================================
+   RIPPLE EFFECT (para botões)
+   ============================================================ */
+@keyframes ripple {
+  from {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 0.6s ease-out forwards;
+}
+
+/* ============================================================
+   CUSTOM SCROLLBAR (moderno)
+   ============================================================ */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Dark mode scrollbar */
+.dark * {
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a4a #1a1a1a;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6a6a6a;
+}
+
+/* Scrollbar customizada para modais e áreas específicas */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6a6a6a;
+}
+
+/* ============================================================
+   SHIMMER EFFECT (para skeleton loading)
+   ============================================================ */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 0%,
+    #e0e0e0 25%,
+    #f0f0f0 50%,
+    #e0e0e0 75%,
+    #f0f0f0 100%
+  );
+  background-size: 200% 100%;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    #2a2a2a 0%,
+    #3a3a3a 25%,
+    #2a2a2a 50%,
+    #3a3a3a 75%,
+    #2a2a2a 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* ============================================================
+   PULSE ANIMATION (para notificações)
+   ============================================================ */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ============================================================
+   GLOW EFFECT (para cards em hover)
+   ============================================================ */
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 5px rgba(42, 92, 67, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 20px rgba(42, 92, 67, 0.4);
+  }
+}
+
+.hover\:glow-effect:hover {
+  animation: glow 0.3s ease-out forwards;
+}
+
+/* ============================================================
+   FOCUS RINGS (acessibilidade premium)
+   ============================================================ */
+*:focus-visible {
+  @apply outline-none ring-2 ring-nutri-500 ring-offset-2 ring-offset-white;
+}
+
+.dark *:focus-visible {
+  @apply ring-offset-stone-900;
+}
+
+/* ============================================================
+   SELECTION COLOR (marca d'água visual)
+   ============================================================ */
+::selection {
+  @apply bg-nutri-200 text-nutri-900;
+}
+
+.dark ::selection {
+  @apply bg-nutri-800 text-nutri-100;
+}
+
+/* ============================================================
+   SMOOTH TRANSITIONS GLOBAIS
+   ============================================================ */
+* {
+  @apply transition-colors duration-200;
+}
+
+/* ============================================================
+   UTILITÁRIOS PERSONALIZADOS (via @layer components)
+   ============================================================ */
+@layer components {
+  /* Cards premium */
+  .card-premium {
+    @apply bg-white dark:bg-stone-900 rounded-3xl border border-stone-100 dark:border-stone-800 shadow-sm;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  
+  .card-premium:hover {
+    @apply -translate-y-1.5 scale-[1.015] shadow-premium dark:shadow-premium-dark;
+  }
+  
+  /* Botões primários */
+  .btn-primary {
+    @apply bg-nutri-800 dark:bg-nutri-700 text-white font-semibold rounded-xl px-5 h-11;
+    @apply shadow-md shadow-nutri-800/20 dark:shadow-nutri-900/50;
+    @apply hover:bg-nutri-700 dark:hover:bg-nutri-600 hover:-translate-y-0.5 hover:shadow-xl;
+    @apply active:scale-[0.97] active:shadow-inner;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  
+  /* Botões ghost */
+  .btn-ghost {
+    @apply bg-stone-50 dark:bg-stone-800 text-stone-500 dark:text-stone-400 border border-stone-200 dark:border-stone-700 rounded-xl px-5 h-11;
+    @apply hover:bg-stone-100 dark:hover:bg-stone-700 hover:text-stone-700 dark:hover:text-stone-200;
+    transition: all 0.3s ease;
+  }
+  
+  /* Badges */
+  .badge {
+    @apply px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider;
+  }
+  
+  .badge-success {
+    @apply bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800;
+  }
+  
+  .badge-warning {
+    @apply bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800;
+  }
+  
+  .badge-info {
+    @apply bg-nutri-50 dark:bg-nutri-950/30 text-nutri-700 dark:text-nutri-400 border border-nutri-100 dark:border-nutri-800;
+  }
+  
+  /* Inputs */
+  .input-premium {
+    @apply w-full rounded-xl border border-stone-200 dark:border-stone-700;
+    @apply bg-stone-50/50 dark:bg-stone-800/50;
+    @apply hover:bg-white dark:hover:bg-stone-800;
+    @apply focus:bg-white dark:focus:bg-stone-800;
+    @apply focus:border-nutri-400 dark:focus:border-nutri-500;
+    @apply focus:ring-4 focus:ring-nutri-50 dark:focus:ring-nutri-950/30;
+    @apply outline-none transition-all;
+    @apply font-medium text-sm md:text-base text-stone-700 dark:text-stone-200;
+    @apply placeholder:text-stone-400 dark:placeholder:text-stone-500;
+    @apply shadow-sm;
+  }
+}
+
+/* ============================================================
+   HIDE SCROLLBAR (para abas mobile)
+   ============================================================ */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================================
+   ANIMAÇÕES DE ENTRADA (framer motion fallback)
+   ============================================================ */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+@keyframes zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-zoom-in {
+  animation: zoom-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes slide-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-bottom {
+  animation: slide-in-bottom 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ============================================================
+   LOADING SPINNER
+   ============================================================ */
+@keyframes spin-custom {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-custom {
+  animation: spin-custom 1s linear infinite;
+}
+
+@layer utilities {
+  .btn-gold-effect {
+    @apply transition-all duration-300;
+    @apply border border-stone-300 dark:border-stone-600;
+    @apply shadow-sm shadow-stone-300/20;
+  }
+  
+  .btn-gold-effect:hover {
+    @apply border-amber-400 dark:border-amber-500;
+    @apply shadow-md shadow-amber-500/25;
+    @apply text-amber-600 dark:text-amber-400;
+    transform: translateY(-1px);
+  }
+  
+  .btn-gold-effect:active {
+    @apply border-amber-600 dark:border-amber-400;
+    @apply shadow-lg shadow-amber-500/40;
+    @apply text-amber-700 dark:text-amber-300;
+    @apply ring-2 ring-amber-400/50 ring-offset-2;
+    transform: translateY(0px) scale(0.98);
+    transition: all 0.05s ease;
+  }
+}
+
+/* ============================================================
+   BOTÃO PREMIUM - EFEITO CINZA → DOURADO
+   ============================================================ */
+
+/* Base do botão premium */
+.btn-premium {
+  @apply relative overflow-hidden transition-all duration-300;
+  @apply border border-stone-300 dark:border-stone-600;
+  @apply shadow-sm shadow-stone-300/20 dark:shadow-stone-800/20;
+}
+
+/* Efeito HOVER - letras começam a ficar douradas */
+.btn-premium:hover {
+  @apply border-amber-300 dark:border-amber-700;
+  @apply shadow-md shadow-amber-500/20 dark:shadow-amber-500/10;
+  @apply text-amber-600 dark:text-amber-400;
+  transform: translateY(-1px);
+}
+
+/* Efeito ACTIVE (CLIQUE) - dourado total */
+.btn-premium:active {
+  @apply border-amber-500 dark:border-amber-400;
+  @apply shadow-lg shadow-amber-500/40 dark:shadow-amber-400/30;
+  @apply text-amber-700 dark:text-amber-300;
+  @apply ring-2 ring-amber-400/50 ring-offset-2 ring-offset-white dark:ring-offset-stone-900;
+  transform: translateY(0px);
+  transition: all 0.05s ease;
+}
+
+/* Versão para botão primário (fundo escuro) */
+.btn-premium-primary {
+  @apply bg-nutri-800 dark:bg-nutri-700 text-white;
+  @apply border-nutri-700 dark:border-nutri-600;
+  @apply shadow-md shadow-nutri-800/30;
+}
+
+.btn-premium-primary:hover {
+  @apply bg-nutri-700 dark:bg-nutri-600;
+  @apply border-amber-400 dark:border-amber-500;
+  @apply shadow-xl shadow-amber-500/30;
+  @apply text-amber-100;
+}
+
+.btn-premium-primary:active {
+  @apply bg-nutri-800 dark:bg-nutri-800;
+  @apply border-amber-500 dark:border-amber-400;
+  @apply shadow-2xl shadow-amber-500/50;
+  @apply text-amber-200;
+  @apply ring-2 ring-amber-400/60 ring-offset-2;
+  transform: scale(0.97);
+}
+
+/* Versão para botão ghost (fundo claro) */
+.btn-premium-ghost {
+  @apply bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200;
+  @apply border-stone-200 dark:border-stone-700;
+}
+
+.btn-premium-ghost:hover {
+  @apply bg-amber-50 dark:bg-amber-950/30;
+  @apply border-amber-300 dark:border-amber-700;
+  @apply text-amber-600 dark:text-amber-400;
+}
+
+.btn-premium-ghost:active {
+  @apply bg-amber-100 dark:bg-amber-950/50;
+  @apply border-amber-500 dark:border-amber-400;
+  @apply text-amber-700 dark:text-amber-300;
+  @apply ring-2 ring-amber-400/40 ring-offset-2;
+  transform: scale(0.97);
 }
