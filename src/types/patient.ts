@@ -3,21 +3,18 @@
 // ============================================================================
 
 // ============================================================================
-// 🧠 FOOD ITEM (SSOT FINAL - BASEADO EM GRAMS)
+// FOOD ITEM (SSOT final baseado em gramas)
 // ============================================================================
 
 export interface FoodItem {
   id: string;
   name: string;
-
   kcal: number;
   macros: {
     p: number;
     c: number;
     g: number;
   };
-
-  // 🔥 ÚNICA FONTE DE VERDADE
   grams: number;
 }
 
@@ -26,70 +23,78 @@ export interface FoodItem {
 // ============================================================================
 
 export type FoodRestrictionType = 'allergy' | 'intolerance' | 'restriction';
-
 export type FoodRestrictionSeverity = 'low' | 'medium' | 'high';
 
-// ----------------------------------------------------------------------------
-// FOOD RESTRICTIONS
-// ----------------------------------------------------------------------------
+export type RegistryFoodTag =
+  | 'lactose'
+  | 'laticinio'
+  | 'gluten'
+  | 'trigo'
+  | 'amendoim'
+  | 'nuts'
+  | 'ovo'
+  | 'carne_branca'
+  | 'carne_vermelha'
+  | 'peixe'
+  | 'frutos_do_mar'
+  | 'vegano'
+  | 'vegetariano'
+  | 'soja';
+
+export type ClinicalFoodTag =
+  | 'sugar'
+  | 'ultraprocessado';
+
+export type FoodTag = RegistryFoodTag | ClinicalFoodTag;
 
 export interface FoodRestriction {
   id?: string;
-  food: string;
   type: FoodRestrictionType;
   severity?: FoodRestrictionSeverity;
   notes?: string;
 
-  // 🔥 NOVA ARQUITETURA
+  // Fonte principal: bloqueio de um alimento especifico.
   foodId?: string;
-  tag?: string;
+
+  // Fonte por grupo: lactose, gluten, ultraprocessado, etc.
+  tag?: FoodTag;
+
+  // LEGACY: fallback textual para dados antigos. Nao usar como fonte primaria.
+  food?: string;
 }
 
-// ----------------------------------------------------------------------------
-// QFA (Questionário de Frequência Alimentar)
-// ----------------------------------------------------------------------------
+// ============================================================================
+// QFA (Questionario de Frequencia Alimentar)
+// ============================================================================
 
 export interface QFAItem {
-  food: string;
+  id: string;
   frequency: number;
+  foodId?: string;
+  tag?: FoodTag;
+  food?: string;
 }
 
-// ----------------------------------------------------------------------------
+// ============================================================================
 // PATIENT BASE
-// ----------------------------------------------------------------------------
+// ============================================================================
 
 export interface PatientBase {
   id: string;
-
-  name?: string;
-  age?: number;
-  gender?: 'M' | 'F';
-
-  weight?: number;
-  height?: number;
-
-  foodRestrictions?: FoodRestriction[];
-  qfa?: QFAItem[];
-}
-
-// ----------------------------------------------------------------------------
-// INPUT (CREATE / UPDATE)
-// ----------------------------------------------------------------------------
-
-export interface PatientInput {
   name?: string;
   age?: number;
   gender?: 'M' | 'F';
   weight?: number;
   height?: number;
-
   foodRestrictions?: FoodRestriction[];
   qfa?: QFAItem[];
 }
 
-// ----------------------------------------------------------------------------
+export type PatientInput = Partial<Omit<PatientBase, 'id'>>;
+
+// ============================================================================
 // HELPERS (TYPE GUARDS)
-// ----------------------------------------------------------------------------
+// ============================================================================
 
 export function isAllergy(restriction: FoodRestriction): boolean {
   return restriction.type === 'allergy';
@@ -103,10 +108,6 @@ export function isRestriction(restriction: FoodRestriction): boolean {
   return restriction.type === 'restriction';
 }
 
-// ============================================================================
-// HELPERS NOVOS (ARQUITETURA HÍBRIDA)
-// ============================================================================
-
 export function hasFoodId(restriction: FoodRestriction): boolean {
   return !!restriction.foodId;
 }
@@ -116,5 +117,5 @@ export function hasTag(restriction: FoodRestriction): boolean {
 }
 
 export function isLegacyRestriction(restriction: FoodRestriction): boolean {
-  return !restriction.foodId && !restriction.tag;
+  return !restriction.foodId && !restriction.tag && !!restriction.food;
 }

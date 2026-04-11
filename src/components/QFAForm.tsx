@@ -124,6 +124,10 @@ const qfaSchema: QFASchemaCategory[] = [
 
 const options = ["0", "1-3", "4-6", "7-9", "10 +"];
 
+const isKnownFoodTag = (tag: string): tag is FoodEntity['tags'][number] => {
+  return FOOD_REGISTRY.some(food => food.tags.some(foodTag => foodTag === tag));
+};
+
 interface QFAFormProps {
   onSuccess: () => void;
 }
@@ -156,9 +160,14 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
     // 1. Resolve para a linguagem do Domínio (Regras de Prioridade: foodId > tag > fallback)
     if (item.foodId) {
       matchedFoodIds.push(item.foodId);
-    } else if (item.tag) {
-      matchedFoodIds = FOOD_REGISTRY.filter(f => f.tags.includes(item.tag as any)).map(f => f.id);
-    } else if (item.legacySearch) {
+    } else {
+      const tag = item.tag;
+      if (tag && isKnownFoodTag(tag)) {
+        matchedFoodIds = FOOD_REGISTRY.filter(f => f.tags.includes(tag)).map(f => f.id);
+      }
+    }
+
+    if (matchedFoodIds.length === 0 && item.legacySearch) {
       const term = item.legacySearch.toLowerCase();
       matchedFoodIds = FOOD_REGISTRY.filter(f =>
         f.name.toLowerCase().includes(term) ||
@@ -331,9 +340,10 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
         setTimeout(() => onSuccess(), 1000);
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("DETALHES DO ERRO:", error);
-      toast.error(error.message || "Ocorreu um erro ao salvar. Tente novamente.", { id: toastId });
+      const message = error instanceof Error ? error.message : "Ocorreu um erro ao salvar. Tente novamente.";
+      toast.error(message, { id: toastId });
     } finally {
       setLoading(false);
     }

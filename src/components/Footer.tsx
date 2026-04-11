@@ -29,6 +29,7 @@ const LEGAL_LINKS = [
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
+  const whatsappMessage = encodeURIComponent("Ola! Gostaria de agendar uma consulta.");
 
   return (
     <footer className="relative bg-stone-950 text-stone-300 pt-24 pb-12 px-6 lg:px-8 overflow-hidden selection:bg-nutri-500 selection:text-white">
@@ -124,7 +125,7 @@ export default function Footer() {
             </li>
             <li>
               <a 
-                href={`https://wa.me/${CONTACT_INFO.phoneRaw}`} 
+                href={`https://wa.me/${CONTACT_INFO.phoneRaw}?text=${whatsappMessage}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="group flex flex-col gap-2 py-1 items-start"
@@ -159,6 +160,7 @@ export default function Footer() {
           <form className="relative flex items-center" onSubmit={(e) => e.preventDefault()}>
             <input 
               type="email" 
+              aria-label="Seu e-mail para receber dicas"
               placeholder="Seu melhor e-mail" 
               className="w-full bg-stone-900/50 border border-stone-800 rounded-full py-3.5 pl-5 pr-12 text-sm text-stone-200 placeholder-stone-500 focus:outline-none focus:border-nutri-500 focus:ring-1 focus:ring-nutri-500 transition-all duration-300"
               required

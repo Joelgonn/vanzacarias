@@ -862,10 +862,6 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions, au
   const filteredFoods = getFilteredFoods();
 
   useEffect(() => {
-    setHighlightIndex(0);
-  }, [searchTerm]);
-
-  useEffect(() => {
     const el = listRef.current?.children[highlightIndex] as HTMLElement;
     if (el) {
       el.scrollIntoView({ block: 'nearest' });
@@ -918,7 +914,10 @@ function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions, au
           type="text"
           placeholder="Buscar alimento... (ex: frango, arroz, banana)"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setHighlightIndex(0);
+          }}
           onKeyDown={handleKeyDown}
           className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-stone-800 focus:ring-4 focus:ring-stone-800/10 transition-all"
           autoFocus={autoFocus}
@@ -1188,7 +1187,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       return;
     }
 
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1232,7 +1231,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   ) => {
     const safeGrams = Math.max(0, Math.floor(newGrams || 0));
 
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1266,7 +1265,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const deleteFoodItem = (mealId: string, optId: string, foodItemId: string) => {
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1303,18 +1302,18 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       name: nextMealName, 
       options: [{ id: `opt-${Date.now()}`, day: 'Todos os dias', foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
     };
-    setMeals([...meals, newMeal]);
+    setMeals(prevMeals => [...prevMeals, newMeal]);
     setExpandedMealId(newMeal.id); 
   };
 
   const removeMeal = (mealId: string) => {
-    setMeals(meals.filter(m => m.id !== mealId));
+    setMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
     if (expandedMealId === mealId) setExpandedMealId(null);
     if (activeTimeMealId === mealId) setActiveTimeMealId(null);
   };
 
-  const updateMealTime = (mealId: string, time: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, time } : m));
-  const updateMealName = (mealId: string, name: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, name } : m));
+  const updateMealTime = (mealId: string, time: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, time } : m));
+  const updateMealName = (mealId: string, name: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, name } : m));
 
   const addOption = (mealId: string) => {
     const newOptionId = `opt-${Date.now()}`;
@@ -1334,7 +1333,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const splitIntoFullWeek = (mealId: string) => {
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId && m.options.length > 0) {
         const baseOption = m.options[0];
         const newOptions = ORDERED_DAYS.map((day, idx) => ({
@@ -1349,7 +1348,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const duplicateToEmptyDays = (mealId: string, sourceOption: Option) => {
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id !== sourceOption.id && o.foodItems.length === 0) {
@@ -1364,11 +1363,11 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     toast.success('Prato copiado!');
   };
 
-  const removeOption = (mealId: string, optionId: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, options: m.options.filter(o => o.id !== optionId) } : m));
-  const updateOptionDay = (mealId: string, optionId: string, day: string) => setMeals(meals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, day } : o) } : m));
+  const removeOption = (mealId: string, optionId: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.filter(o => o.id !== optionId) } : m));
+  const updateOptionDay = (mealId: string, optionId: string, day: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, day } : o) } : m));
 
   const updateMacro = (mealId: string, optionId: string, macro: 'p' | 'c' | 'g', value: number) => {
-    setMeals(meals.map(m => {
+    setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optionId) {
@@ -1384,7 +1383,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }));
   };
 
-  const updateKcal = (mealId: string, optionId: string, kcal: number) => setMeals(meals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, kcal } : o) } : m));
+  const updateKcal = (mealId: string, optionId: string, kcal: number) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, kcal } : o) } : m));
 
   // =========================================================================
   // TOTAIS PARA SIDEBAR

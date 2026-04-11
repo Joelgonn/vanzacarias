@@ -25,12 +25,16 @@ export default function AdminUpload({
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) {
+      e.target.value = '';
       return;
     }
 
     const file = e.target.files[0];
     
-    if (file.type !== 'application/pdf') {
+    const isPdf = file.type === 'application/pdf' && file.name.toLowerCase().endsWith('.pdf');
+
+    if (!isPdf) {
+      e.target.value = '';
       setError('O arquivo selecionado não é válido. Por favor, envie apenas PDF.');
       return;
     }
@@ -46,7 +50,7 @@ export default function AdminUpload({
       const { error: uploadError } = await supabase.storage
         .from('planos-alimentares')
         .upload(fileName, file, {
-          cacheControl: '0',
+          cacheControl: '3600',
           upsert: true
         });
 
@@ -54,18 +58,12 @@ export default function AdminUpload({
         throw new Error(`Erro ao enviar arquivo para o storage: ${uploadError.message}`);
       }
 
-      const { data: urlData } = supabase.storage
-        .from('planos-alimentares')
-        .getPublicUrl(fileName);
-
-      const publicUrl = urlData.publicUrl;
-
       const { error: dbError } = await supabase
         .from('plans')
         .upsert(
           { 
             user_id: patientId, 
-            file_url: publicUrl,
+            file_url: fileName,
             updated_at: new Date().toISOString()
           },
           { onConflict: 'user_id' }
@@ -94,6 +92,7 @@ export default function AdminUpload({
       setError(err.message || 'Ocorreu um erro desconhecido durante o upload.');
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 

@@ -2,15 +2,23 @@
 
 import { MessageCircle } from 'lucide-react';
 
+interface Props {
+  phone?: string;
+  message?: string;
+}
+
 // src/components/AgendarViaWhatsAppButton.tsx
-export default function AgendarViaWhatsAppButton() {
+export default function AgendarViaWhatsAppButton({
+  phone = "5544999997275",
+  message = "Ola! Gostaria de agendar uma consulta."
+}: Props) {
   return (
     <a 
-      href="https://wa.me/5544999997275" 
+      href={`https://wa.me/${phone}?text=${encodeURIComponent(message)}`} 
       target="_blank" 
       rel="noopener noreferrer"
       className="group relative inline-flex items-center justify-center gap-3.5 px-8 py-4 rounded-2xl md:rounded-[2rem] font-bold text-base md:text-[17px] text-white w-full sm:w-auto transition-all duration-300 overflow-hidden active:scale-[0.97] bg-gradient-to-r from-[#1EBE5D] to-[#25D366] hover:from-[#1da753] hover:to-[#22c35e] shadow-[0_8px_25px_rgba(37,211,102,0.35)] hover:shadow-[0_12px_35px_rgba(37,211,102,0.45)] hover:-translate-y-0.5"
-      aria-label="Agendar consulta via WhatsApp"
+      aria-label="Abrir WhatsApp para agendar consulta"
     >
       {/* Efeito de Vidro/Borda Interna Superior (Garante o visual premium 3D) */}
       <div className="absolute inset-0 rounded-2xl md:rounded-[2rem] border-t border-white/20 pointer-events-none" />

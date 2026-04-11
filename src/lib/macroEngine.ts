@@ -10,19 +10,30 @@ import { FoodRestriction, FoodItem } from '@/types/patient';
 import {
   MacroTargets,
   MacroTotals,
+  LegacyMacroInput,
   MacroDiff,
   MacroAnalysis,
+  MacroStatus,
   Suggestion,
-  SuggestedMeal
+  SuggestedMeal,
+  normalizeMacroTargets,
+  normalizeMacroTotals
 } from '@/types/macroEngine';
 
 export type {
   MacroTargets,
   MacroTotals,
+  LegacyMacroInput,
   MacroDiff,
   MacroAnalysis,
+  MacroStatus,
   Suggestion,
   SuggestedMeal
+};
+
+export {
+  normalizeMacroTargets,
+  normalizeMacroTotals
 };
 
 // ============================================================================
@@ -39,7 +50,7 @@ const STATUS_TOLERANCE = {
 function getStatus(
   diff: number,
   tolerance: number
-): 'low' | 'ok' | 'high' {
+): MacroStatus {
   if (diff < -tolerance) return 'low';
   if (diff > tolerance) return 'high';
   return 'ok';
@@ -62,28 +73,23 @@ function calculatePriority(analysis: MacroAnalysis): MacroAnalysis['priority'] {
 }
 
 export function analyzeMacros(
-  totals: MacroTotals,
-  targets: MacroTargets
+  totals: MacroTotals | LegacyMacroInput,
+  targets: MacroTargets | LegacyMacroInput
 ): MacroAnalysis {
   
   // ✅ DEFESA DE RUNTIME: Extrai os dados com segurança independente do formato (nested ou flat)
-  const totalsP = totals.macros?.p ?? totals.protein ?? 0;
-  const totalsC = totals.macros?.c ?? totals.carbs ?? 0;
-  const totalsG = totals.macros?.g ?? totals.fat ?? 0;
-  
-  const targetsP = targets.macros?.p ?? targets.protein ?? 0;
-  const targetsC = targets.macros?.c ?? targets.carbs ?? 0;
-  const targetsG = targets.macros?.g ?? targets.fat ?? 0;
+  const normalizedTotals = normalizeMacroTotals(totals);
+  const normalizedTargets = normalizeMacroTargets(targets);
 
   const diff: MacroDiff = {
-    kcal: (totals.kcal || 0) - (targets.kcal || 0),
-    protein: totalsP - targetsP,
-    carbs: totalsC - targetsC,
-    fat: totalsG - targetsG
+    kcal: (normalizedTotals.kcal || 0) - (normalizedTargets.kcal || 0),
+    protein: normalizedTotals.macros.p - normalizedTargets.macros.p,
+    carbs: normalizedTotals.macros.c - normalizedTargets.macros.c,
+    fat: normalizedTotals.macros.g - normalizedTargets.macros.g
   };
 
   const analysis: MacroAnalysis = {
-    totals,
+    totals: normalizedTotals,
     diff,
     status: {
       kcal: getStatus(diff.kcal, STATUS_TOLERANCE.kcal),

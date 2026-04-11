@@ -112,6 +112,13 @@ const qfaData: QFACategory[] = [
 ];
 
 const frequencyOptions = ["Nunca", "Raramente", "2-3x Sem", "4-5x Sem", "Todo Dia"];
+const frequencyMap: Record<string, number> = {
+  Nunca: 0,
+  Raramente: 1,
+  "2-3x Sem": 2,
+  "4-5x Sem": 3,
+  "Todo Dia": 4
+};
 
 export default function FoodFrequencyForm() {
   // =========================================================================
@@ -144,6 +151,12 @@ export default function FoodFrequencyForm() {
       return;
     }
 
+    const hasOnlyValidAnswers = Object.values(answers).every((answer) => frequencyOptions.includes(answer));
+    if (!hasOnlyValidAnswers) {
+      toast.error("Existe uma resposta invalida. Revise o questionario antes de enviar.");
+      return;
+    }
+
     setIsSaving(true);
     const toastId = toast.loading("Salvando e analisando suas respostas...");
     
@@ -161,7 +174,9 @@ export default function FoodFrequencyForm() {
         .from('qfa_responses')
         .upsert({ 
           user_id: session.user.id, 
-          respostas: answers,
+          respostas: Object.fromEntries(
+            Object.entries(answers).map(([key, value]) => [key, frequencyMap[value]])
+          ),
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
 
@@ -242,7 +257,7 @@ export default function FoodFrequencyForm() {
         </div>
         <p className="text-xs md:text-sm font-medium text-amber-800/80 leading-relaxed">
           <strong className="text-amber-900 block sm:inline sm:mr-1 mb-1 sm:mb-0">Como preencher:</strong>
-          Se consome apenas aos finais de semana, marque <b>"2-3x Sem"</b>. Se consome todos os dias de segunda a sexta, marque <b>"4-5x Sem"</b>.
+          Se consome apenas aos finais de semana, marque <b>&quot;2-3x Sem&quot;</b>. Se consome todos os dias de segunda a sexta, marque <b>&quot;4-5x Sem&quot;</b>.
         </p>
       </div>
 

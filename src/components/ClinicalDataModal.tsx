@@ -23,13 +23,16 @@ type TabType = 'antropometria' | 'dobras' | 'bioquimicos';
 // Tipo genérico para os estados dos formulários antes de limpar
 type FormDataState = Record<string, string>;
 
+const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
+const parseNumber = (value: string) => parseFloat(value.replace(',', '.'));
+
 export default function ClinicalDataModal({ isOpen, onClose, patientId, patientName }: ClinicalDataModalProps) {
   // =========================================================================
   // ESTADOS
   // =========================================================================
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('antropometria');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateString());
 
   const [antropometria, setAntropometria] = useState<FormDataState>({});
   const [dobras, setDobras] = useState<FormDataState>({});
@@ -60,7 +63,10 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
     Object.keys(obj).forEach(key => {
       const val = obj[key];
       if (val !== '' && val !== null && val !== undefined) {
-        cleaned[key] = parseFloat(val);
+        const parsed = parseNumber(val);
+        if (!Number.isNaN(parsed) && parsed >= 0) {
+          cleaned[key] = parsed;
+        }
       }
     });
     return cleaned;

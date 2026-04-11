@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { type FoodRestriction } from '@/types/patient';
+import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 import { X, Plus } from 'lucide-react';
 
 // 🔥 TAGS PADRÃO
-const TAG_OPTIONS = [
+const TAG_OPTIONS: Array<{ label: string; value: FoodTag }> = [
   { label: 'Lactose', value: 'lactose' },
   { label: 'Glúten', value: 'gluten' },
   { label: 'Açúcar', value: 'sugar' },
@@ -21,7 +21,7 @@ interface Props {
 export default function FoodRestrictionsForm({ value, onChange }: Props) {
   const [type, setType] = useState<FoodRestriction['type']>('allergy');
   const [selectedFoodId, setSelectedFoodId] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
+  const [selectedTag, setSelectedTag] = useState<FoodTag | ''>('');
 
   // =========================================================================
   // ADD RESTRICTION
@@ -43,7 +43,7 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
     }
 
     // 🔥 CORREÇÃO TYPESCRIPT: 
-    // Usamos string vazia ("") em vez de undefined para satisfazer a interface FoodRestriction
+    // Mantemos undefined para diferenciar restricao especifica de categoria.
     const newRestriction: FoodRestriction = {
       type,
       foodId: selectedFoodId || undefined,
@@ -90,7 +90,7 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
       {/* SELECT TYPE */}
       <select
         value={type}
-        onChange={(e) => setType(e.target.value as any)}
+        onChange={(e) => setType(e.target.value as FoodRestriction['type'])}
         className="w-full border p-2 rounded-lg text-sm"
       >
         <option value="allergy">🚫 Alergia</option>
@@ -119,7 +119,7 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
       <select
         value={selectedTag}
         onChange={(e) => {
-          setSelectedTag(e.target.value);
+          setSelectedTag(e.target.value as FoodTag | '');
           setSelectedFoodId('');
         }}
         className="w-full border p-2 rounded-lg text-sm"
@@ -146,7 +146,7 @@ export default function FoodRestrictionsForm({ value, onChange }: Props) {
       <div className="space-y-2">
         {value.map((r, index) => (
           <div
-            key={index}
+            key={`${r.type}-${r.foodId || 'food'}-${r.tag || 'tag'}`}
             className="flex items-center justify-between bg-stone-100 px-3 py-2 rounded-lg text-xs"
           >
             <span>

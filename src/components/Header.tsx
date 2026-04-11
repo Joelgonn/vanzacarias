@@ -11,7 +11,7 @@ import {
   FileText, 
   ChevronRight
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -35,7 +35,7 @@ export default function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -46,6 +46,10 @@ export default function Header() {
     } else {
       document.body.style.overflow = 'unset';
     }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
   }, [isMobileMenuOpen]);
 
   // Checa Sessão e Evento de Scroll
@@ -133,7 +137,7 @@ export default function Header() {
             {/* Navegação de Páginas */}
             <ul className="flex items-center space-x-1">
               {MAIN_NAV_ITEMS.map((item) => {
-                const isActive = pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
+                const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
                 return (
                   <li key={item.name}>
                     <Link
@@ -257,7 +261,7 @@ export default function Header() {
             <nav className={`flex-1 ${!isLoggedIn ? 'mt-6' : ''}`}>
               <ul className="flex flex-col space-y-1">
                 {MAIN_NAV_ITEMS.map((item, index) => {
-                  const isActive = pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
+                  const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
                   return (
                     <li 
                       key={item.name} 

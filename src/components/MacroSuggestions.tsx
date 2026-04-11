@@ -20,6 +20,7 @@ interface MacroSuggestionsProps {
 }
 
 type MacroStatus = 'low' | 'high' | 'ok';
+const safeRound = (value: number | undefined) => Math.max(0, Math.round(value || 0));
 
 export function MacroSuggestions({ suggestions, analysis, className = '' }: MacroSuggestionsProps) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -208,7 +209,7 @@ export function MacroSuggestions({ suggestions, analysis, className = '' }: Macr
           <div className="space-y-2">
             <p className="text-[9px] font-black uppercase tracking-widest text-stone-400">Acoes Recomendadas</p>
             <div className="space-y-2">
-              {suggestions.map((suggestion, idx) => {
+              {suggestions.map((suggestion) => {
                 const isUrgent = suggestion.priority === 1;
                 const actionText = suggestion.action === 'increase' ? 'Aumentar' : 'Reduzir';
                 const symbol = suggestion.action === 'increase' ? '+' : '-';
@@ -222,7 +223,7 @@ export function MacroSuggestions({ suggestions, analysis, className = '' }: Macr
 
                 return (
                   <div
-                    key={idx}
+                    key={`${suggestion.foodId || suggestion.foodName}-${suggestion.action}-${suggestion.currentGrams}-${suggestion.newGrams}`}
                     className={`rounded-[1.25rem] border p-3.5 shadow-[0_14px_28px_-24px_rgba(28,25,23,0.35)] ${
                       isUrgent ? `${accentTone} ring-1 ring-amber-100/70` : `${accentTone}`
                     }`}
@@ -248,11 +249,11 @@ export function MacroSuggestions({ suggestions, analysis, className = '' }: Macr
 
                         <div className="mt-2 flex items-center gap-1.5">
                           <span className="rounded-full bg-white/80 px-2 py-[0.32rem] text-[9px] font-black text-stone-500 ring-1 ring-stone-200/70">
-                            {Math.round(suggestion.currentGrams)}g
+                            {safeRound(suggestion.currentGrams)}g
                           </span>
                           <span className="text-[9px] font-bold text-stone-300">→</span>
                           <span className={`rounded-full px-2 py-[0.32rem] text-[9px] font-black ring-1 ring-current/10 bg-white/85 ${metaTone}`}>
-                            {Math.round(suggestion.newGrams)}g
+                            {safeRound(suggestion.newGrams)}g
                           </span>
                         </div>
 

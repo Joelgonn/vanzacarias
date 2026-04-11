@@ -69,6 +69,8 @@ const sanitizeInput = (text: string): string => {
   return text.replace(/</g, '').replace(/>/g, '');
 };
 
+const MAX_MESSAGE_LENGTH = 500;
+
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -92,12 +94,31 @@ const compressImage = (file: File): Promise<string> => {
 };
 
 const renderMessage = (text: string) => {
-  const formatted = text
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-stone-900">$1</strong>')
-    .replace(/\n/g, '<br />');
-  return <div dangerouslySetInnerHTML={{ __html: formatted }} />;
+  const lines = text.split('\n');
+
+  return (
+    <div>
+      {lines.map((line, lineIndex) => {
+        const parts = line.split(/(\*\*.*?\*\*)/g).filter(Boolean);
+
+        return (
+          <span key={`line-${lineIndex}`}>
+            {parts.map((part, partIndex) => {
+              const isBold = part.startsWith('**') && part.endsWith('**') && part.length > 4;
+              return isBold ? (
+                <strong key={`part-${lineIndex}-${partIndex}`} className="font-bold text-stone-900">
+                  {part.slice(2, -2)}
+                </strong>
+              ) : (
+                <span key={`part-${lineIndex}-${partIndex}`}>{part}</span>
+              );
+            })}
+            {lineIndex < lines.length - 1 && <br />}
+          </span>
+        );
+      })}
+    </div>
+  );
 };
 
 // ===============================
@@ -186,6 +207,11 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
 
     // 🔥 PATCH 2: Sanitizar input
     const sanitizedMessage = sanitizeInput(finalMessage);
+
+    if (sanitizedMessage.length > MAX_MESSAGE_LENGTH) {
+      state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
+      return;
+    }
     
     // 🔥 PATCH 3: History limpa (sem HTML)
     const cleanHistory = state.messages.slice(-6).map(m => ({
@@ -212,13 +238,15 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
       const userId = session.user.id;
 
       // 🔥 PATCH 4: Debug melhorado
-      console.log("🧪 CHAT PAYLOAD (PACIENTE):", {
-        role: 'patient',
-        userId,
-        message: sanitizedMessage,
-        historyLength: cleanHistory.length,
-        hasImage: !!state.selectedImage
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log("CHAT PAYLOAD (PACIENTE):", {
+          role: 'patient',
+          userId,
+          messageLength: sanitizedMessage.length,
+          historyLength: cleanHistory.length,
+          hasImage: !!state.selectedImage
+        });
+      }
       
       const res = await fetch('/api/nutri-assistant/patient', {
         method: 'POST',
@@ -278,6 +306,11 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
 
     // 🔥 PATCH 2: Sanitizar input
     const sanitizedMessage = sanitizeInput(finalMessage);
+
+    if (sanitizedMessage.length > MAX_MESSAGE_LENGTH) {
+      state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
+      return;
+    }
     
     // 🔥 PATCH 3: History limpa (sem HTML)
     const cleanHistory = state.messages.slice(-6).map(m => ({
@@ -303,14 +336,16 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
       }
 
       // 🔥 PATCH 4: Debug melhorado
-      console.log("🧪 CHAT PAYLOAD (ADMIN):", {
-        role: 'admin',
-        userId,
-        message: sanitizedMessage,
-        historyLength: cleanHistory.length,
-        hasImage: !!state.selectedImage,
-        adminDataKeys: adminContext ? Object.keys(adminContext) : []
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log("CHAT PAYLOAD (ADMIN):", {
+          role: 'admin',
+          userId,
+          messageLength: sanitizedMessage.length,
+          historyLength: cleanHistory.length,
+          hasImage: !!state.selectedImage,
+          adminDataKeys: adminContext ? Object.keys(adminContext) : []
+        });
+      }
 
       const res = await fetch('/api/nutri-assistant/admin', {
         method: 'POST',
@@ -560,7 +595,13 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 <input 
                   value={state.input}
                   onChange={(e) => state.setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  maxLength={MAX_MESSAGE_LENGTH}
                   placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                   className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium"
                   disabled={state.isLoading}

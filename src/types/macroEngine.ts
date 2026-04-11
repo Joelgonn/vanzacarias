@@ -1,32 +1,35 @@
 // ============================================================================
-// /types/macroEngine.ts - SSOT DE TIPAGENS (CONTRATOS)
+// /types/macroEngine.ts - SSOT de contratos de macros
 // ============================================================================
+
+export interface MacroValues {
+  p: number;
+  c: number;
+  g: number;
+}
 
 export interface MacroTargets {
   kcal: number;
-  // Tornamos opcional para aceitar tanto o formato novo quanto o antigo
-  macros?: {
-    p: number;
-    c: number;
-    g: number;
-  };
-  // Fallbacks de segurança para compatibilidade com o DietBuilder
-  protein?: number;
-  carbs?: number;
-  fat?: number;
+  macros: MacroValues;
 }
 
 export interface MacroTotals {
   kcal: number;
-  macros?: {
-    p: number;
-    c: number;
-    g: number;
-  };
+  macros: MacroValues;
+}
+
+export interface LegacyMacroInput {
+  kcal: number;
+  macros?: Partial<MacroValues>;
   protein?: number;
   carbs?: number;
   fat?: number;
 }
+
+export type MacroKey = 'kcal' | 'protein' | 'carbs' | 'fat';
+export type MacroStatus = 'low' | 'ok' | 'high';
+export type MacroAction = 'increase' | 'decrease';
+export type SuggestionPriority = 1 | 2 | 3 | 4 | 5;
 
 export interface MacroDiff {
   kcal: number;
@@ -38,24 +41,19 @@ export interface MacroDiff {
 export interface MacroAnalysis {
   totals: MacroTotals;
   diff: MacroDiff;
-  status: {
-    kcal: 'low' | 'ok' | 'high';
-    protein: 'low' | 'ok' | 'high';
-    carbs: 'low' | 'ok' | 'high';
-    fat: 'low' | 'ok' | 'high';
-  };
-  priority: 'kcal' | 'protein' | 'carbs' | 'fat' | null;
+  status: Record<MacroKey, MacroStatus>;
+  priority: MacroKey | null;
 }
 
 export interface Suggestion {
   foodId: string;
   foodName: string;
-  action: 'increase' | 'decrease';
+  action: MacroAction;
   grams: number;
   currentGrams: number;
   newGrams: number;
   reason: string;
-  priority: number; // 1 = urgente, 5 = opcional
+  priority: SuggestionPriority;
 }
 
 export interface SuggestedMeal {
@@ -64,4 +62,30 @@ export interface SuggestedMeal {
     foodId: string;
     grams: number;
   }[];
+}
+
+export function normalizeMacroTargets(input: MacroTargets | LegacyMacroInput): MacroTargets {
+  const legacy = input as LegacyMacroInput;
+
+  return {
+    kcal: input.kcal,
+    macros: {
+      p: input.macros?.p ?? legacy.protein ?? 0,
+      c: input.macros?.c ?? legacy.carbs ?? 0,
+      g: input.macros?.g ?? legacy.fat ?? 0,
+    }
+  };
+}
+
+export function normalizeMacroTotals(input: MacroTotals | LegacyMacroInput): MacroTotals {
+  const legacy = input as LegacyMacroInput;
+
+  return {
+    kcal: input.kcal,
+    macros: {
+      p: input.macros?.p ?? legacy.protein ?? 0,
+      c: input.macros?.c ?? legacy.carbs ?? 0,
+      g: input.macros?.g ?? legacy.fat ?? 0,
+    }
+  };
 }

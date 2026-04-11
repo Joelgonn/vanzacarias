@@ -12,26 +12,38 @@ interface WhatsAppButtonProps {
   message?: string;
 }
 
+const PRIVATE_ROUTES = ['/dashboard', '/paciente', '/admin'];
+
 export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonProps) {
   // =========================================================================
   // ESTADOS E HOOKS
   // =========================================================================
   const [isVisible, setIsVisible] = useState(false);
   const [showGreeting, setShowGreeting] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('wa_interacted') === 'true';
+  });
   const pathname = usePathname();
 
   // VERIFICAÇÃO INTELIGENTE (Mantida do original)
   // Evita renderizar em áreas logadas para não conflitar com IA ou dashboards.
-  const isPrivateArea = pathname?.startsWith('/dashboard') || pathname?.startsWith('/paciente') || pathname?.startsWith('/admin');
+  const isPrivateArea = PRIVATE_ROUTES.some(route => pathname?.startsWith(route));
 
   // Lógica de Visibilidade e Temporizadores
   useEffect(() => {
     if (isPrivateArea) return;
 
     // Função de exibição baseada no scroll
+    let ticking = false;
     const handleScroll = () => {
-      if (window.scrollY > 100) setIsVisible(true);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (window.scrollY > 100) setIsVisible(true);
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -47,8 +59,8 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
 
   // Lógica do Balão de Boas-Vindas Dinâmico
   useEffect(() => {
-    let greetingTimer: NodeJS.Timeout;
-    let hideTimer: NodeJS.Timeout;
+    let greetingTimer: ReturnType<typeof setTimeout>;
+    let hideTimer: ReturnType<typeof setTimeout>;
 
     if (isVisible && !hasInteracted) {
       // Mostra o balão 1.5s após o botão de WhatsApp aparecer
@@ -67,15 +79,27 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
   // =========================================================================
   // HANDLERS
   // =========================================================================
+  const track = (event: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TRACK]', event);
+    }
+  };
+
+  const persistInteraction = () => {
+    setHasInteracted(true);
+    localStorage.setItem('wa_interacted', 'true');
+  };
+
   const dismissGreeting = (e: React.MouseEvent) => {
     e.preventDefault(); // Evita abrir o link do WhatsApp ao clicar no X
     setShowGreeting(false);
-    setHasInteracted(true);
+    persistInteraction();
   };
 
   const handleWhatsAppClick = () => {
+    track('whatsapp_click');
     setShowGreeting(false);
-    setHasInteracted(true);
+    persistInteraction();
   };
 
   // =========================================================================
@@ -85,7 +109,7 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
     return null; 
   }
 
-  const defaultMessage = "Olá Vanusa, estava vendo seu site e gostaria de agendar uma consulta!";
+  const defaultMessage = `Ola Vanusa, vim pelo site e gostaria de agendar uma consulta. (${pathname || '/'})`;
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message || defaultMessage)}`;
 
   return (
