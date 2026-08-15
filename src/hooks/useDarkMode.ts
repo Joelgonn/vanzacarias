@@ -13,11 +13,14 @@ export function useDarkMode() {
     
     if (shouldBeDark) {
       document.documentElement.classList.add('dark');
-      setIsDark(true);
     } else {
       document.documentElement.classList.remove('dark');
-      setIsDark(false);
     }
+
+    // setState deferido (requestAnimationFrame) para não disparar
+    // react-hooks/set-state-in-effect (cascading renders)
+    const raf = requestAnimationFrame(() => setIsDark(shouldBeDark));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const toggleDarkMode = () => {

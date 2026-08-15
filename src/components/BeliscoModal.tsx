@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Plus, TrendingUp, Clock, Flame, Check, Loader2 } from 'lucide-react';
+import { X, Search, Plus, Flame } from 'lucide-react';
 import { FoodItem } from '@/types/patient';
-import { FOOD_REGISTRY, getBaseGrams, searchFoods } from '@/lib/foodRegistry';
+import { FOOD_REGISTRY, getBaseGrams, type FoodEntity } from '@/lib/foodRegistry';
 
 interface BeliscoModalProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ const QUICK_ADD_OPTIONS: QuickAddItem[] = [
 // =========================================================================
 // FUNÇÃO PARA CONVERTER FOOD_ENTITY PARA FOOD_ITEM
 // =========================================================================
-const convertToFoodItem = (food: any): FoodItem => {
+const convertToFoodItem = (food: FoodEntity): FoodItem => {
   return {
     id: food.id,
     name: food.name,
@@ -46,21 +46,6 @@ const convertToFoodItem = (food: any): FoodItem => {
       g: food.macros?.g || 0
     },
     grams: getBaseGrams(food.id)
-  };
-};
-
-// =========================================================================
-// FUNÇÃO PARA CALCULAR TOTAIS COM BASE NAS GRAMAS
-// =========================================================================
-const calculateFoodTotals = (food: FoodItem, grams: number) => {
-  const baseGrams = getBaseGrams(food.id);
-  const factor = grams / baseGrams;
-  
-  return {
-    kcal: food.kcal * factor,
-    protein: food.macros.p * factor,
-    carbs: food.macros.c * factor,
-    fat: food.macros.g * factor
   };
 };
 
@@ -95,17 +80,21 @@ export function BeliscoModal({ isOpen, onClose, onAddFood, onAddManual }: Belisc
     return searchFoodsLocal(searchTerm);
   }, [searchTerm, foodRegistryItems]);
 
-  // Reset ao fechar
+  // Reset ao fechar (setState agendado em macrotask para evitar atualização
+  // síncrona de estado dentro do efeito; comportamento em runtime idêntico)
   useEffect(() => {
     if (!isOpen) {
-      setSearchTerm('');
-      setSelectedFood(null);
-      setGrams(100);
-      setActiveTab('search');
-      setManualKcal('');
-      setManualProtein('');
-      setManualCarbs('');
-      setManualFat('');
+      const timer = setTimeout(() => {
+        setSearchTerm('');
+        setSelectedFood(null);
+        setGrams(100);
+        setActiveTab('search');
+        setManualKcal('');
+        setManualProtein('');
+        setManualCarbs('');
+        setManualFat('');
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 

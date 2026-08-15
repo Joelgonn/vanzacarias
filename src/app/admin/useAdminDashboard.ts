@@ -4,14 +4,54 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { FoodRestriction } from '@/types/patient';
+import type { FoodRestriction } from '@/types/patient';
 
 import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
 import { buildBodyComposition } from '@/lib/nutrition/bodyComposition';
+import type { MealPlan } from './dashboard/types';
 
 // =========================================================================
 // INTERFACES
 // =========================================================================
+
+// Recomendação calculada pelo motor metabólico (espelha TargetRecommendation do DietBuilder)
+interface TargetRecommendation {
+  calories: number;
+  macros: {
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+}
+
+// Linha da VIEW admin_dashboard (Supabase)
+// Campos espelham a nulabilidade da interface Patient (sem `null` explícito
+// onde Patient só aceita `undefined`).
+interface AdminDashboardRow {
+  id: string;
+  full_name: string;
+  phone?: string;
+  data_nascimento?: string;
+  sexo?: string;
+  tipo_perfil?: string;
+  meta_peso?: number | null;
+  account_type?: string;
+  created_at: string;
+  meal_plan?: MealPlan[];
+  food_restrictions?: FoodRestriction[];
+  evaluation_answers?: Record<string, string>;
+  is_late?: boolean;
+  days_since_last?: number;
+  is_new?: boolean;
+  water_ml?: number | null;
+  mood?: string | null;
+  messages_today?: number;
+  peso?: number | null;
+  weight?: number | null;
+  altura?: number | null;
+  height?: number | null;
+}
+
 export interface Patient {
   id: string;
   full_name: string;
@@ -22,7 +62,7 @@ export interface Patient {
   meta_peso?: number | null;
   account_type?: string;
   created_at: string;
-  meal_plan?: any[];
+  meal_plan?: MealPlan[];
   evaluation_answers?: Record<string, string>;
   is_late?: boolean;
   days_since_last?: number;
@@ -97,9 +137,9 @@ export function useAdminDashboard() {
   // =========================== MODAIS ===========================
   const [evalModalOpen, setEvalModalOpen] = useState<{
     isOpen: boolean;
-    data: any;
+    data: Record<string, string> | null;
     name: string;
-    qfaData: any;
+    qfaData: Record<string, string> | null;
     foodRestrictions: FoodRestriction[];
   }>({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [] });
 
@@ -109,7 +149,7 @@ export function useAdminDashboard() {
     isOpen: boolean;
     id: string;
     name: string;
-    targetRecommendation: any | null;
+    targetRecommendation: TargetRecommendation | null;
     foodRestrictions: FoodRestriction[];
   }>({ isOpen: false, id: '', name: '', targetRecommendation: null, foodRestrictions: [] });
 
@@ -126,7 +166,7 @@ export function useAdminDashboard() {
   const [todayTotalMessages, setTodayTotalMessages] = useState(0);
 
   // =========================== HELPER: NORMALIZAR PACIENTE ===========================
-  const normalizePatientFromView = (rawPatient: any): Patient => {
+  const normalizePatientFromView = (rawPatient: AdminDashboardRow): Patient => {
     // 🚨 CORREÇÃO 3: todayLog com fallback seguro
     const hasTodayData = rawPatient.water_ml !== null || rawPatient.mood !== null;
     
@@ -438,7 +478,6 @@ export function useAdminDashboard() {
   };
 
   // =========================== MEMOS (FILTROS) ===========================
-  const newPatientsCount = useMemo(() => patients.filter(p => p.is_new).length, [patients]);
   const activeLeadsCount = useMemo(() => leads.length, [leads]);
   const unseenPatientsCount = useMemo(() => {
     return patients.filter(p => p.is_new && new Date(p.created_at).getTime() > lastSeenNewPatientTime).length;
@@ -498,16 +537,17 @@ export function useAdminDashboard() {
   }, [patients, leads, usageStats, todayTotalMessages]);
 
   // =========================== HELPER INTERNO ===========================
-  function normalizeQFAAnswers(data: any): Record<string, string> {
+  function normalizeQFAAnswers(data: unknown): Record<string, string> {
     if (!data) return {};
     if (Array.isArray(data)) {
       const result: Record<string, string> = {};
-      data.forEach((item: any) => {
-        if (item?.id && item?.value) result[item.id] = item.value;
+      data.forEach((item) => {
+        const answer = item as { id?: string; value?: string };
+        if (answer?.id && answer?.value) result[answer.id] = answer.value;
       });
       return result;
     }
-    return data;
+    return data as Record<string, string>;
   }
 
   // =========================== RETORNO ===========================

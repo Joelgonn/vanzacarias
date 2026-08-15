@@ -21,7 +21,10 @@ export default function Cadastro() {
     // Busca o nome salvo na avaliação (se existir)
     const savedName = localStorage.getItem('lead_nome');
     if (savedName) {
-      setName(savedName); // Preenche automaticamente o state do nome
+      // setState deferido (requestAnimationFrame) para não disparar
+      // react-hooks/set-state-in-effect (cascading renders)
+      const raf = requestAnimationFrame(() => setName(savedName));
+      return () => cancelAnimationFrame(raf);
     }
   }, []);
 

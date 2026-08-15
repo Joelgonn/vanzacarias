@@ -2,12 +2,24 @@
 // NORMALIZE RESTRICTIONS - CONVERSÃO SEGURA DE DADOS DO SUPABASE
 // ============================================================================
 
-import { FoodRestriction, FoodRestrictionType } from '@/types/patient';
+import type { FoodRestriction, FoodRestrictionType, FoodRestrictionSeverity, FoodTag } from '@/types/patient';
+
+// ============================================================================
+// LINHA MÍNIMA DO SUPABASE (campos com valor desconhecido até validação)
+// ============================================================================
+interface RestrictionRow {
+  type?: unknown;
+  foodId?: unknown;
+  tag?: unknown;
+  food?: unknown;
+  severity?: unknown;
+  notes?: unknown;
+}
 
 // ============================================================================
 // 🔥 FUNÇÃO PARA NORMALIZAR RESTRIÇÕES VINDAS DO BANCO
 // ============================================================================
-export function normalizeRestrictions(data: any[]): FoodRestriction[] {
+export function normalizeRestrictions(data: RestrictionRow[]): FoodRestriction[] {
   if (!Array.isArray(data)) {
     return [];
   }
@@ -20,9 +32,9 @@ export function normalizeRestrictions(data: any[]): FoodRestriction[] {
     .map(r => ({
       type: r.type as FoodRestrictionType,
       foodId: typeof r.foodId === 'string' ? r.foodId : undefined,
-      tag: typeof r.tag === 'string' ? r.tag as any : undefined,
+      tag: typeof r.tag === 'string' ? (r.tag as FoodTag) : undefined,
       food: typeof r.food === 'string' ? r.food : undefined,
-      severity: r.severity as any,
+      severity: r.severity as FoodRestrictionSeverity,
       notes: typeof r.notes === 'string' ? r.notes : undefined
     }));
 }

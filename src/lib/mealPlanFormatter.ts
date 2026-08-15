@@ -6,9 +6,33 @@
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 
 // ============================================================================
+// TIPAGENS MÍNIMAS DO CARDÁPIO (apenas campos usados na formatação)
+// ============================================================================
+interface MealPlanFoodItem {
+  id?: string;
+  name?: string;
+  grams?: number;
+  quantity?: number;
+}
+
+interface MealPlanOption {
+  foodItems?: MealPlanFoodItem[];
+  description?: string;
+  name?: string;
+  kcal?: number;
+  macros?: { p?: number; c?: number; g?: number };
+}
+
+interface MealPlanMeal {
+  options?: MealPlanOption[];
+  name?: string;
+  time?: string;
+}
+
+// ============================================================================
 // FUNÇÃO CENTRAL: FORMATAR ITEM ALIMENTAR
 // ============================================================================
-export function formatFoodItem(f: any): string {
+export function formatFoodItem(f: MealPlanFoodItem): string {
   let grams = 0;
   
   const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
@@ -28,7 +52,7 @@ export function formatFoodItem(f: any): string {
 // ============================================================================
 // FUNÇÃO: FORMATAR OPÇÃO DO CARDÁPIO
 // ============================================================================
-export function formatOption(option: any): string {
+export function formatOption(option: MealPlanOption): string {
   if (!option.foodItems || option.foodItems.length === 0) {
     return option?.description || option?.name || 'Sem descrição detalhada';
   }
@@ -40,11 +64,12 @@ export function formatOption(option: any): string {
 // ============================================================================
 // FUNÇÃO: FORMATAR REFEIÇÃO
 // ============================================================================
-export function formatMeal(meal: any): string {
-  if (!meal.options || meal.options.length === 0) return '';
+export function formatMeal(meal: MealPlanMeal): string {
+  const options = meal.options ?? [];
+  if (options.length === 0) return '';
 
-  const optionsText = meal.options
-    .map((opt: any, index: number) => {
+  const optionsText = options
+    .map((opt, index) => {
       const text = formatOption(opt);
       if (!text) return null;
 
@@ -55,7 +80,7 @@ export function formatMeal(meal: any): string {
 
       const macrosText = `🔥 ${kcal} kcal | P:${p}g C:${c}g G:${g}g`;
 
-      if (meal.options.length === 1) {
+      if (options.length === 1) {
         return `  ${text}\n  ${macrosText}`;
       }
 
@@ -70,7 +95,7 @@ export function formatMeal(meal: any): string {
 // ============================================================================
 // FUNÇÃO: FORMATAR CARDÁPIO COMPLETO
 // ============================================================================
-export function formatMealPlan(mealPlan: any): string {
+export function formatMealPlan(mealPlan: unknown): string {
   if (!Array.isArray(mealPlan) || mealPlan.length === 0) {
     return 'Cardápio não disponível ou vazio.';
   }

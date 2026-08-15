@@ -87,9 +87,10 @@ export default function AdminUpload({
       
       setTimeout(() => setSuccess(false), 4000);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error("Erro completo no processo de upload:", err);
-      setError(err.message || 'Ocorreu um erro desconhecido durante o upload.');
+      const message = err instanceof Error && err.message ? err.message : 'Ocorreu um erro desconhecido durante o upload.';
+      setError(message);
     } finally {
       setUploading(false);
       e.target.value = '';

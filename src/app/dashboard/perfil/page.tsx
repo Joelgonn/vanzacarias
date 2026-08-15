@@ -10,8 +10,16 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 
+interface ProfileRow {
+  id?: string;
+  full_name?: string | null;
+  phone?: string | null;
+  sexo?: string | null;
+  data_nascimento?: string | null;
+}
+
 export default function PerfilPaciente() {
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -45,12 +53,12 @@ export default function PerfilPaciente() {
     const { error } = await supabase
       .from('profiles')
       .update({ 
-        full_name: profile.full_name,
-        phone: profile.phone,
-        sexo: profile.sexo, 
-        data_nascimento: profile.data_nascimento 
+        full_name: profile?.full_name,
+        phone: profile?.phone,
+        sexo: profile?.sexo, 
+        data_nascimento: profile?.data_nascimento 
       })
-      .eq('id', profile.id);
+      .eq('id', profile?.id);
     
     if (error) {
       toast.error("Erro ao atualizar o perfil. Tente novamente.");

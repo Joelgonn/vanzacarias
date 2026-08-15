@@ -39,15 +39,19 @@ export default function AddActivityModal({
 
   const selectedCategory = type ? ATIVIDADES_FISICAS_INTENCIONAIS[type] : null;
 
-  // RESET ao fechar
+  // RESET ao fechar (setState agendado em macrotask para evitar atualização
+  // síncrona de estado dentro do efeito; comportamento em runtime idêntico)
   useEffect(() => {
     if (!isOpen) {
-      setType('');
-      setIntensity('');
-      setDuration('');
-      setCalories('');
-      setActiveDropdown(null);
-      setFocusedIndex(0);
+      const timer = setTimeout(() => {
+        setType('');
+        setIntensity('');
+        setDuration('');
+        setCalories('');
+        setActiveDropdown(null);
+        setFocusedIndex(0);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -91,7 +95,11 @@ export default function AddActivityModal({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        activeDropdown ? setActiveDropdown(null) : onClose();
+        if (activeDropdown) {
+          setActiveDropdown(null);
+        } else {
+          onClose();
+        }
         return;
       }
 

@@ -150,9 +150,10 @@ export default function CheckinForm({ onSuccess, onFormChange }: CheckinFormProp
         onSuccess();
       }, 1800);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro Supabase:", error);
-      toast.error(error.message || "Erro ao enviar check-in. Tente novamente.", { id: toastId });
+      const errorMessage = (error as { message?: string }).message || "Erro ao enviar check-in. Tente novamente.";
+      toast.error(errorMessage, { id: toastId });
     } finally {
       setLoading(false);
     }

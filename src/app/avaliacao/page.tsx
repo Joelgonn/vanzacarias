@@ -185,9 +185,10 @@ export default function Avaliacao() {
       localStorage.setItem('lead_sexo', leadGender);
       
       setShowLeadForm(false);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro detalhado ao salvar lead:", JSON.stringify(error, null, 2), error);
-      alert(`Ocorreu um erro ao iniciar: ${error?.message || 'Verifique o console para mais detalhes.'}`);
+      const message = error instanceof Error && error.message ? error.message : 'Verifique o console para mais detalhes.';
+      alert(`Ocorreu um erro ao iniciar: ${message}`);
     } finally {
       setLoadingLead(false);
     }

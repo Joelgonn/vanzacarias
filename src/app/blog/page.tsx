@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Metadata } from 'next';
+import type { SanityImageSource } from '@sanity/image-url/lib/types/types';
 import { client } from '@/sanity/lib/client';
 import { urlFor } from '@/sanity/lib/image'; 
 import { ArrowRight, Calendar, SearchX } from 'lucide-react';
@@ -20,7 +21,16 @@ export const metadata: Metadata = {
 // ==========================================
 // FUNÇÃO DE BUSCA NO SANITY
 // ==========================================
-async function getPosts() {
+interface BlogPost {
+  _id: string;
+  title: string;
+  slug: { current: string };
+  publishedAt: string;
+  excerpt?: string | null;
+  mainImage?: SanityImageSource;
+}
+
+async function getPosts(): Promise<BlogPost[]> {
   return await client.fetch(`*[_type == "post"] | order(publishedAt desc) {
     _id,
     title,
@@ -61,7 +71,7 @@ export default async function BlogPage() {
         {/* GRID DE POSTS */}
         {posts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {posts.map((post: any) => (
+            {posts.map((post: BlogPost) => (
               <Link 
                 href={`/blog/${post.slug.current}`} 
                 key={post._id} 

@@ -1,5 +1,5 @@
-import { FoodRestriction } from '@/types/patient';
-import { FOOD_REGISTRY } from '@/lib/foodRegistry';
+import type { FoodRestriction } from '@/types/patient';
+import { FOOD_REGISTRY, type FoodTag as RegistryFoodTag } from '@/lib/foodRegistry';
 
 export type RestrictionType = 'allergy' | 'intolerance' | 'restriction';
 
@@ -43,7 +43,7 @@ export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction 
     }
   } else if (r.tag) {
     // 2. Tag: Categoria inteira bloqueada -> mapeia para todos os IDs que possuem a tag
-    foodIds = FOOD_REGISTRY.filter(f => f.tags.includes(r.tag as any)).map(f => f.id);
+    foodIds = FOOD_REGISTRY.filter(f => f.tags.includes(r.tag as RegistryFoodTag)).map(f => f.id);
     
     if (foodIds.length === 0) {
       console.warn(
@@ -118,7 +118,7 @@ export function resolveRestriction(
     }
 
     // 2. Match por Tag
-    if (r.tag && food.tags.includes(r.tag as any)) {
+    if (r.tag && food.tags.includes(r.tag as RegistryFoodTag)) {
       return r.type;
     }
 

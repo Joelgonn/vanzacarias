@@ -2,15 +2,30 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, ImagePlus, MessageCircle } from 'lucide-react';
+import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 
 // ===============================
 // 1. TIPAGEM E INTERFACES APRIMORADAS
 // ===============================
+
+// Formato mínimo de um item do meal_plan (JSON salvo no Supabase, coluna
+// meal_plan da tabela profiles).
+export interface MealPlanRow {
+  name: string;
+  time?: string;
+  options?: Array<{
+    name?: string;
+    description?: string;
+    kcal?: number;
+    macros?: { p: number; c: number; g: number };
+  }>;
+}
+
 export interface PatientData {
   id: string;
   full_name: string;
-  meal_plan?: any[] | null;
+  meal_plan?: MealPlanRow[] | null;
   meta_peso?: string | number | null;
   isNew?: boolean | null;
   isLate?: boolean | null;
@@ -133,15 +148,6 @@ function useChatState() {
   const [avatarMood, setAvatarMood] = useState<'neutra' | 'feliz' | 'seria'>('neutra');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isLoading]);
-
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -156,7 +162,7 @@ function useChatState() {
     isLoading, setIsLoading,
     avatarMood, setAvatarMood,
     selectedImage, setSelectedImage,
-    fileInputRef, scrollRef, handleImageSelect
+    handleImageSelect
   };
 }
 
@@ -181,7 +187,7 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
       if (mood === 'feliz') state.setAvatarMood('feliz');
       else if (mood === 'dificil') state.setAvatarMood('seria');
       else state.setAvatarMood('neutra');
-    } catch (error) {
+    } catch {
       state.setAvatarMood('neutra'); 
     }
   };
@@ -268,9 +274,10 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
       if (data.reply) {
         state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("ERRO NO ENVIO (PACIENTE):", error);
-      state.setMessages(prev => [...prev, { role: 'assistant', content: error.message || 'Ops, tive um probleminha técnico. Pode repetir?' }]);
+      const errorMessage = (error as { message?: string }).message || 'Ops, tive um probleminha técnico. Pode repetir?';
+      state.setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
     } finally {
       state.setIsLoading(false);
       state.setSelectedImage(null); 
@@ -368,8 +375,9 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
       if (data.reply) {
         state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
       }
-    } catch (error: any) {
-      state.setMessages(prev => [...prev, { role: 'assistant', content: error.message || 'Ops, erro ao consultar os dados administrativos.' }]);
+    } catch (error) {
+      const errorMessage = (error as { message?: string }).message || 'Ops, erro ao consultar os dados administrativos.';
+      state.setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
     } finally {
       state.setIsLoading(false);
       state.setSelectedImage(null); 
@@ -388,8 +396,17 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   const isRoleAdmin = role === 'admin';
   
   const state = useChatState();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const patientLogic = useChatPatient(state, !isRoleAdmin);
   const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin);
+
+  // Mantém o scroll do chat no fim da conversa
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [state.messages, state.isLoading]);
 
   const handleSend = () => {
     if (role === 'admin') {
@@ -420,9 +437,11 @@ export default function ChatAssistant(props: ChatAssistantProps) {
             <span className="absolute top-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full z-10 animate-pulse ring-4 ring-emerald-500/20"></span>
             
             <div className={`w-[68px] h-[68px] sm:w-[72px] sm:h-[72px] rounded-full overflow-hidden border-[3px] border-stone-900 shadow-[0_12px_30px_rgba(0,0,0,0.2)] bg-gradient-to-b from-stone-50 to-stone-200 flex items-end justify-center ${getAvatarAnimation()}`}>
-               <img 
+               <NextImage 
                  src={AVATAR_IMAGES[state.avatarMood]} 
                  alt="Nutri Avatar" 
+                 width={149}
+                 height={121}
                  className="w-[90%] h-[90%] object-cover object-top drop-shadow-md" 
                />
             </div>
@@ -453,9 +472,11 @@ export default function ChatAssistant(props: ChatAssistantProps) {
             <div className="bg-stone-900 px-5 pt-2 pb-5 sm:py-5 text-white flex justify-between items-center shrink-0 shadow-sm relative z-10">
               <div className="flex items-center gap-3.5">
                 <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 border-white/10 shrink-0 bg-gradient-to-b from-stone-700 to-stone-800 flex items-end justify-center shadow-inner ${getAvatarAnimation()}`}>
-                  <img 
+                  <NextImage 
                     src={AVATAR_IMAGES[state.avatarMood]} 
                     alt="Avatar" 
+                    width={149}
+                    height={121}
                     className="w-[90%] h-[90%] object-cover object-top drop-shadow-md" 
                   />
                 </div>
@@ -502,14 +523,16 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               </div>
             </div>
             
-            <div ref={state.scrollRef} className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-5 bg-[#f8f9fa] scrollbar-hide">
+            <div ref={scrollRef} className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-5 bg-[#f8f9fa] scrollbar-hide">
               
               {state.messages.length === 0 && (
                 <div className="flex flex-col items-center text-center mt-8 space-y-4 px-6 animate-in slide-in-from-bottom-4 duration-500">
                   <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200 flex items-end justify-center shadow-[0_8px_30px_rgba(0,0,0,0.08)] border-4 border-white ${getAvatarAnimation()}`}>
-                    <img 
+                    <NextImage 
                       src={AVATAR_IMAGES[state.avatarMood]} 
                       alt="Nutri Grande" 
+                      width={149}
+                      height={121}
                       className="w-[90%] h-[90%] object-cover object-top drop-shadow-xl" 
                     />
                   </div>
@@ -556,8 +579,10 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               {state.selectedImage && (
                 <div className="relative mb-3 inline-block animate-in fade-in slide-in-from-bottom-2">
                   <div className="p-1 bg-white border border-stone-200 rounded-xl shadow-sm">
-                    <img 
+                    <NextImage 
                       src={`data:image/jpeg;base64,${state.selectedImage}`} 
+                      width={64}
+                      height={64}
                       className="h-16 w-16 rounded-lg object-cover" 
                       alt="Preview do anexo"
                     />
@@ -575,7 +600,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               <div className="flex gap-2 bg-stone-50 p-1.5 rounded-[2rem] border border-stone-200 focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-500/10 focus-within:bg-white transition-all items-center">
                 
                 <button
-                  onClick={() => state.fileInputRef.current?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   className="p-2.5 text-stone-400 hover:text-stone-800 hover:bg-stone-200 rounded-full transition-all shrink-0 ml-1 active:scale-95"
                   disabled={state.isLoading}
                   title="Anexar foto"
@@ -587,7 +612,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 <input
                   type="file"
                   accept="image/*"
-                  ref={state.fileInputRef}
+                  ref={fileInputRef}
                   className="hidden"
                   onChange={state.handleImageSelect}
                 />

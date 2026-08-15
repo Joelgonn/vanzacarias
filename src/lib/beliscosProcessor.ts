@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { z } from 'zod';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ============================================================================
 // SCHEMAS DE VALIDAÇÃO
@@ -46,7 +47,7 @@ type DailyLogBeliscos = {
 // ============================================================================
 // 🔥 FUNÇÃO PRINCIPAL: PROCESSAR BELISCOS
 // ============================================================================
-export function processBeliscos(beliscosData: any): BeliscosProcessed {
+export function processBeliscos(beliscosData: unknown): BeliscosProcessed {
   const parsed = BeliscosDataSchema.safeParse(beliscosData);
   
   if (!parsed.success || !parsed.data.items || parsed.data.items.length === 0) {
@@ -88,7 +89,7 @@ export function processBeliscos(beliscosData: any): BeliscosProcessed {
 // 🔥 FUNÇÃO PARA BUSCAR HISTÓRICO DE BELISCOS
 // ============================================================================
 export async function fetchHistoricoBeliscos(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   currentDate: string,
   limit: number = 4

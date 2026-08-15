@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, type ChatSession } from '@google/generative-ai'
 import { z } from 'zod'
 
 import { requireUser } from '@/lib/supabase/serverAuth'
@@ -22,32 +22,8 @@ import { formatMealPlan } from '@/lib/mealPlanFormatter'
 import { normalizeRestrictions } from '@/lib/normalizeRestrictions'
 
 // ==========================================
-// 🔥 FUNÇÃO CENTRAL (FORMATADOR OFICIAL)
-// ==========================================
-function formatFoodItemWrapper(f: any): string {
-  const registryItem = FOOD_REGISTRY.find(r => r.id === f.id);
-  const baseGrams = registryItem?.baseGrams || 100;
-  let grams = 0;
-
-  if (f.grams != null) {
-    grams = Math.round(f.grams);
-  } else if (f.quantity != null) {
-    grams = Math.round(f.quantity * baseGrams);
-  } else {
-    grams = baseGrams;
-  }
-
-  return `${grams}g ${f.name}`;
-}
-
-// ==========================================
 // 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD)
 // ==========================================
-
-const MessageSchema = z.object({
-  role: z.enum(['user', 'assistant', 'model']),
-  content: z.string()
-});
 
 const PatientRequestSchema = z.object({
   userId: z.string().min(1),
@@ -60,13 +36,6 @@ const PatientRequestSchema = z.object({
   ).optional().default([]),
   image: z.string().optional().nullable()
 }).passthrough();
-
-const FoodRestrictionSchema = z.object({
-  type: z.enum(['allergy', 'intolerance', 'preference', 'restriction']).catch('restriction'),
-  foodId: z.string().optional(),
-  tag: z.string().optional(),
-  food: z.string().optional()
-});
 
 const FoodItemSchema = z.object({
   id: z.string(),
@@ -94,8 +63,7 @@ const MealPlanSchema = z.array(
   })
 ).nullable().default([]);
 
-type MealPlan = z.infer<typeof MealPlanSchema>;
-type FoodRestriction = z.infer<typeof FoodRestrictionSchema>;
+type FoodRestriction = import('@/types/patient').FoodRestriction;
 
 // ==========================================
 // CONFIGURAÇÕES INICIAIS
@@ -171,11 +139,11 @@ function extractFoodIdsFromText(text: string): { ids: Set<string>, names: string
 async function ensureSafeResponse(
   initialReply: string,
   restrictions: FoodRestriction[],
-  chatSession: any
+  chatSession: ChatSession
 ): Promise<string> {
   if (!restrictions || restrictions.length === 0) return initialReply;
 
-  const blockedIds = expandRestrictions(restrictions as any[]);
+  const blockedIds = expandRestrictions(restrictions);
   if (blockedIds.size === 0) return initialReply;
 
   const { ids: mentionedFoodIds } = extractFoodIdsFromText(initialReply);
@@ -197,7 +165,7 @@ async function ensureSafeResponse(
       Mantenha exatamente o mesmo tom empático e formatação. Não peça desculpas pelo erro, apenas me dê o texto final corrigido de forma natural.`
     );
     return correctionResult.response.text();
-  } catch (e) {
+  } catch {
     return `Pensei em algumas opções, mas notei que elas incluem derivados que esbarram nas suas restrições (${violatedNames.join(', ')}). Para sua segurança, que tal olharmos outras opções do seu plano ou conversarmos com a Nutri Vanusa? 😊`;
   }
 }
@@ -309,7 +277,7 @@ export async function POST(req: NextRequest) {
     let alimentosEvitar: string[] = [];
     if (qfaRes.data?.[0]?.answers) {
       alimentosEvitar = Object.entries(qfaRes.data[0].answers)
-        .filter(([_, f]) => f === "0")
+        .filter(([, f]) => f === "0")
         .map(([a]) => a.replace(/_/g, ' '));
     }
 
@@ -344,7 +312,7 @@ export async function POST(req: NextRequest) {
       humorHoje: dailyLog?.mood || 'Não registrado',
       aguaHoje: dailyLog?.water_ml || 0,
       refeicoesFeitas: dailyLog?.meals_checked?.length || 0,
-      atividadesHojeFormatadas: dailyLog?.activities ? dailyLog.activities.map((a:any) => `- ${a.name}`).join('\n') : 'Nenhuma',
+      atividadesHojeFormatadas: dailyLog?.activities ? dailyLog.activities.map((a: { name: string }) => `- ${a.name}`).join('\n') : 'Nenhuma',
       activityKcal: dailyLog?.activity_kcal || 0,
       todayStr,
       hasImage: !!image,
@@ -387,7 +355,7 @@ ${semanticMemory || ''}`.trim();
 
     const chat = model.startChat({ history: mappedHistory });
 
-    let result = image 
+    const result = image 
       ? await chat.sendMessage([safeMessage || "Analise esse prato", { inlineData: { mimeType: "image/jpeg", data: image } }]) 
       : await chat.sendMessage(safeMessage);
 

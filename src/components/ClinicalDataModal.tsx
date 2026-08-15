@@ -109,9 +109,10 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
       setBioquimicos({});
       onClose();
 
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      toast.error(err.message || "Ocorreu um erro ao salvar os dados.", { id: toastId });
+      const message = err instanceof Error && err.message ? err.message : "Ocorreu um erro ao salvar os dados.";
+      toast.error(message, { id: toastId });
     } finally {
       setLoading(false);
     }

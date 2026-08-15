@@ -9,7 +9,7 @@ import {
   CheckCircle2, AlertTriangle, Activity, Target, Clock, Zap, 
   ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
   Coffee, Check, Brain, Flame, MessageCircle, ClipboardList, 
-  Stethoscope, ListChecks, Save, MoveRight
+  Stethoscope, ListChecks, Save
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -21,9 +21,8 @@ import { toast } from 'sonner';
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
 // 🔥 Importamos o motor de cálculo e validador de QFA para usar no componente Pai
 import { generateRecommendation, validateQFAConsistency } from '@/lib/nutrition'; 
-import { getPatientMetabolicData } from '@/lib/getPatientMetabolicData';
 // NOVO: Tipos para o perfil alimentar
-import { FoodRestriction } from '@/types/patient';
+import type { FoodRestriction } from '@/types/patient';
 
 // =========================================================================
 // INTERFACES E TIPAGENS
@@ -80,7 +79,23 @@ interface SkinfoldsData {
 interface BioData {
   id: string;
   exam_date: string;
-  [key: string]: any; 
+  glucose?: string | number | null;
+  insulin?: string | number | null;
+  hba1c?: string | number | null;
+  total_cholesterol?: string | number | null;
+  hdl?: string | number | null;
+  ldl?: string | number | null;
+  triglycerides?: string | number | null;
+  ferritin?: string | number | null;
+  pcr?: string | number | null;
+  tgp?: string | number | null;
+  creatinine?: string | number | null;
+  urea?: string | number | null;
+  vitamin_d?: string | number | null;
+  vitamin_b12?: string | number | null;
+  tsh?: string | number | null;
+  iron?: string | number | null;
+  [key: string]: string | number | null | undefined;
 }
 
 interface DailyLog {
@@ -90,7 +105,7 @@ interface DailyLog {
   mood: string;
   meals_checked: string[];
   activity_kcal?: number;
-  activities?: any[];
+  activities?: unknown[];
 }
 
 interface ClinicalNote {
@@ -107,6 +122,8 @@ interface Alert {
   waLink?: string;
   waText?: string;
 }
+
+type ClinicalTab = 'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos';
 
 export default function PacienteHistoricoAdmin() {
   // =========================================================================
@@ -129,7 +146,7 @@ export default function PacienteHistoricoAdmin() {
   const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos'>('prontuario');
+  const [activeTab, setActiveTab] = useState<ClinicalTab>('prontuario');
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
   
   const [isRadarExpanded, setIsRadarExpanded] = useState(false);
@@ -513,10 +530,10 @@ export default function PacienteHistoricoAdmin() {
       Object.keys(examMap).forEach(key => {
         let value = latestBio[key];
         if (key === 'homair' && !value && latestBio.glucose && latestBio.insulin) {
-          value = ((parseFloat(latestBio.glucose) * parseFloat(latestBio.insulin)) / 405).toFixed(2);
+          value = ((parseFloat(latestBio.glucose as string) * parseFloat(latestBio.insulin as string)) / 405).toFixed(2);
         }
         if(value !== null && value !== undefined) {
-          const analysis = interpretBiochemical(key, parseFloat(value));
+          const analysis = interpretBiochemical(key, parseFloat(value as string));
           if(analysis.status === 'danger') dangerExams.push(examMap[key]);
         }
       });
@@ -572,7 +589,7 @@ export default function PacienteHistoricoAdmin() {
 
     const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-    let defaultHeightRaw = antroData.find(a => a.height)?.height || history.find(h => h.altura)?.altura || profile?.altura || null;
+    const defaultHeightRaw = antroData.find(a => a.height)?.height || history.find(h => h.altura)?.altura || profile?.altura || null;
     const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw.toString()) : null;
 
     return sortedDates.map(dateStr => {
@@ -614,7 +631,7 @@ export default function PacienteHistoricoAdmin() {
 
       let homa: number | null = null;
       if (bio && bio.glucose && bio.insulin) {
-        homa = parseFloat(((parseFloat(bio.glucose) * parseFloat(bio.insulin)) / 405).toFixed(2));
+        homa = parseFloat(((parseFloat(bio.glucose as string) * parseFloat(bio.insulin as string)) / 405).toFixed(2));
       }
 
       return {
@@ -687,53 +704,6 @@ export default function PacienteHistoricoAdmin() {
     
     return { weight, bf, leanMass, height };
   }, [timelineData, profile, history, antroData]); 
-
-    // 🔥 EXTRAIR COMPOSIÇÃO CORPORAL MAIS RECENTE PARA O CHATBOT (Jackson & Pollock)
-  const latestBodyComposition = useMemo(() => {
-    if (timelineData.length === 0) return null;
-    
-    // Encontrar o ponto mais recente com dados de composição
-    const latestComposition = [...timelineData].reverse().find(t => t.bf !== null);
-    
-    if (!latestComposition) return null;
-    
-    // Calcular evolução comparando com o primeiro registro
-    const firstComposition = timelineData.find(t => t.bf !== null);
-    
-    let evolucaoGordura = '';
-    let evolucaoMassaMagra = '';
-    
-    if (firstComposition && firstComposition.bf !== null && latestComposition.bf !== null) {
-      const diffGordura = latestComposition.bf - firstComposition.bf;
-      if (diffGordura < 0) {
-        evolucaoGordura = `Reduziu ${Math.abs(diffGordura).toFixed(1)}% de gordura corporal`;
-      } else if (diffGordura > 0) {
-        evolucaoGordura = `Aumentou ${diffGordura.toFixed(1)}% de gordura corporal`;
-      } else {
-        evolucaoGordura = `Manteve o percentual de gordura`;
-      }
-    }
-    
-    if (firstComposition && firstComposition.leanMass !== null && latestComposition.leanMass !== null) {
-      const diffMagra = latestComposition.leanMass - firstComposition.leanMass;
-      if (diffMagra > 0) {
-        evolucaoMassaMagra = `Ganhou ${diffMagra.toFixed(1)}kg de massa magra`;
-      } else if (diffMagra < 0) {
-        evolucaoMassaMagra = `Perdeu ${Math.abs(diffMagra).toFixed(1)}kg de massa magra`;
-      } else {
-        evolucaoMassaMagra = `Manteve a massa magra`;
-      }
-    }
-    
-    return {
-      percentualGordura: latestComposition.bf,
-      massaGorda: latestComposition.fatMass,
-      massaMagra: latestComposition.leanMass,
-      ultimaAvaliacao: latestComposition.date,
-      evolucaoGordura,
-      evolucaoMassaMagra
-    };
-  }, [timelineData]);
 
   // =========================================================================
   // 🔥 LÓGICA DE FONTE ÚNICA DE VERDADE (SINGLE SOURCE OF TRUTH)
@@ -819,9 +789,9 @@ export default function PacienteHistoricoAdmin() {
   // =========================================================================
   // SUB-COMPONENTES
   // =========================================================================
-  const ExamBadge = ({ label, value, unit, type }: { label: string, value: any, unit: string, type: string }) => {
-    const analysis = interpretBiochemical(type, value ? parseFloat(value) : null);
-    if (value === null || value === undefined || isNaN(value)) return null;
+  const ExamBadge = ({ label, value, unit, type }: { label: string, value: string | number | null | undefined, unit: string, type: string }) => {
+    const analysis = interpretBiochemical(type, value ? parseFloat(value as string) : null);
+    if (value === null || value === undefined || isNaN(value as number)) return null;
 
     return (
       <div className={`relative overflow-hidden group flex items-center justify-between p-4 rounded-2xl border ${analysis.border} ${analysis.bg} transition-all duration-300 hover:shadow-md`}>
@@ -1112,7 +1082,7 @@ export default function PacienteHistoricoAdmin() {
                   <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} stroke="#818cf8" fontSize={10} axisLine={false} tickLine={false} dx={10} />
                   
                   <RechartsTooltip 
-                    content={({ active, payload, label }) => {
+                    content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
@@ -1182,9 +1152,9 @@ export default function PacienteHistoricoAdmin() {
                     </>
                   )}
                   
-                  <Scatter yAxisId="left" dataKey="hasExam" shape={(props: any) => {
-                    const { cx, cy, payload } = props;
-                    if (!payload.hasExam) return <g></g>;
+                  <Scatter yAxisId="left" dataKey="hasExam" shape={(props: { cx?: number; cy?: number; payload?: { hasExam?: boolean } }) => {
+                    const { cx = 0, cy = 0, payload } = props;
+                    if (!payload?.hasExam) return <g></g>;
                     return (
                       <g transform={`translate(${cx - 8},${cy - 24})`} className="cursor-pointer">
                         <circle cx="8" cy="8" r="10" fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.5" />
@@ -1216,7 +1186,7 @@ export default function PacienteHistoricoAdmin() {
             ].map(tab => (
               <button 
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)} 
+                onClick={() => setActiveTab(tab.id as ClinicalTab)} 
                 className={`flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 h-10 md:h-12 text-[10px] md:text-xs font-bold uppercase tracking-wider rounded-lg md:rounded-xl transition-all whitespace-nowrap active:scale-[0.98] ${
                   activeTab === tab.id 
                     ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50' 
@@ -1510,14 +1480,6 @@ export default function PacienteHistoricoAdmin() {
                       
                       const initialPoint = timelineData.find(t => t.bf !== null && t.bf !== undefined);
 
-                      let targetImc: string | null = null;
-                      const defaultHeightRaw = antroData.find(a => a.height)?.height || profile?.altura || null;
-                      const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw.toString()) : null;
-                      
-                      if (profile?.meta_peso && defaultHeight) {
-                        targetImc = (profile.meta_peso / (defaultHeight * defaultHeight)).toFixed(1);
-                      }
-
                       if (currentPoint && currentPoint.bf && patientAge !== null) {
                         
                         const getDelta = (current: number, initial: number) => (current - initial).toFixed(1);
@@ -1693,7 +1655,7 @@ export default function PacienteHistoricoAdmin() {
                   </div>
                 ) : (
                   bioData.map((item) => {
-                    const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose) * parseFloat(item.insulin)) / 405).toFixed(2) : null;
+                    const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose as string) * parseFloat(item.insulin as string)) / 405).toFixed(2) : null;
 
                     return (
                       <div key={item.id} className="bg-white rounded-3xl md:rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">

@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { Users, FilterX, Bell, TrendingUp, AlertTriangle } from 'lucide-react';
 import { PatientCard } from './PatientCard';
 import { cn } from '@/ui/system';

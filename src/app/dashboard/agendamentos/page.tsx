@@ -10,9 +10,13 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+interface ProfileRow {
+  full_name?: string | null;
+}
+
 export default function Agendamentos() {
   const [price, setPrice] = useState<number>(197.00);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingCheckout, setProcessingCheckout] = useState(false);
   const [calendlyUrl, setCalendlyUrl] = useState<string>('');

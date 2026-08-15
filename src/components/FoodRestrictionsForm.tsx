@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { FOOD_REGISTRY } from '@/lib/foodRegistry';
+import { useState, useMemo } from 'react';
+import { FOOD_REGISTRY, type FoodEntity } from '@/lib/foodRegistry';
 import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search } from 'lucide-react';
@@ -50,24 +50,17 @@ export default function FoodRestrictionsForm({
   const [step, setStep] = useState<'type' | 'search'>('type');
   const [type, setType] = useState<FoodRestriction['type']>('allergy');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<typeof FOOD_REGISTRY>([]);
 
-  // 🔍 busca
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-
-    const filtered = FOOD_REGISTRY
+  // 🔍 busca (resultado derivado do query — evita estado/efeito desnecessário)
+  const results: FoodEntity[] = useMemo(() => {
+    if (!query.trim()) return [];
+    return FOOD_REGISTRY
       .filter(f => f.name.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 6);
-
-    setResults(filtered);
   }, [query]);
 
   // ➕ add direto (sem botão)
-  const handleAdd = (food: any) => {
+  const handleAdd = (food: FoodEntity) => {
     const exists = value.some(
       r => r.foodId === food.id && r.type === type
     );

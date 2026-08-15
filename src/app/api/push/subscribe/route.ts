@@ -44,8 +44,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Erro na Rota de Push:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno no servidor' }, { status: 500 });
+    return NextResponse.json({ error: message || 'Erro interno no servidor' }, { status: 500 });
   }
 }

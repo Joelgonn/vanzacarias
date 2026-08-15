@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import confetti from 'canvas-confetti';
 import { 
-  Loader2, CheckCircle2, TrendingDown, PlusCircle, X,
-  Flame, Trophy, AlertCircle, Ruler, ArrowRight, HeartPulse, 
+  Loader2, TrendingDown, PlusCircle, X,
+  Flame, Trophy, AlertCircle, HeartPulse, 
   Lock, Star, Zap, Utensils, ClipboardCheck, Droplets, Check,
-  Smile, Frown, Meh, BellRing, Scale, Layers, Activity as ActivityIcon, Syringe,
-  Target, Calendar, ArrowDown, ArrowUp, Minus, ChevronRight, ShieldAlert, ShieldCheck,
+  Smile, Frown, Meh, BellRing, Scale, Layers, Activity as ActivityIcon,
+  Target, Calendar, ArrowDown, ChevronRight, ShieldAlert, ShieldCheck,
   Brain, Sparkles, LayoutDashboard, ClipboardList, CalendarDays, UserCircle, LogOut, Compass
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { 
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, 
@@ -19,16 +20,25 @@ import {
 } from 'recharts';
 import CheckinForm from '@/components/CheckinForm';
 import ChatAssistant from '@/components/ChatAssistant';
-import type { AdminContext } from '@/components/ChatAssistant';
 import ActivityCard from '@/components/ActivityCard';
 import AddActivityModal from '@/components/AddActivityModal';
-import { Activity, getTotalActivityKcal } from '@/lib/activities';
+import { getTotalActivityKcal } from '@/lib/activities';
+import type { Activity } from '@/lib/activities';
 import { toast } from 'sonner';
 
 // =========================================================================
 // 🔥 COMPONENTES UI PREMIUM (NÍVEL SAAS) COM ÍCONES COLORIDOS
 // =========================================================================
-function MetricCard({ label, value, subtext, icon: Icon, highlight, iconColor }: any) {
+interface MetricCardProps {
+  label: string;
+  value: string | number;
+  subtext?: string;
+  icon?: LucideIcon;
+  highlight?: boolean;
+  iconColor?: string;
+}
+
+function MetricCard({ label, value, subtext, icon: Icon, highlight, iconColor }: MetricCardProps) {
   return (
     <div className={`p-5 md:p-6 rounded-[2rem] border transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between min-h-[140px] ${
       highlight 
@@ -104,14 +114,69 @@ const getLocalTodayString = () => {
   return `${year}-${month}-${day}`;
 };
 
+// =========================================================================
+// TIPOS DAS LINHAS DO SUPABASE USADAS NO DASHBOARD
+// =========================================================================
+interface ProfileRow {
+  id?: string;
+  full_name?: string | null;
+  meta_peso?: string | null;
+  account_type?: string | null;
+  trial_ends_at?: string | null;
+  created_at: string;
+  has_meal_plan_access?: boolean | null;
+  meal_plan?: Array<{ name: string }> | null;
+  food_restrictions?: string[] | null;
+  data_nascimento?: string | null;
+  sexo?: string | null;
+  role?: string | null;
+}
+
+interface CheckinRow {
+  id: string;
+  created_at: string;
+  peso: string;
+  altura: string;
+  cintura: string;
+  adesao_ao_plano: number;
+}
+
+interface AntroRow {
+  weight: string;
+  measurement_date: string;
+  waist?: string;
+}
+
+interface SkinfoldRow {
+  measurement_date: string;
+  triceps?: string;
+  biceps?: string;
+  subscapular?: string;
+  suprailiac?: string;
+  abdominal?: string;
+  thigh?: string;
+  calf?: string;
+}
+
+interface BioRow {
+  exam_date: string;
+  glucose?: string;
+  insulin?: string;
+}
+
+interface AppointmentRow {
+  appointment_date: string;
+  appointment_time: string;
+}
+
 export default function Dashboard() {
-  const [profile, setProfile] = useState<any>(null);
-  const [evaluation, setEvaluation] = useState<any>(null);
-  const [checkins, setCheckins] = useState<any[]>([]);
-  const [antroData, setAntroData] = useState<any[]>([]); 
-  const [skinfoldsData, setSkinfoldsData] = useState<any[]>([]);
-  const [bioData, setBioData] = useState<any[]>([]);
-  const [nextAppointment, setNextAppointment] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [, setEvaluation] = useState<unknown>(null);
+  const [checkins, setCheckins] = useState<CheckinRow[]>([]);
+  const [antroData, setAntroData] = useState<AntroRow[]>([]);
+  const [skinfoldsData, setSkinfoldsData] = useState<SkinfoldRow[]>([]);
+  const [bioData, setBioData] = useState<BioRow[]>([]);
+  const [nextAppointment] = useState<AppointmentRow | null>(null);
   const [loading, setLoading] = useState(true);
   
   const [hasCompletedQFA, setHasCompletedQFA] = useState<boolean>(true);
@@ -132,7 +197,7 @@ export default function Dashboard() {
     activity_kcal: 0
   });
 
-  const [bodyComposition, setBodyComposition] = useState<{
+  const [, setBodyComposition] = useState<{
     percentualGordura: number | null;
     massaGorda: number | null;
     massaMagra: number | null;
@@ -375,8 +440,8 @@ export default function Dashboard() {
   const waterProgress = Math.min(Math.round((dailyLog.water_ml / waterGoal) * 100), 100);
   const isWaterGoalMet = waterProgress >= 100;
 
-  const isMealPlanReady = profile?.meal_plan && Array.isArray(profile.meal_plan) && profile.meal_plan.length > 0;
-  const mealNames = isMealPlanReady ? profile.meal_plan.map((meal: any) => meal.name) : [];
+  const isMealPlanReady = !!profile?.meal_plan && Array.isArray(profile.meal_plan) && profile.meal_plan.length > 0;
+  const mealNames = isMealPlanReady ? (profile?.meal_plan ?? []).map((meal) => meal.name) : [];
   
   const totalMeals = mealNames.length;
   const completedMeals = dailyLog.meals_checked.length;
@@ -501,7 +566,7 @@ export default function Dashboard() {
       const data = await response.json();
       if (data.init_point) window.location.href = data.init_point; 
       else throw new Error(data.error);
-    } catch (error) {
+    } catch {
       toast.error("Erro ao iniciar pagamento.");
       setProcessingCheckout(false);
     }
@@ -601,7 +666,7 @@ export default function Dashboard() {
 
       let sumFolds: number | null = null;
       if (skin) {
-        const s1 = parseFloat(skin.triceps||0) + parseFloat(skin.biceps||0) + parseFloat(skin.subscapular||0) + parseFloat(skin.suprailiac||0) + parseFloat(skin.abdominal||0) + parseFloat(skin.thigh||0) + parseFloat(skin.calf||0);
+        const s1 = parseFloat(skin.triceps || "0") + parseFloat(skin.biceps || "0") + parseFloat(skin.subscapular || "0") + parseFloat(skin.suprailiac || "0") + parseFloat(skin.abdominal || "0") + parseFloat(skin.thigh || "0") + parseFloat(skin.calf || "0");
         if (s1 > 0) sumFolds = parseFloat(s1.toFixed(1));
       }
 
@@ -618,7 +683,7 @@ export default function Dashboard() {
         cintura: cinturaAtual,
         somatorio_dobras: sumFolds,
         homair: homa,
-        adesao: checkin?.adesao_ao_plano ? parseFloat(checkin.adesao_ao_plano) : null,
+        adesao: checkin?.adesao_ao_plano ?? null,
         hasExam: !!bio, 
       };
     });
@@ -715,14 +780,6 @@ export default function Dashboard() {
   const foodStatusConfig = hasFoodRestrictions 
     ? { icon: <ShieldAlert size={20} strokeWidth={2.5} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
     : { icon: <ShieldCheck size={20} strokeWidth={2.5} />, bgClass: 'bg-green-50 text-green-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
-
-  const adminContextForChat: AdminContext = {
-    patients: [],
-    leads: [],
-    usageStats: {},
-    todayTotalMessages: 0,
-    bodyComposition: bodyComposition
-  };
 
   const validWeightsCount = timelineData.filter(d => d.peso !== null).length;
   const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;

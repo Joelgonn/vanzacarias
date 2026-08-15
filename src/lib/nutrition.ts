@@ -1,12 +1,12 @@
-import { FoodRestriction } from '@/types/patient';
-import { FOOD_REGISTRY, FoodEntity } from '@/lib/foodRegistry';
+import type { FoodRestriction, FoodTag } from '@/types/patient';
+import { FOOD_REGISTRY, type FoodEntity, type FoodTag as RegistryFoodTag } from '@/lib/foodRegistry';
 
 // ============================================================================
 // 🧠 HELPERS INTERNOS (MATCH INTELIGENTE)
 // ============================================================================
 
-function findFoodsByTag(tag: string): FoodEntity[] {
-  return FOOD_REGISTRY.filter(f => f.tags.includes(tag as any));
+function findFoodsByTag(tag: FoodTag): FoodEntity[] {
+  return FOOD_REGISTRY.filter(f => f.tags.includes(tag as RegistryFoodTag));
 }
 
 function matchFoodLegacy(food: string): FoodEntity[] {
@@ -313,9 +313,9 @@ export function generateRecommendation({
     fat = fat * 1.15; 
   }
 
-  let proteinKcal = protein * 4;
-  let fatKcal = fat * 9;
-  let remainingKcal = calories - (proteinKcal + fatKcal);
+  const proteinKcal = protein * 4;
+  const fatKcal = fat * 9;
+  const remainingKcal = calories - (proteinKcal + fatKcal);
   carbs = remainingKcal > 0 ? remainingKcal / 4 : 0;
 
   const maxCarbs = weight * 5; 

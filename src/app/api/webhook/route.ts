@@ -7,6 +7,14 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Campos atualizados na tabela 'profiles' quando o pagamento é aprovado
+interface ProfileUpdate {
+  payment_status: string;
+  updated_at: string;
+  account_type?: string;
+  has_meal_plan_access?: boolean;
+}
+
 export async function POST(request: Request) {
   try {
     const url = new URL(request.url);
@@ -26,7 +34,7 @@ export async function POST(request: Request) {
       const planType = paymentData.metadata?.plan_type; 
 
       if (userId) {
-        let updateData: any = { 
+        const updateData: ProfileUpdate = { 
           payment_status: 'approved',
           updated_at: new Date().toISOString() 
         };
@@ -60,7 +68,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true }, { status: 200 });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('[ERRO FATAL] Webhook:', error);
     return NextResponse.json({ error: 'Webhook failed' }, { status: 500 });
   }

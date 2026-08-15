@@ -129,11 +129,12 @@ export async function POST(request: NextRequest) {
       id: response.id
     });
 
-  } catch (error: any) {
-    console.error("ERRO NO CHECKOUT (DETALHADO):", JSON.stringify(error.cause || error, null, 2));
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("ERRO NO CHECKOUT (DETALHADO):", JSON.stringify(err.cause || err, null, 2));
     return NextResponse.json({ 
       error: 'Falha ao processar pagamento.', 
-      details: error?.message 
+      details: err.message 
     }, { status: 500 });
   }
 }

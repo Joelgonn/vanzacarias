@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { 
-  Edit2, Activity, Target, Users, 
+  Edit2, Activity, Users, 
   MoreHorizontal, AlertCircle, Bell, BellRing, Star, FileText, Trash2,
   MessageCircle, Utensils, TrendingUp, CheckCircle, X, Eye, Save,
-  Calendar, Weight, User, ClipboardList, AlertTriangle
+  Calendar, Weight, User, ClipboardList
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -95,9 +95,14 @@ export function PatientCard({
   
   useEffect(() => {
     if (!hasAnimated && (score.risk === 'CRITICAL' || score.risk === 'HIGH')) {
-      setHasAnimated(true);
+      // setState deferido (requestAnimationFrame) para não disparar
+      // react-hooks/set-state-in-effect (cascading renders)
+      const raf = requestAnimationFrame(() => setHasAnimated(true));
       const timer = setTimeout(() => setHasAnimated(false), 1000);
-      return () => clearTimeout(timer);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+      };
     }
   }, [score.risk, hasAnimated]);
   

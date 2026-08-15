@@ -65,13 +65,14 @@ export async function generateEmbedding(
 
     return vector;
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // ==========================================
     // ⚠️ LOG INTELIGENTE (SEM QUEBRAR SISTEMA)
     // ==========================================
+    const err = error as { message?: string; status?: number } | null;
     console.warn('[Embedding Error]', {
-      message: error?.message,
-      status: error?.status
+      message: err?.message,
+      status: err?.status
     });
 
     // 🔥 NÃO quebra o fluxo (RAG opcional)

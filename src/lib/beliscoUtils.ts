@@ -103,7 +103,16 @@ export const createBeliscoItemManual = (
 // =========================================================================
 // FUNÇÃO PARA MIGRAR DADOS ANTIGOS (SE NECESSÁRIO)
 // =========================================================================
-export const migrateOldBeliscosFormat = (oldData: any): BeliscosState => {
+
+interface LegacyBeliscosData {
+  items?: BeliscoItem[];
+  kcal?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+}
+
+export const migrateOldBeliscosFormat = (oldData: LegacyBeliscosData): BeliscosState => {
   // Se já tem o formato novo com items
   if (oldData?.items && Array.isArray(oldData.items)) {
     return { items: oldData.items };
@@ -118,7 +127,7 @@ export const migrateOldBeliscosFormat = (oldData: any): BeliscosState => {
     
     // Se tem dados no formato antigo, cria um item genérico
     // Isso preserva o histórico do paciente
-    if (oldData.kcal > 0 || oldData.protein > 0 || oldData.carbs > 0 || oldData.fat > 0) {
+    if ((oldData.kcal ?? 0) > 0 || (oldData.protein ?? 0) > 0 || (oldData.carbs ?? 0) > 0 || (oldData.fat ?? 0) > 0) {
       return {
         items: [
           {

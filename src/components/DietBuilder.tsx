@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
-  Copy, CheckCircle2, CheckCircle, AlertCircle, CalendarRange, Loader2,
+  CheckCircle2, CheckCircle, AlertCircle, CalendarRange, Loader2,
   Target, X, Clock, ChevronRight, Search,
   ChevronLeft, Calendar
 } from 'lucide-react';
@@ -27,13 +27,11 @@ import {
 // ============================================================================
 import { 
   analyzeMacros, 
-  suggestAdjustments,
-  generateSuggestedMeal 
+  suggestAdjustments
 } from '@/lib/macroEngine';
 
 // ✅ CORREÇÃO: Removido o FoodItem daqui, pois agora vem de patient
 import { 
-  Suggestion,
   MacroAnalysis,
   MacroTargets
 } from '@/types/macroEngine';
@@ -54,14 +52,18 @@ const ORDERED_DAYS = [
   "Domingo"
 ];
 
-const GROUP_DAYS = ["Todos os dias", "Segunda a Sexta", "Finais de Semana"];
-const ALL_DAYS = [...GROUP_DAYS, ...ORDERED_DAYS];
-
 // ============================================================================
 // 🔥 NORMALIZAÇÃO CENTRAL
 // ============================================================================
 
-function normalizeGrams(item: any): number {
+// Formato mínimo aceito pelo normalizador (vem do cardápio salvo no Supabase)
+interface NormalizableFoodItem {
+  id: string;
+  grams?: number | null;
+  quantity?: number | null;
+}
+
+function normalizeGrams(item: NormalizableFoodItem): number {
   if (item.grams != null) return item.grams;
   if (item.quantity != null) {
     return item.quantity * getBaseGrams(item.id);
@@ -426,7 +428,6 @@ interface FoodItemCardProps {
 
 function FoodItemCard({ 
   foodItem, 
-  index, 
   isActive, 
   onUpdateGrams, 
   onDelete, 
@@ -1129,11 +1130,30 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // MIGRAÇÃO LIMPA
   // =========================================================================
   
-  const migrateExistingOption = (option: any): Option => {
+  // Formatos crus vindos do JSON salvo no Supabase (coluna meal_plan)
+  interface RawFoodItem {
+    id: string;
+    name?: string;
+    kcal?: number;
+    macros?: { p: number; c: number; g: number };
+    grams?: number | null;
+    quantity?: number | null;
+  }
+
+  interface RawOption {
+    id: string;
+    day?: string;
+    foodItems?: RawFoodItem[];
+    kcal?: number;
+    macros?: { p: number; c: number; g: number };
+  }
+
+  const migrateExistingOption = (option: RawOption): Option => {
     if (option.foodItems && Array.isArray(option.foodItems)) {
       return {
         ...option,
-        foodItems: option.foodItems.map((item: any) => {
+        day: option.day as string,
+        foodItems: option.foodItems.map((item: RawFoodItem) => {
           const baseGrams = getBaseGrams(item.id);
           let grams: number;
 
@@ -1147,12 +1167,14 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
 
           return {
             id: item.id,
-            name: item.name,
-            kcal: item.kcal,
-            macros: item.macros,
+            name: item.name as string,
+            kcal: item.kcal as number,
+            macros: item.macros as Option['macros'],
             grams
           };
-        })
+        }),
+        kcal: option.kcal as number,
+        macros: option.macros as Option['macros']
       };
     }
 
@@ -1347,25 +1369,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     toast.success("Dias separados com sucesso!");
   };
 
-  const duplicateToEmptyDays = (mealId: string, sourceOption: Option) => {
-    setMeals(prevMeals => prevMeals.map(m => {
-      if (m.id === mealId) {
-        const newOptions = m.options.map(o => {
-          if (o.id !== sourceOption.id && o.foodItems.length === 0) {
-            return { ...o, foodItems: [...sourceOption.foodItems], kcal: sourceOption.kcal, macros: { ...sourceOption.macros } };
-          }
-          return o;
-        });
-        return { ...m, options: newOptions };
-      }
-      return m;
-    }));
-    toast.success('Prato copiado!');
-  };
-
-  const removeOption = (mealId: string, optionId: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.filter(o => o.id !== optionId) } : m));
-  const updateOptionDay = (mealId: string, optionId: string, day: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, day } : o) } : m));
-
   const updateMacro = (mealId: string, optionId: string, macro: 'p' | 'c' | 'g', value: number) => {
     setMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
@@ -1399,6 +1402,15 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // =========================================================================
   // INIT & LOAD
   // =========================================================================
+  
+  // Formato cru de uma refeição salva no Supabase (coluna meal_plan)
+  interface RawMeal {
+    id?: string;
+    time?: string;
+    name?: string;
+    options?: RawOption[];
+  }
+
   useEffect(() => {
     async function fetchExistingDiet() {
       setIsLoading(true);
@@ -1407,9 +1419,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
         if (error) throw error;
 
         if (data?.meal_plan && Array.isArray(data.meal_plan) && data.meal_plan.length > 0) {
-          const formattedPlan: Meal[] = data.meal_plan.map((m: any) => ({
+          const formattedPlan: Meal[] = data.meal_plan.map((m: RawMeal) => ({
             id: m.id || `meal-${Date.now()}`, time: m.time || "", name: m.name || "Refeição",
-            options: m.options.map((o: any) => migrateExistingOption({ ...o, day: o.day || "Segunda-feira", kcal: o.kcal || 0, macros: o.macros || { p: 0, c: 0, g: 0 } }))
+            options: (m.options ?? []).map((o: RawOption) => migrateExistingOption({ ...o, day: o.day || "Segunda-feira", kcal: o.kcal || 0, macros: o.macros || { p: 0, c: 0, g: 0 } }))
           }));
           setMeals(formattedPlan);
           setActiveDay(getFirstIncompleteDay(formattedPlan));
@@ -1448,11 +1460,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
 
   const { calories: kcalTarget, macros: { protein: proteinTarget, carbs: carbsTarget, fat: fatTarget } } = targetRecommendation;
 
-  const isMealComplete = (meal: Meal) => {
-    const optionsForDay = getOptionsForDay(meal);
-    return meal.options.length > 0 && meal.time !== '' && optionsForDay.some(opt => opt.foodItems.length > 0);
-  };
-
   // =========================================================================
   // SAVE
   // =========================================================================
@@ -1488,7 +1495,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       setSaved(true);
       toast.success("Cardápio salvo e liberado para o paciente!");
       setTimeout(() => { setSaved(false); onClose(); }, 1500);
-    } catch (error) {
+    } catch {
       toast.error("Erro ao salvar cardápio. Verifique sua conexão.");
     } finally {
       setIsSaving(false);
@@ -1643,7 +1650,6 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
               const optionsForDay = getOptionsForDay(meal);
               const isExpanded = expandedMealId === meal.id;
               const hasContentForDay = optionsForDay.some(opt => opt.foodItems.length > 0);
-              const isComplete = isMealComplete(meal);
 
               return (
                 <div 

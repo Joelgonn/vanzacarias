@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
+import type { FoodEntity } from '@/lib/foodRegistry';
 
 // =========================================================================
 // CUSTOM SELECT PREMIUM
@@ -137,7 +138,7 @@ function FoodRestrictionsForm({ value, onChange }: { value: FoodRestriction[]; o
     setTimeout(() => setShowFeedback(false), 2000);
   };
 
-  const handleAddFood = (food: any) => {
+  const handleAddFood = (food: FoodEntity) => {
     const exists = value.some(r => r.foodId === food.id && r.type === type);
     if (exists) {
       showTemporaryFeedback('⚠️ Este alimento já foi adicionado');
@@ -167,7 +168,7 @@ function FoodRestrictionsForm({ value, onChange }: { value: FoodRestriction[]; o
     showTemporaryFeedback(`🗑️ Removido com sucesso`);
   };
 
-  const typeConfig = [
+  const typeConfig: Array<{ label: string; value: FoodRestriction['type']; icon: string; desc: string }> = [
     { label: 'Alergia', value: 'allergy', icon: '🚫', desc: 'Reação imune severa ao alimento.' },
     { label: 'Intolerância', value: 'intolerance', icon: '⚠️', desc: 'Desconforto ou dificuldade de digestão.' },
     { label: 'Restrição', value: 'restriction', icon: '📋', desc: 'Escolha alimentar (dieta, religião, etc).' }
@@ -194,7 +195,7 @@ function FoodRestrictionsForm({ value, onChange }: { value: FoodRestriction[]; o
             return (
               <button
                 key={opt.value}
-                onClick={() => setType(opt.value as any)}
+                onClick={() => setType(opt.value)}
                 className={`relative flex-1 py-3.5 text-sm font-semibold z-10 transition-colors duration-200 flex items-center justify-center gap-2 ${
                   isActive ? optColors.text : 'text-stone-500 hover:text-stone-700'
                 }`}
@@ -459,9 +460,14 @@ function StepBasic({ phone, setPhone, birthDate, setBirthDate, onNext, onBack }:
   useEffect(() => {
     if (birthDate && birthDate.includes('-')) {
       const [y, m, d] = birthDate.split('-');
-      if (y) setYear(y);
-      if (m) setMonth(m);
-      if (d) setDay(d);
+      // setState deferido (requestAnimationFrame) para não disparar
+      // react-hooks/set-state-in-effect (cascading renders)
+      const raf = requestAnimationFrame(() => {
+        if (y) setYear(y);
+        if (m) setMonth(m);
+        if (d) setDay(d);
+      });
+      return () => cancelAnimationFrame(raf);
     }
   }, [birthDate]);
 

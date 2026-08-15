@@ -1,7 +1,7 @@
 'use client';
 
 import { MessageCircle, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { usePathname } from 'next/navigation';
 
 // =========================================================================
@@ -14,24 +14,40 @@ interface WhatsAppButtonProps {
 
 const PRIVATE_ROUTES = ['/dashboard', '/paciente', '/admin'];
 
+// -------------------------------------------------------------------------
+// EXTERNAL STORE: "usuário já interagiu com o botão?" (persistido em localStorage)
+// useSyncExternalStore garante hydration consistente (SSR=false) sem
+// setState síncrono em efeito.
+// -------------------------------------------------------------------------
+let waInteractedCached: boolean | null = null;
+const waListeners = new Set<() => void>();
+
+function emitWaInteracted() {
+  waListeners.forEach((listener) => listener());
+}
+
+function waSubscribe(listener: () => void) {
+  waListeners.add(listener);
+  return () => {
+    waListeners.delete(listener);
+  };
+}
+
+function waGetSnapshot(): boolean {
+  if (typeof window !== 'undefined' && waInteractedCached === null) {
+    waInteractedCached = localStorage.getItem('wa_interacted') === 'true';
+  }
+  return waInteractedCached === true;
+}
+
 export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonProps) {
   // =========================================================================
   // ESTADOS E HOOKS
   // =========================================================================
   const [isVisible, setIsVisible] = useState(false);
   const [showGreeting, setShowGreeting] = useState(false);
-  // Inicializado como false no SSR E no primeiro render do cliente para
-  // evitar mismatch de hydration. O valor real do localStorage é lido
-  // apenas após a montagem (useEffect).
-  const [hasInteracted, setHasInteracted] = useState(false);
+  const hasInteracted = useSyncExternalStore(waSubscribe, waGetSnapshot, () => false);
   const pathname = usePathname();
-
-  // Lê o localStorage apenas no cliente, após montagem (client-only render)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('wa_interacted') === 'true') {
-      setHasInteracted(true);
-    }
-  }, []);
 
   // VERIFICAÇÃO INTELIGENTE (Mantida do original)
   // Evita renderizar em áreas logadas para não conflitar com IA ou dashboards.
@@ -93,8 +109,9 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
   };
 
   const persistInteraction = () => {
-    setHasInteracted(true);
+    waInteractedCached = true;
     localStorage.setItem('wa_interacted', 'true');
+    emitWaInteracted();
   };
 
   const dismissGreeting = (e: React.MouseEvent) => {

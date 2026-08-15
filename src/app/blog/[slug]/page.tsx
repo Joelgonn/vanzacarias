@@ -1,6 +1,7 @@
-import { ArrowLeft, Calendar, ArrowRight, ChevronLeft } from 'lucide-react';
+import { Calendar, ArrowRight, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import type { SanityImageSource } from '@sanity/image-url/lib/types/types';
 import { client } from '@/sanity/lib/client';
 import { urlFor } from '@/sanity/lib/image';
 import { notFound } from 'next/navigation';
@@ -52,14 +53,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 // ==========================================
 // CONFIGURAÇÃO DO RENDERIZADOR OFICIAL (Textos e Imagens)
 // ==========================================
+
+// Formato mínimo de um bloco de imagem do Portable Text do Sanity
+interface SanityImageBlock {
+  asset?: { _ref?: string } | null;
+  alt?: string;
+}
+
 const portableTextComponents = {
   types: {
-    image: ({ value }: { value: any }) => {
+    image: ({ value }: { value: SanityImageBlock }) => {
       if (!value?.asset?._ref) return null;
       return (
         <div className="my-10 relative h-[300px] md:h-[400px] w-full overflow-hidden rounded-2xl shadow-md border border-stone-100">
           <Image 
-            src={urlFor(value).url()} 
+            src={urlFor(value as SanityImageSource).url()} 
             alt={value.alt || 'Imagem ilustrativa do artigo'} 
             fill 
             className="object-cover"

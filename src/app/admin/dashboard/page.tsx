@@ -4,11 +4,11 @@ import { motion } from 'framer-motion';
 import { 
   LogOut, Calendar, Link2, Copy, Check, ExternalLink, Settings, Save, 
   Loader2, X, ChevronRight, Filter, Search, Users, Target, MessageCircle, 
-  Activity, UserPlus, Star, FileText, AlertCircle, Utensils,
-  Moon, Sun, Bell, BellRing, AlertTriangle, Eye, Edit2
+  UserPlus, Star, FileText, AlertCircle, Utensils,
+  Moon, Sun, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn, ui, SkeletonCard, createRippleEffect } from '@/ui/system';
+import { cn, ui, SkeletonCard } from '@/ui/system';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useAdminDashboard } from '@/app/admin/useAdminDashboard';
 import { usePatientScore } from './hooks/usePatientScore';
@@ -19,7 +19,17 @@ import { PatientGrid } from './components/PatientGrid';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder';
 import ChatAssistant from '@/components/ChatAssistant';
-import { Patient } from './types';
+import { Patient, MealFoodItem, MealMacros } from './types';
+
+// Item agregado por dia usado na geração do PDF da dieta
+interface PdfMealItem {
+  mealName: string;
+  time: string;
+  description?: string;
+  foodItems: MealFoodItem[];
+  kcal?: number;
+  macros: MealMacros;
+}
 
 // =========================================================================
 // CONSTANTES (restauradas)
@@ -93,18 +103,6 @@ const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
   });
 };
 
-function normalizeQFAAnswers(data: any): Record<string, string> {
-  if (!data) return {};
-  if (Array.isArray(data)) {
-    const result: Record<string, string> = {};
-    data.forEach((item: any) => {
-      if (item?.id && item?.value) result[item.id] = item.value;
-    });
-    return result;
-  }
-  return data;
-}
-
 // Função para gerar PDF (implementação completa restaurada)
 const generatePatientPDF = async (patient: Patient) => {
   if (!patient.meal_plan || patient.meal_plan.length === 0) {
@@ -120,14 +118,14 @@ const generatePatientPDF = async (patient: Patient) => {
     const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
 
-    const totalKcal = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.kcal || 0), 0);
-    const totalProtein = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.p || 0), 0);
-    const totalCarbs = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.c || 0), 0);
-    const totalFat = mealPlanJSON.reduce((acc: number, meal: any) => acc + (meal.options[0]?.macros?.g || 0), 0);
+    const totalKcal = mealPlanJSON.reduce((acc: number, meal) => acc + (meal.options[0]?.kcal || 0), 0);
+    const totalProtein = mealPlanJSON.reduce((acc: number, meal) => acc + (meal.options[0]?.macros?.p || 0), 0);
+    const totalCarbs = mealPlanJSON.reduce((acc: number, meal) => acc + (meal.options[0]?.macros?.c || 0), 0);
+    const totalFat = mealPlanJSON.reduce((acc: number, meal) => acc + (meal.options[0]?.macros?.g || 0), 0);
 
-    const daysMap = new Map<string, any[]>();
-    mealPlanJSON.forEach((meal: any) => {
-      meal.options.forEach((opt: any) => {
+    const daysMap = new Map<string, PdfMealItem[]>();
+    mealPlanJSON.forEach((meal) => {
+      meal.options.forEach((opt) => {
         const dayName = opt.day?.trim() || 'Opção';
         if (!daysMap.has(dayName)) daysMap.set(dayName, []);
         daysMap.get(dayName)!.push({
@@ -151,7 +149,7 @@ const generatePatientPDF = async (patient: Patient) => {
     let logoBase64: string | null = null;
     try {
       logoBase64 = await getBase64ImageFromUrl('/images/logo-vanusa.png');
-    } catch (error) {}
+    } catch {}
 
     const printHeaderAndFooter = () => {
       let currentY = 20;
@@ -232,7 +230,7 @@ const generatePatientPDF = async (patient: Patient) => {
       return currentY;
     };
 
-    const formatFoodList = (foodItems: any[]) => {
+    const formatFoodList = (foodItems: MealFoodItem[]) => {
       if (!foodItems || foodItems.length === 0) return '';
       return foodItems.map(item => `• ${item.name}`).join('\n');
     };
@@ -397,7 +395,6 @@ export default function AdminDashboardPage() {
   // =========================================================================
   const { 
     patientsWithScore, 
-    autoActions, 
     criticalCount: scoreCriticalCount 
   } = usePatientScore(state.patients, state.usageStats);
   
@@ -409,8 +406,7 @@ export default function AdminDashboardPage() {
     atRisk: atRiskCount,
     inactive: inactiveCount,
     retentionRate,
-    churnRisk,
-    total: retentionTotal
+    churnRisk
   } = useRetentionMetrics(state.patients);
   
   // =========================================================================
@@ -424,7 +420,7 @@ export default function AdminDashboardPage() {
     console.log(`[AUTO-REMINDER] Enviando para ${patientId} no telefone ${phone}`);
   };
   
-  const { watchPriorityChanges } = useAutoActions(patientsWithScore, handleAutoReminder);
+  useAutoActions(patientsWithScore, handleAutoReminder);
   
   // =========================================================================
   // 4. HANDLERS ESPECÍFICOS (EDIT MODAL, ETC)
@@ -993,11 +989,11 @@ export default function AdminDashboardPage() {
                     </div>
                   ) : (
                     <>
-                      {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'allergy').length > 0 && (
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'allergy').length > 0 && (
                         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-3 md:p-4 rounded-xl">
                           <h4 className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1">🚫 Alergias</h4>
                           <div className="flex flex-wrap gap-1">
-                            {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'allergy').map((r: any, idx: number) => (
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'allergy').map((r, idx) => (
                               <span key={idx} className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 px-2 py-0.5 rounded-md text-[9px] font-bold">
                                 {r.food || r.tag || r.foodId}
                               </span>
@@ -1005,11 +1001,11 @@ export default function AdminDashboardPage() {
                           </div>
                         </div>
                       )}
-                      {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'intolerance').length > 0 && (
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'intolerance').length > 0 && (
                         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 md:p-4 rounded-xl">
                           <h4 className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1">⚠️ Intolerâncias</h4>
                           <div className="flex flex-wrap gap-1">
-                            {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'intolerance').map((r: any, idx: number) => (
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'intolerance').map((r, idx) => (
                               <span key={idx} className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md text-[9px] font-bold">
                                 {r.food || r.tag || r.foodId}
                               </span>
@@ -1017,11 +1013,11 @@ export default function AdminDashboardPage() {
                           </div>
                         </div>
                       )}
-                      {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'restriction').length > 0 && (
+                      {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'restriction').length > 0 && (
                         <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 md:p-4 rounded-xl">
                           <h4 className="text-[10px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1">📋 Restrições</h4>
                           <div className="flex flex-wrap gap-1">
-                            {state.evalModalOpen.foodRestrictions.filter((r: any) => r.type === 'restriction').map((r: any, idx: number) => (
+                            {state.evalModalOpen.foodRestrictions.filter(r => r.type === 'restriction').map((r, idx) => (
                               <span key={idx} className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-md text-[9px] font-bold">
                                 {r.food || r.tag || r.foodId}
                               </span>

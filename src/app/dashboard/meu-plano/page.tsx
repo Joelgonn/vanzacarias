@@ -6,8 +6,8 @@ import {
   Loader2, FileText, Download, ChevronLeft, Lock, Star, 
   Clock, Utensils, ChevronRight, Info, Filter, ShoppingCart, 
   X, CalendarDays, Copy, CheckCheck, ArrowLeftRight,
-  Droplets, CheckCircle2, Circle, Flame, Plus, Minus, Search,
-  Beef, Wheat, TrendingUp, Zap, Target, Activity, Trophy,
+  Droplets, CheckCircle2, Circle, Flame, Plus, Minus,
+  Beef, Wheat, TrendingUp, Zap, Target, Activity,
   Cookie, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
@@ -20,16 +20,58 @@ import { toast } from 'sonner';
 // =========================================================================
 import { BeliscoCard } from '@/components/BeliscoCard';
 import { BeliscoModal } from '@/components/BeliscoModal';
-import { FoodItem } from '@/types/patient';
-import { FOOD_REGISTRY, getBaseGrams } from '@/lib/foodRegistry';
+import type { FoodItem } from '@/types/patient';
+import { getBaseGrams } from '@/lib/foodRegistry';
 import { 
-  BeliscoItem, 
-  BeliscosTotals,
   calculateBeliscosTotals,
   createBeliscoItemFromFood,
   createBeliscoItemManual,
   migrateOldBeliscosFormat
 } from '@/lib/beliscoUtils';
+import type { BeliscoItem, BeliscosTotals } from '@/lib/beliscoUtils';
+
+// =========================================================================
+// TIPOS DOS DADOS DO PLANO ALIMENTAR (JSON no Supabase)
+// =========================================================================
+interface PlanFoodItem {
+  name: string;
+  kcal?: number;
+}
+
+interface MealPlanOption {
+  id?: string;
+  day?: string;
+  kcal?: number;
+  macros?: { p: number; c: number; g: number };
+  description?: string;
+  foodItems?: PlanFoodItem[];
+}
+
+interface MealPlanItem {
+  id?: string;
+  name: string;
+  time?: string;
+  options?: MealPlanOption[];
+}
+
+interface ProfileData {
+  full_name?: string | null;
+  goal?: string | null;
+}
+
+interface PlanoPDF {
+  publicUrl?: string;
+  file_url?: string;
+  meal_plan_pdf_url?: string;
+}
+
+interface PdfMealEntry {
+  mealName: string;
+  time?: string;
+  description: string;
+  kcal?: number;
+  macros: { p: number; c: number; g: number };
+}
 
 // =========================================================================
 // FUNÇÃO AUXILIAR DE NORMALIZAÇÃO PARA EVITAR DUPLICAÇÃO NO MARKET
@@ -49,21 +91,6 @@ const normalizeString = (str: string): string => {
 // =========================================================================
 const safeAdd = (a: number, b: number): number => {
   return parseFloat((a + b).toFixed(2));
-};
-
-// =========================================================================
-// FUNÇÃO PARA CALCULAR TOTAIS DE UM ALIMENTO COM BASE NAS GRAMAS
-// =========================================================================
-const calculateFoodTotals = (food: FoodItem, grams: number) => {
-  const baseGrams = getBaseGrams(food.id);
-  const factor = grams / baseGrams;
-  
-  return {
-    kcal: food.kcal * factor,
-    protein: food.macros.p * factor,
-    carbs: food.macros.c * factor,
-    fat: food.macros.g * factor
-  };
 };
 
 // =========================================================================
@@ -479,7 +506,7 @@ const parseMarketDescription = (description: string): string[] => {
   return parts;
 };
 
-const buildDescriptionFromFoods = (option: any) => {
+const buildDescriptionFromFoods = (option: MealPlanOption | null | undefined) => {
   if (option?.description && (!option?.foodItems || option.foodItems.length === 0)) {
     return option.description;
   }
@@ -487,12 +514,12 @@ const buildDescriptionFromFoods = (option: any) => {
     return 'Refeição não definida';
   }
   return option.foodItems
-    .map((food: any) => food.name || '')
+    .map((food) => food.name || '')
     .filter(Boolean)
     .join(' + ');
 };
 
-const calcularMacrosDoCardapio = (mealPlan: any[]) => {
+const calcularMacrosDoCardapio = (mealPlan: MealPlanItem[]) => {
   if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
     return {
       totalKcal: 0,
@@ -546,11 +573,11 @@ const calcularMacrosDoCardapio = (mealPlan: any[]) => {
 // COMPONENTE PRINCIPAL
 // =========================================================================
 export default function MeuPlano() {
-  const [planoPDF, setPlanoPDF] = useState<any>(null);
-  const [mealPlanJSON, setMealPlanJSON] = useState<any[] | null>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [planoPDF, setPlanoPDF] = useState<PlanoPDF | string | null>(null);
+  const [mealPlanJSON, setMealPlanJSON] = useState<MealPlanItem[] | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   
   const [canAccess, setCanAccess] = useState<boolean>(false);
   const [prices, setPrices] = useState({ premium: 297.00, mealPlan: 147.00 });
@@ -659,7 +686,7 @@ export default function MeuPlano() {
             setBeliscosTotals(calculateBeliscosTotals(migratedBeliscos.items));
           }
         }
-      } catch (err: any) {
+      } catch (err) {
         if (!isMounted) return;
         console.error("Erro no fetchData:", err);
         setError("Erro ao carregar seus dados.");
@@ -773,7 +800,7 @@ export default function MeuPlano() {
     if (!mealPlanJSON) return [];
     const days = new Set<string>();
     mealPlanJSON.forEach(meal => {
-      meal.options?.forEach((opt: any) => {
+      meal.options?.forEach((opt: MealPlanOption) => {
         const d = opt.day?.trim();
         if (d && d.toLowerCase() !== 'todos os dias') days.add(d);
       });
@@ -786,7 +813,7 @@ export default function MeuPlano() {
     if (selectedDayFilter === 'Todos') return mealPlanJSON;
 
     return mealPlanJSON.map(meal => {
-      const filteredOptions = meal.options?.filter((opt: any) => {
+      const filteredOptions = meal.options?.filter((opt: MealPlanOption) => {
         const optDay = opt.day?.trim();
         return optDay?.toLowerCase() === 'todos os dias' || optDay === selectedDayFilter;
       }) || [];
@@ -973,7 +1000,7 @@ export default function MeuPlano() {
       } else {
         throw new Error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error("Erro ao processar pagamento.");
       setProcessingCheckout(null);
     }
@@ -1111,9 +1138,9 @@ export default function MeuPlano() {
     const totalCarbs = macrosData.totalCarbs;
     const totalFat = macrosData.totalFat;
 
-    const daysMap = new Map<string, any[]>();
+    const daysMap = new Map<string, PdfMealEntry[]>();
     mealPlanJSON.forEach(meal => {
-      meal.options.forEach((opt: any) => {
+      meal.options?.forEach((opt: MealPlanOption) => {
         const dayName = opt.day?.trim() || "Opção";
         if (!daysMap.has(dayName)) daysMap.set(dayName, []);
         daysMap.get(dayName)!.push({
@@ -1128,15 +1155,15 @@ export default function MeuPlano() {
 
     const dayOrder = ["Todos os dias", "Segunda a Sexta", "Finais de Semana", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
     const sortedDays = Array.from(daysMap.keys()).sort((a, b) => {
-      let idxA = dayOrder.indexOf(a);
-      let idxB = dayOrder.indexOf(b);
+      const idxA = dayOrder.indexOf(a);
+      const idxB = dayOrder.indexOf(b);
       return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
     });
 
     let logoBase64: string | null = null;
     try {
       logoBase64 = await getBase64ImageFromUrl('/images/logo-vanusa.png');
-    } catch (error) {
+    } catch {
       console.warn("Logo não encontrada");
     }
 
@@ -1574,7 +1601,7 @@ export default function MeuPlano() {
 
                 {filteredMeals && filteredMeals.length > 0 && (
                   <div className="relative pl-6 sm:pl-8 ml-2 sm:ml-4 border-l-2 border-stone-200/60 space-y-8 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
-                    {filteredMeals.map((refeicao: any) => {
+                    {filteredMeals.map((refeicao: MealPlanItem) => {
                       const isCompleted = completedMeals.includes(refeicao.name);
                       const option = refeicao.options?.[0] ?? null;
 
@@ -1608,7 +1635,7 @@ export default function MeuPlano() {
                                 
                                 {option && (
                                   <div className="flex gap-1.5 flex-wrap">
-                                    {option.kcal > 0 && (
+                                    {(option.kcal ?? 0) > 0 && (
                                       <span className="bg-stone-900 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide shadow-sm">
                                         ~{option.kcal} kcal
                                       </span>
@@ -1632,7 +1659,7 @@ export default function MeuPlano() {
 
                               {!isCompleted && (
                                 <div className="space-y-4">
-                                  {refeicao.options.map((opcao: any, oIdx: number) => (
+                                  {(refeicao.options ?? []).map((opcao: MealPlanOption, oIdx: number) => (
                                     <div key={opcao.id || oIdx} className="bg-stone-50/50 p-5 rounded-2xl border border-stone-100/50 relative">
                                       
                                       {opcao.day && opcao.day.toLowerCase() !== 'todos os dias' && (
@@ -1644,7 +1671,7 @@ export default function MeuPlano() {
                                       <div className="text-stone-700 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">
                                         {opcao.foodItems && Array.isArray(opcao.foodItems) && opcao.foodItems.length > 0 ? (
                                           <ul className="space-y-2">
-                                            {opcao.foodItems.map((food: any, fIdx: number) => (
+                                            {opcao.foodItems.map((food: PlanFoodItem, fIdx: number) => (
                                               <li key={fIdx} className="flex items-start gap-2">
                                                 <span className="text-nutri-500 mt-1 flex-shrink-0"><Activity size={14}/></span>
                                                 <span>

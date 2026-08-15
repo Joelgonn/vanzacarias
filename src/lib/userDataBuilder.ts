@@ -4,10 +4,12 @@
 // ============================================================================
 
 import { z } from 'zod';
-import { processBeliscos, fetchHistoricoBeliscos } from '@/lib/beliscosProcessor';
-import { calcularMacrosDoCardapio } from '@/lib/macroCalculator';
-import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { processBeliscos, type BeliscosProcessed } from '@/lib/beliscosProcessor';
+import { calcularMacrosDoCardapio, type MacrosDiarios, type MacroPorRefeicao, type MealPlanMeal } from '@/lib/macroCalculator';
+import { detectSabotagePattern, buildIntervention, type BehaviorPatternOutput } from '@/lib/behaviorEngine';
 import { formatMealPlan } from '@/lib/mealPlanFormatter';
+import type { FoodRestriction } from '@/types/patient';
 
 // ============================================================================
 // TIPAGENS
@@ -26,7 +28,7 @@ export interface UserDataForContext {
   rotinaSono: string;
   vontadesDoces: string;
   alimentosEvitar: string[];
-  restrictions: any[];
+  restrictions: FoodRestriction[];
   cardapioFormatado: string;
   evolucaoTxt: string;
   humorHoje: string;
@@ -36,17 +38,38 @@ export interface UserDataForContext {
   activityKcal: number;
   todayStr: string;
   hasImage: boolean;
-  macrosDiarios?: any;
-  macrosPorRefeicao?: any[];
-  beliscosHoje?: any;
-  behaviorPattern?: any;
+  macrosDiarios?: MacrosDiarios;
+  macrosPorRefeicao?: MacroPorRefeicao[];
+  beliscosHoje?: BeliscosProcessed;
+  behaviorPattern?: BehaviorPatternOutput;
   interventionSuggestion?: string | null;
+}
+
+// ============================================================================
+// LINHAS MÍNIMAS DO SUPABASE (apenas campos usados)
+// ============================================================================
+interface PatientRow {
+  id: string;
+  full_name?: string | null;
+  objetivo?: string | null;
+  meta_peso?: number | null;
+  food_restrictions?: unknown;
+  meal_plan?: MealPlanMeal[] | null;
+}
+
+interface TodayLogRow {
+  beliscos?: unknown;
+  meals_checked?: unknown;
+  mood?: string | null;
+  water_ml?: number | null;
+  activity_kcal?: number | null;
+  activities?: { name: string }[] | null;
 }
 
 // ============================================================================
 // FUNÇÕES AUXILIARES
 // ============================================================================
-function getRefeicoesFeitasSafe(mealsChecked: any): number {
+function getRefeicoesFeitasSafe(mealsChecked: unknown): number {
   if (Array.isArray(mealsChecked)) {
     return mealsChecked.length;
   }
@@ -60,11 +83,11 @@ function getRefeicoesFeitasSafe(mealsChecked: any): number {
 // 🔥 FUNÇÃO PRINCIPAL: CONSTRUIR UserData
 // ============================================================================
 export async function buildUserData(params: {
-  patient: any;
-  todayLog: any;
+  patient: PatientRow;
+  todayLog: TodayLogRow;
   historicoBeliscos: { data: string; totalKcal: number; itemsCount: number }[];
   todayStr: string;
-  supabase: any;
+  supabase: SupabaseClient;
 }): Promise<UserDataForContext> {
   const { patient, todayLog, historicoBeliscos, todayStr, supabase } = params;
   
@@ -91,7 +114,7 @@ export async function buildUserData(params: {
   
   if (qfaData?.[0]?.answers) {
     alimentosEvitar = Object.entries(qfaData[0].answers)
-      .filter(([_, f]) => f === "0")
+      .filter(([, f]) => f === "0")
       .map(([a]) => a.replace(/_/g, ' '));
   }
 
@@ -126,7 +149,7 @@ export async function buildUserData(params: {
   const behaviorPattern = detectSabotagePattern({
     beliscos: beliscosProcessed,
     macrosDiarios: macros?.macrosDiarios || undefined,
-    humorHoje: todayLog?.mood,
+    humorHoje: todayLog?.mood ?? undefined,
     historicoBeliscos,
     objetivoPrincipal,
     refeicoesFeitas,
@@ -140,7 +163,7 @@ export async function buildUserData(params: {
   // Formatar atividades
   let atividadesHojeFormatadas = 'Nenhuma';
   if (todayLog?.activities && Array.isArray(todayLog.activities) && todayLog.activities.length > 0) {
-    atividadesHojeFormatadas = todayLog.activities.map((a: any) => `- ${a.name}`).join('\n');
+    atividadesHojeFormatadas = todayLog.activities.map((a) => `- ${a.name}`).join('\n');
   }
 
   return {
@@ -150,7 +173,7 @@ export async function buildUserData(params: {
     rotinaSono: '',
     vontadesDoces: '',
     alimentosEvitar,
-    restrictions: safeRestrictions,
+    restrictions: safeRestrictions as FoodRestriction[],
     cardapioFormatado: formatMealPlan(patient?.meal_plan),
     evolucaoTxt,
     humorHoje: todayLog?.mood || 'Não registrado',

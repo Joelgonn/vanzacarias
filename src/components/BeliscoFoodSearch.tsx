@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, Plus, ChevronRight } from 'lucide-react';
-import { FOOD_REGISTRY, getBaseGrams } from '@/lib/foodRegistry';
+import { FOOD_REGISTRY, getBaseGrams, type FoodEntity } from '@/lib/foodRegistry';
 import { FoodItem } from '@/types/patient';
 import { toast } from 'sonner';
 
@@ -37,7 +37,7 @@ const calculateFoodTotals = (food: FoodItem, grams: number) => {
 // =========================================================================
 // FUNÇÃO PARA CONVERTER FOOD_ENTITY PARA FOOD_ITEM
 // =========================================================================
-const convertToFoodItem = (food: any): FoodItem => {
+const convertToFoodItem = (food: FoodEntity): FoodItem => {
   return {
     id: food.id,
     name: food.name,
@@ -133,14 +133,6 @@ export function BeliscoFoodSearch({ onSelectFood, onManualAdd, autoFocus = false
       el.scrollIntoView({ block: 'nearest' });
     }
   }, [highlightIndex]);
-
-  // Reset do estado quando sair do modo manual
-  const resetSearchState = () => {
-    setSearchTerm('');
-    setHighlightIndex(0);
-    setSelectedFood(null);
-    setShowManualMode(false);
-  };
 
   // Navegação por teclado
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -280,7 +272,7 @@ export function BeliscoFoodSearch({ onSelectFood, onManualAdd, autoFocus = false
             >
               {filteredFoods.length === 0 ? (
                 <div className="px-3 py-6 text-center">
-                  <p className="text-xs text-stone-400 mb-3">Nenhum alimento encontrado para "{searchTerm}"</p>
+                  <p className="text-xs text-stone-400 mb-3">Nenhum alimento encontrado para &quot;{searchTerm}&quot;</p>
                   <button
                     onClick={() => setShowManualMode(true)}
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors"

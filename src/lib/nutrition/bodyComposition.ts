@@ -9,6 +9,19 @@ export interface BodyCompositionResult {
 }
 
 // ----------------------------------------------------------------------------
+// LINHA MÍNIMA DE DOBRAS CUTÂNEAS (valores podem vir como number ou string)
+// ----------------------------------------------------------------------------
+interface SkinfoldMeasurements {
+  triceps?: unknown;
+  biceps?: unknown;
+  subscapular?: unknown;
+  suprailiac?: unknown;
+  abdominal?: unknown;
+  thigh?: unknown;
+  calf?: unknown;
+}
+
+// ----------------------------------------------------------------------------
 // CALCULAR IDADE
 // ----------------------------------------------------------------------------
 export function calculateAge(birthDate: string | null | undefined): number | null {
@@ -30,17 +43,17 @@ export function calculateAge(birthDate: string | null | undefined): number | nul
 // ----------------------------------------------------------------------------
 // SOMA DAS 7 DOBRAS
 // ----------------------------------------------------------------------------
-export function calculateSkinfoldSum(skin: any): number {
+export function calculateSkinfoldSum(skin: SkinfoldMeasurements | null | undefined): number {
   if (!skin) return 0;
 
   return (
-    parseFloat(skin.triceps || 0) +
-    parseFloat(skin.biceps || 0) +
-    parseFloat(skin.subscapular || 0) +
-    parseFloat(skin.suprailiac || 0) +
-    parseFloat(skin.abdominal || 0) +
-    parseFloat(skin.thigh || 0) +
-    parseFloat(skin.calf || 0)
+    parseFloat((skin.triceps || 0) as string) +
+    parseFloat((skin.biceps || 0) as string) +
+    parseFloat((skin.subscapular || 0) as string) +
+    parseFloat((skin.suprailiac || 0) as string) +
+    parseFloat((skin.abdominal || 0) as string) +
+    parseFloat((skin.thigh || 0) as string) +
+    parseFloat((skin.calf || 0) as string)
   );
 }
 
@@ -97,7 +110,7 @@ export function calculateBodyComposition(
 // HELPER COMPLETO (USO DIRETO)
 // ----------------------------------------------------------------------------
 export function buildBodyComposition(params: {
-  skin: any;
+  skin: SkinfoldMeasurements | null | undefined;
   weight: number | null;
   birthDate: string | null | undefined;
   gender: string | null | undefined;

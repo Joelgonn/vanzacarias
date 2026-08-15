@@ -376,7 +376,7 @@ export function detectSabotagePattern(data: BehaviorPatternInput): BehaviorPatte
 
   // DETECÇÃO DE BELISCOS NOTURNOS
   let lateNightCount = 0;
-  let currentHour = new Date().getHours();
+  const currentHour = new Date().getHours();
   items.forEach(item => {
     if (item.timestamp) {
       const hour = new Date(item.timestamp).getHours();
@@ -476,9 +476,8 @@ export function detectSabotagePattern(data: BehaviorPatternInput): BehaviorPatte
 export function buildIntervention(pattern: BehaviorPatternOutput, objetivoPrincipal?: string): string | null {
   if (!pattern.isSabotaging) return null;
 
-  const isEmagrecimento = objetivoPrincipal?.toLowerCase().includes('emagrec') || 
-                          objetivoPrincipal?.toLowerCase().includes('perder') ||
-                          objetivoPrincipal?.toLowerCase().includes('peso');
+  // Parâmetro reservado: objetivoPrincipal permitirá personalizar mensagens por objetivo no futuro.
+  void objetivoPrincipal;
 
   // 🔴 PRIORIDADE 1: ALIMENTAÇÃO EMOCIONAL
   if (pattern.signals.emotionalEating) {

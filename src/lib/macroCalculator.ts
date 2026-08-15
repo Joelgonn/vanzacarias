@@ -25,9 +25,23 @@ export interface MacrosResult {
 }
 
 // ============================================================================
+// TIPAGENS MÍNIMAS DO CARDÁPIO (apenas campos usados no cálculo)
+// ============================================================================
+export interface MealPlanOption {
+  kcal?: number;
+  macros?: { p?: number; c?: number; g?: number };
+}
+
+export interface MealPlanMeal {
+  name?: string;
+  time?: string;
+  options?: MealPlanOption[];
+}
+
+// ============================================================================
 // 🔥 FUNÇÃO PRINCIPAL: CALCULAR MACROS DO CARDÁPIO
 // ============================================================================
-export function calcularMacrosDoCardapio(mealPlan: any): MacrosResult {
+export function calcularMacrosDoCardapio(mealPlan: unknown): MacrosResult {
   if (!mealPlan || !Array.isArray(mealPlan) || mealPlan.length === 0) {
     return { macrosDiarios: null, macrosPorRefeicao: [] };
   }

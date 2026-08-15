@@ -23,12 +23,44 @@ const supabaseAdmin = createClient(
 // 🛡️ SCHEMAS DE VALIDAÇÃO
 // ==========================================
 
-const FoodRestrictionSchema = z.object({
-  type: z.string().optional(),
-  foodId: z.string().optional(),
-  tag: z.string().optional(),
-  food: z.string().optional()
-}).passthrough();
+// Linhas do Supabase / payload do frontend (adminData)
+interface PatientRow {
+  id?: string;
+  full_name?: string;
+  phone?: string | null;
+  objetivo?: string;
+  meta_peso?: number | string | null;
+  is_late?: boolean;
+  meal_plan?: unknown;
+  food_restrictions?: unknown;
+  todayLog?: DailyLogRow;
+  [key: string]: unknown;
+}
+
+interface DailyLogRow {
+  date?: string;
+  beliscos?: { items?: unknown[] };
+  meals_checked?: unknown[] | number;
+  activities?: Array<{ name: string }>;
+  mood?: string | null;
+  water_ml?: number | null;
+  activity_kcal?: number | null;
+  [key: string]: unknown;
+}
+
+interface LeadRow {
+  nome?: string;
+  whatsapp?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface AdminDashboardData {
+  patients?: PatientRow[] | Record<string, PatientRow>;
+  leads?: LeadRow[] | Record<string, LeadRow>;
+  usageStats?: Record<string, unknown>;
+  [key: string]: unknown;
+}
 
 const AdminRequestSchema = z.object({
   userId: z.string().min(1, "ID obrigatório"),
@@ -61,13 +93,13 @@ async function getFullPatientData(patientId: string, todayStr: string) {
 
   const patient = profileRes.data;
   const logs = logsRes.data || [];
-  const todayLog = logs.find((log: any) => log.date === todayStr);
+  const todayLog = logs.find((log) => log.date === todayStr);
   const historicoBeliscos = await fetchHistoricoBeliscos(supabaseAdmin, patientId, todayStr, 4);
   
   let alimentosEvitar: string[] = [];
   if (qfaRes.data?.[0]?.answers) {
     alimentosEvitar = Object.entries(qfaRes.data[0].answers)
-      .filter(([_, f]) => f === "0")
+      .filter(([, f]) => f === "0")
       .map(([a]) => a.replace(/_/g, ' '));
   }
 
@@ -93,9 +125,9 @@ async function getFullPatientData(patientId: string, todayStr: string) {
 // 🔥 FUNÇÃO PARA CONSTRUIR UserData DO PACIENTE
 // ==========================================
 async function buildPatientUserData(
-  patient: any,
-  todayLog: any,
-  historicoBeliscos: any[],
+  patient: PatientRow,
+  todayLog: DailyLogRow | undefined,
+  historicoBeliscos: { data: string; totalKcal: number; itemsCount: number }[],
   alimentosEvitar: string[],
   objetivoPrincipal: string,
   evolucaoTxt: string,
@@ -115,13 +147,13 @@ async function buildPatientUserData(
 
   let atividadesHojeFormatadas = 'Nenhuma';
   if (todayLog?.activities && Array.isArray(todayLog.activities) && todayLog.activities.length > 0) {
-    atividadesHojeFormatadas = todayLog.activities.map((a: any) => `- ${a.name}`).join('\n');
+    atividadesHojeFormatadas = todayLog.activities.map((a) => `- ${a.name}`).join('\n');
   }
 
   const behaviorPattern = detectSabotagePattern({
     beliscos: beliscosProcessed,
     macrosDiarios: macros.macrosDiarios || undefined,
-    humorHoje: todayLog?.mood,
+    humorHoje: todayLog?.mood ?? undefined,
     historicoBeliscos,
     objetivoPrincipal,
     refeicoesFeitas,
@@ -168,17 +200,17 @@ async function buildPatientUserData(
 // 🛠️ CONSTRUTOR DE CONTEXTO ADMIN
 // ==========================================
 
-function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: string, deepContextRaw?: string): string {
+function buildAdminContext(adminData: AdminDashboardData, currentTimeBR: string, deepContext: string, deepContextRaw?: string): string {
   const patientsRaw = adminData?.patients;
   const patientsList = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
 
-  const patientsResumo = patientsList.map((p: any) => {
+  const patientsResumo = patientsList.map((p: PatientRow) => {
     const isDietReady = p?.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
     const aguaHoje = p?.todayLog?.water_ml ? `${p.todayLog.water_ml}ml` : '0ml';
     const humorHoje = p?.todayLog?.mood || 'Não registrou';
     const kcalHoje = p?.todayLog?.activity_kcal ? `${p.todayLog.activity_kcal} kcal gastas` : '0 kcal';
     
-    const hasBeliscos = p?.todayLog?.beliscos?.items?.length > 0;
+    const hasBeliscos = (p?.todayLog?.beliscos?.items?.length ?? 0) > 0;
     const beliscosInfo = hasBeliscos ? '⚠️ COM BELISCOS' : '✅ SEM BELISCOS';
     
     const macros = calcularMacrosDoCardapio(p?.meal_plan);
@@ -192,7 +224,7 @@ function buildAdminContext(adminData: any, currentTimeBR: string, deepContext: s
 
   const leadsRaw = adminData?.leads;
   const leadsList = Array.isArray(leadsRaw) ? leadsRaw : (leadsRaw ? Object.values(leadsRaw) : []);
-  const leadsResumo = leadsList.map((l: any) => `- Nome: ${l?.nome || 'Desconhecido'} | Whats: ${l?.whatsapp || 'Sem número'} | Status: ${l?.status || 'Sem status'}`).join('\n') || 'Nenhum lead pendente.';
+  const leadsResumo = leadsList.map((l: LeadRow) => `- Nome: ${l?.nome || 'Desconhecido'} | Whats: ${l?.whatsapp || 'Sem número'} | Status: ${l?.status || 'Sem status'}`).join('\n') || 'Nenhum lead pendente.';
 
   const usageStats = adminData?.usageStats || {};
   const activePatientsCount = Object.keys(usageStats).length;
@@ -268,9 +300,9 @@ export async function POST(req: NextRequest) {
     const normalizedMsg = normalizeString(safeMessage);
     
     const patientsRaw = adminData?.patients;
-    const patientsList: any[] = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
+    const patientsList: PatientRow[] = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
     
-    const mentionedPatient = patientsList.find((p: any) => {
+    const mentionedPatient = patientsList.find((p: PatientRow) => {
       if (!p?.full_name) return false;
       const fullNameNorm = normalizeString(p.full_name);
       if (normalizedMsg.includes(fullNameNorm)) return true;
@@ -297,7 +329,7 @@ export async function POST(req: NextRequest) {
       deepContextRaw = `
       DADOS DO PACIENTE: ${mentionedPatient.full_name}
       
-      🚫 RESTRIÇÕES ALIMENTARES: ${userData.restrictions.map((r: any) => r.food || r.tag).join(', ') || 'Nenhuma'}
+      🚫 RESTRIÇÕES ALIMENTARES: ${userData.restrictions.map((r) => r.food || r.tag).join(', ') || 'Nenhuma'}
       
       🍽️ CARDÁPIO DETALHADO:
       ${userData.cardapioFormatado}
@@ -320,7 +352,7 @@ export async function POST(req: NextRequest) {
     
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
     
-    const mappedHistory = history.map((msg: any) => ({
+    const mappedHistory = history.map((msg) => ({
       role: msg?.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg?.content || '' }]
     }));

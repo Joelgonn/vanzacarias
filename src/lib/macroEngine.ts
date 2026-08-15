@@ -122,29 +122,28 @@ interface SuggestionContext {
 function isProteinFood(food: FoodEntity): boolean {
   // Fallback seguro pela categoria, seguido da tipagem forte das tags
   if (food.category === 'Proteínas') return true;
-  return !!food.tags && (
-    food.tags.includes('animal_protein' as any) || // Substitua os nomes se diferirem ligeiramente no seu types/food.ts
-    food.tags.includes('plant_protein' as any) ||
-    food.tags.includes('carne_branca' as any)
-  );
+  return hasFoodTag(food, 'animal_protein') ||
+    hasFoodTag(food, 'plant_protein') ||
+    hasFoodTag(food, 'carne_branca');
 }
 
 function isCarbFood(food: FoodEntity): boolean {
   if (food.category === 'Carboidratos') return true;
-  return !!food.tags && (
-    food.tags.includes('grain' as any) ||
-    food.tags.includes('tuber' as any) ||
-    food.tags.includes('cereal' as any)
-  );
+  return hasFoodTag(food, 'grain') ||
+    hasFoodTag(food, 'tuber') ||
+    hasFoodTag(food, 'cereal');
 }
 
 function isFatFood(food: FoodEntity): boolean {
   if (food.category === 'Gorduras e Óleos' || food.id === 'olive_oil') return true;
-  return !!food.tags && (
-    food.tags.includes('nuts' as any) ||
-    food.tags.includes('seed' as any) ||
-    food.tags.includes('oil' as any)
-  );
+  return hasFoodTag(food, 'nuts') ||
+    hasFoodTag(food, 'seed') ||
+    hasFoodTag(food, 'oil');
+}
+
+// Compara tags de forma segura sem depender do union type exato do registro
+function hasFoodTag(food: FoodEntity, tag: string): boolean {
+  return !!food.tags && food.tags.some(t => String(t) === tag);
 }
 
 // Nota técnica: Se você tem absoluta certeza dos tipos no seu SSOT atual,
@@ -567,7 +566,7 @@ export function generateSuggestedMeal(
 // 🔥 FUNÇÃO PARA CALCULAR MACROS DO CARDÁPIO (ADICIONAR NO FINAL DO ARQUIVO)
 // ============================================================================
 
-export function calcularMacrosDoCardapio(mealPlan: any): { 
+export function calcularMacrosDoCardapio(mealPlan: unknown): { 
   macrosDiarios: { totalKcal: number; totalProtein: number; totalCarbs: number; totalFat: number } | null; 
   macrosPorRefeicao: Array<{ nome: string; horario: string; kcal: number; protein: number; carbs: number; fat: number }> 
 } {

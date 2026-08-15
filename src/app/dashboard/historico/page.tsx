@@ -7,6 +7,7 @@ import {
   Loader2, ChevronLeft, TrendingUp, ClipboardList, 
   Activity, Lock, Star, CheckCircle2, Brain, Target 
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -14,7 +15,15 @@ import {
 } from 'recharts';
 
 // --- COMPONENTES AUXILIARES DE UI PREMIUM ---
-function MetricCard({ label, value, highlight, subtext, icon: Icon }: any) {
+interface MetricCardProps {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+  subtext?: string;
+  icon?: LucideIcon;
+}
+
+function MetricCard({ label, value, highlight, subtext, icon: Icon }: MetricCardProps) {
   return (
     <div className="bg-white p-5 md:p-6 rounded-3xl border border-stone-100 shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md flex flex-col justify-between">
       <div className="flex justify-between items-start mb-2">
@@ -35,9 +44,25 @@ function MetricCard({ label, value, highlight, subtext, icon: Icon }: any) {
   );
 }
 
+interface HistoryCheckin {
+  id: string;
+  created_at: string;
+  peso: number;
+  altura: number;
+  adesao_ao_plano: number;
+  humor_semanal: number;
+  imc: number;
+}
+
+interface ProfileRow {
+  full_name?: string | null;
+  tipo_perfil?: string | null;
+  meta_peso?: number;
+}
+
 export default function Historico() {
-  const [history, setHistory] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
+  const [history, setHistory] = useState<HistoryCheckin[]>([]);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   
   const [isPremium, setIsPremium] = useState<boolean | null>(null);
@@ -321,7 +346,7 @@ export default function Historico() {
                     />
                     <Tooltip 
                       labelFormatter={(val) => new Date(val).toLocaleDateString('pt-BR')} 
-                      formatter={(value: any) => [Number(value).toFixed(1), 'IMC']}
+                      formatter={(value) => [Number(value).toFixed(1), 'IMC']}
                       contentStyle={{ borderRadius: '24px', border: '1px solid #f5f5f4', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)', padding: '16px' }}
                     />
                     
@@ -341,7 +366,7 @@ export default function Historico() {
                     {profile?.meta_peso && history.length > 0 && (
                       <Line 
                         type="step" 
-                        dataKey={() => (profile.meta_peso / (history[0].altura * history[0].altura))} 
+                        dataKey={() => (profile.meta_peso! / (history[0].altura * history[0].altura))} 
                         name="Sua Meta" 
                         stroke="#d97706" 
                         strokeWidth={2}

@@ -2,9 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { 
-  Users, 
   MessageCircle, 
-  Activity, 
   AlertTriangle, 
   TrendingUp, 
   DollarSign, 

@@ -11,7 +11,7 @@ interface Props {
   gender?: string;
   bf?: number | null;
   leanMass?: number | null;
-  dailyLogs: any[];
+  dailyLogs: unknown[];
   weightTrend?: 'losing' | 'gaining' | 'stable' | null;
   // 🔥 Novas Props recebidas do Pai (Single Source of Truth)
   tmb: number;
@@ -32,11 +32,7 @@ export default function MetabolicSummary({
   weight,
   height,
   age,
-  gender,
   bf,
-  leanMass,
-  dailyLogs = [],
-  weightTrend,
   tmb,
   tmbMethod,
   getVal: get, // Renomeando localmente para 'get' para manter a interface visual

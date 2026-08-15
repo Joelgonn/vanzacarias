@@ -9,7 +9,19 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY!
 );
 
-export async function GET(req: Request) {
+// Linha da tabela push_subscriptions (coluna 'subscription' é o JSON do PushSubscription do browser)
+interface StoredPushSubscription {
+  subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  };
+}
+
+export async function GET() {
   try {
     // 1. Pega a "Chave Mestra" para ler todos os inscritos
     const supabaseAdmin = createClient(
@@ -34,7 +46,7 @@ export async function GET(req: Request) {
     });
 
     // 4. Envia para todo mundo em paralelo
-    const notifications = subs.map((s: any) => 
+    const notifications = subs.map((s: StoredPushSubscription) => 
       webpush.sendNotification(s.subscription, payload).catch(err => {
         console.error('Erro ao enviar para um usuário:', err);
         // Opcional: deletar do banco se o token expirou (status 410)
@@ -44,7 +56,8 @@ export async function GET(req: Request) {
     await Promise.all(notifications);
 
     return NextResponse.json({ success: true, sentCount: subs.length });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao enviar notificações.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import calculateMetabolism from '@/lib/metabolicEngine';
+import type { RecommendationResult } from '@/lib/nutrition';
 
 interface MetabolicDataInput {
   patientId: string;
@@ -23,7 +24,7 @@ export interface MetabolicDataOutput {
   tmb: number;
   tmbMethod: string;
   getVal: number;
-  recommendation: any | null;
+  recommendation: RecommendationResult | null;
   bfPercent: number | null;
 }
 
