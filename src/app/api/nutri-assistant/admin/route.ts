@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 
+import { requireAdmin } from '@/lib/supabase/serverAuth'
 import { buildContext } from '@/lib/contextBuilder'
 import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
 
@@ -227,8 +229,16 @@ ${deepContextRaw ? `\n📋 DADOS BRUTOS DO PACIENTE:\n${deepContextRaw}\n` : ''}
 // 🌐 MAIN POST FUNCTION - ADMIN
 // ==========================================
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // 🔒 AUTENTICAÇÃO + AUTORIZAÇÃO NO SERVIDOR:
+    // Valida a sessão via cookie e confirma que o usuário autenticado
+    // tem role admin/nutricionista na tabela profiles (não confia no body).
+    const auth = await requireAdmin(req);
+    if (auth.error) {
+      return auth.error;
+    }
+
     const rawBody = await req.json();
     
     const parsedData = AdminRequestSchema.safeParse(rawBody);
@@ -238,21 +248,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ reply: "Dados de requisição inválidos." }, { status: 400 });
     }
 
-    const { userId, message, history, image, adminData } = parsedData.data;
+    const { message, history, image, adminData } = parsedData.data;
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {
       return NextResponse.json({ reply: "Digite uma mensagem ou envie uma foto." }, { status: 200 });
-    }
-
-    const { data: profileCheck } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    if (profileCheck?.role !== 'admin' && profileCheck?.role !== 'nutricionista') {
-      return NextResponse.json({ reply: 'Acesso negado. Área restrita para administradores.' }, { status: 403 });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;

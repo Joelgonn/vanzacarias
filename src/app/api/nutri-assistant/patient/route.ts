@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 
+import { requireUser } from '@/lib/supabase/serverAuth'
 import { buildContext } from '@/lib/contextBuilder'
 import { checkRateLimit } from '@/lib/rateLimiter'
 import { getCachedResponse } from '@/lib/responseCache'
@@ -204,8 +206,16 @@ async function ensureSafeResponse(
 // 🌐 MAIN POST FUNCTION - PACIENTE
 // ==========================================
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // 🔒 AUTENTICAÇÃO NO SERVIDOR: valida a sessão via cookie e NUNCA
+    // confia no userId enviado pelo cliente (proteção contra IDOR).
+    const auth = await requireUser(req);
+    if (auth.error) {
+      return auth.error;
+    }
+    const user = auth.user;
+
     const rawBody = await req.json();
     
     const parsedData = PatientRequestSchema.safeParse(rawBody);
@@ -215,7 +225,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ reply: "Dados de requisição inválidos." }, { status: 400 });
     }
 
-    const { userId, message, history, image } = parsedData.data;
+    // userId SEMPRE vem da sessão autenticada (ignora o campo do body)
+    const { message, history, image } = parsedData.data;
+    const userId = user.id;
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {

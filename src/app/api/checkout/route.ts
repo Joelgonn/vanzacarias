@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { createClient } from '@supabase/supabase-js';
+import { requireUser } from '@/lib/supabase/serverAuth';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // 🔒 AUTENTICAÇÃO NO SERVIDOR: userId vem da sessão, nunca do body
+    const auth = await requireUser(request);
+    if (auth.error) {
+      return auth.error;
+    }
+    const user = auth.user;
+
     const body = await request.json();
     // Adicionamos o planType para identificar o que está sendo comprado
     // Pode ser: 'premium', 'meal_plan' ou 'consultation'
-    const { userId, email, name, planType = 'premium' } = body;
+    const { name, planType = 'premium' } = body;
+    const userId = user.id;
+    const email = user.email ?? '';
 
     // 1. LÓGICA DE URL PARA LOCALHOST:
     let siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';

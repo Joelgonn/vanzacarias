@@ -271,10 +271,23 @@ export function useAdminDashboard() {
   useEffect(() => {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session || session.user.email !== 'vankadosh@gmail.com') {
+      if (!session) {
         router.push('/login');
         return;
       }
+
+      // Role vem do Supabase (profiles), nunca hardcoded por email
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'nutricionista')) {
+        router.push('/dashboard');
+        return;
+      }
+
       fetchAdminData();
     }
     checkAuth();

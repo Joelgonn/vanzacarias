@@ -20,11 +20,18 @@ export default function WhatsAppButton({ phoneNumber, message }: WhatsAppButtonP
   // =========================================================================
   const [isVisible, setIsVisible] = useState(false);
   const [showGreeting, setShowGreeting] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('wa_interacted') === 'true';
-  });
+  // Inicializado como false no SSR E no primeiro render do cliente para
+  // evitar mismatch de hydration. O valor real do localStorage é lido
+  // apenas após a montagem (useEffect).
+  const [hasInteracted, setHasInteracted] = useState(false);
   const pathname = usePathname();
+
+  // Lê o localStorage apenas no cliente, após montagem (client-only render)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('wa_interacted') === 'true') {
+      setHasInteracted(true);
+    }
+  }, []);
 
   // VERIFICAÇÃO INTELIGENTE (Mantida do original)
   // Evita renderizar em áreas logadas para não conflitar com IA ou dashboards.

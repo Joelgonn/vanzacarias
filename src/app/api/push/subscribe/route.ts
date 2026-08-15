@@ -1,9 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { requireUser } from '@/lib/supabase/serverAuth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { userId, subscription } = await req.json();
+    // 🔒 AUTENTICAÇÃO NO SERVIDOR: userId vem da sessão, nunca do body
+    const auth = await requireUser(req);
+    if (auth.error) {
+      return auth.error;
+    }
+    const user = auth.user;
+
+    const { subscription } = await req.json();
+    const userId = user.id;
 
     if (!userId || !subscription) {
       return NextResponse.json({ error: 'Faltam dados obrigatórios: userId ou subscription' }, { status: 400 });

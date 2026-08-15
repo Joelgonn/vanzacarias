@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { getUserRole, isAdminRole } from '@/lib/supabase/serverAuth';
 
 // =========================================================================
 // PROXY DE PROTEÇÃO DE ROTAS (Next.js 16 - substitui o antigo middleware)
 // Bloqueia o acesso a rotas privadas (/dashboard, /admin, /paciente)
 // redirecionando usuários não autenticados para /login.
+// Rotas /admin exigem role admin/nutricionista na tabela profiles.
 // =========================================================================
 
 export async function proxy(request: NextRequest) {
@@ -39,6 +41,17 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
+  }
+
+  // 🔒 Rotas de administração exigem role admin/nutricionista
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith('/admin')) {
+    const role = await getUserRole(user.id);
+    if (!isAdminRole(role)) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

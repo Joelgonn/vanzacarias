@@ -150,18 +150,19 @@ export default function Dashboard() {
       return;
     }
 
-    if (session.user.email === 'vankadosh@gmail.com') {
-      router.push('/admin/dashboard');
-      return;
-    }
-
     const userId = session.user.id;
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo')
+      .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo, role')
       .eq('id', userId)
       .single();
+
+    // Admin/nutricionista vai direto para o painel profissional
+    if (profileData?.role === 'admin' || profileData?.role === 'nutricionista') {
+      router.push('/admin/dashboard');
+      return;
+    }
 
     const { data: evalData } = await supabase
       .from('evaluations')

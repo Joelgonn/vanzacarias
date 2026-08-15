@@ -148,8 +148,20 @@ export default function PacienteHistoricoAdmin() {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session || session.user.email !== 'vankadosh@gmail.com') {
+      if (!session) {
         router.push('/login');
+        return;
+      }
+
+      // Role vem do Supabase (profiles), nunca hardcoded por email
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!adminProfile || (adminProfile.role !== 'admin' && adminProfile.role !== 'nutricionista')) {
+        router.push('/dashboard');
         return;
       }
 
