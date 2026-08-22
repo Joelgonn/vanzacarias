@@ -55,28 +55,28 @@ export function PatientGrid({
   
   const sections = [
     { 
-      title: '🚨 Críticos', 
+      title: 'Críticos', 
       patients: criticalPatients, 
       color: 'rose',
       icon: AlertTriangle,
       description: 'Pacientes ausentes há +7 dias. Ação imediata necessária.'
     },
     { 
-      title: '⚠️ Alto Risco', 
+      title: 'Alto Risco', 
       patients: highPatients, 
       color: 'orange',
       icon: Bell,
       description: 'Engajamento baixo. Contatar em breve.'
     },
     { 
-      title: '⚡ Em atenção', 
+      title: 'Em atenção', 
       patients: mediumPatients, 
       color: 'amber',
       icon: TrendingUp,
       description: 'Sem dieta ou progresso moderado.'
     },
     { 
-      title: '✅ Estáveis', 
+      title: 'Estáveis', 
       patients: lowPatients, 
       color: 'emerald',
       icon: Users,
@@ -120,6 +120,12 @@ export function PatientGrid({
                 section.color === 'amber' ? 'bg-amber-400' :
                 'bg-emerald-400'
               ))} />
+              <section.icon size={14} className={cn(
+                section.color === 'rose' ? 'text-rose-500' :
+                section.color === 'orange' ? 'text-orange-500' :
+                section.color === 'amber' ? 'text-amber-500' :
+                'text-emerald-500'
+              )} />
               <h2 className="text-sm font-bold text-stone-700 dark:text-stone-300">
                 {section.title}
               </h2>

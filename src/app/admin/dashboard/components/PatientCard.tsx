@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { 
-  Edit2, Activity, Users, 
+  Edit2, Activity, 
   MoreHorizontal, AlertCircle, Bell, BellRing, Star, FileText, Trash2,
-  MessageCircle, Utensils, TrendingUp, CheckCircle, X, Eye, Save,
-  Calendar, Weight, User, ClipboardList
+  MessageCircle, Utensils, TrendingUp, CheckCircle, CheckCircle2, X, Eye, Save,
+  Calendar, Weight, User, ClipboardList, ChevronRight, AlertTriangle, Zap, Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -40,32 +40,32 @@ interface PatientCardProps {
 
 const priorityConfig = {
   CRITICAL: {
-    label: '🚨 CRÍTICO',
+    label: 'CRÍTICO',
+    icon: AlertTriangle,
     color: 'text-rose-600 dark:text-rose-400',
     bg: 'bg-rose-50 dark:bg-rose-950/30',
-    border: 'border-rose-200 dark:border-rose-800/50 ring-2 ring-rose-400/40 bg-rose-50/30 dark:bg-rose-950/10',
-    cta: { label: '💰 Cobrar agora', icon: BellRing, style: 'bg-rose-500 hover:bg-rose-600' }
+    border: 'border-rose-200 dark:border-rose-800/50 ring-2 ring-rose-400/40 bg-rose-50/30 dark:bg-rose-950/10'
   },
   HIGH: {
-    label: '⚠️ ALTO RISCO',
+    label: 'ALTO RISCO',
+    icon: AlertCircle,
     color: 'text-orange-600 dark:text-orange-400',
     bg: 'bg-orange-50 dark:bg-orange-950/30',
-    border: 'border-orange-200 dark:border-orange-800/50',
-    cta: { label: '📞 Reengajar', icon: Bell, style: 'bg-orange-500 hover:bg-orange-600' }
+    border: 'border-orange-200 dark:border-orange-800/50'
   },
   MEDIUM: {
-    label: '⚡ ATENÇÃO',
+    label: 'ATENÇÃO',
+    icon: Zap,
     color: 'text-amber-600 dark:text-amber-400',
     bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-800/50',
-    cta: { label: '🍽️ Montar dieta', icon: Utensils, style: 'bg-amber-500 hover:bg-amber-600' }
+    border: 'border-amber-200 dark:border-amber-800/50'
   },
   LOW: {
-    label: '✅ ESTÁVEL',
+    label: 'ESTÁVEL',
+    icon: CheckCircle2,
     color: 'text-emerald-600 dark:text-emerald-400',
     bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-    border: 'border-emerald-200 dark:border-emerald-800/50',
-    cta: { label: '📋 Acompanhar', icon: Users, style: 'bg-emerald-500 hover:bg-emerald-600' }
+    border: 'border-emerald-200 dark:border-emerald-800/50'
   }
 };
 
@@ -111,53 +111,6 @@ export function PatientCard({
     if (score.total >= 40) return <TrendingUp size={12} className="text-amber-500" />;
     return <AlertCircle size={12} className="text-rose-500" />;
   };
-  
-  const getPrimaryAction = () => {
-    if (score.risk === 'CRITICAL') {
-      return {
-        label: '💰 Cobrar agora',
-        action: () => {
-          const phone = patient.phone?.replace(/\D/g, '');
-          if (phone) {
-            if (onAutoReminder) onAutoReminder(patient.id, phone);
-            window.open(`https://wa.me/55${phone}?text=Olá! Seu acompanhamento está pendente. Vamos retomar?`, '_blank');
-          } else {
-            toast.warning('Número não cadastrado');
-          }
-        },
-        icon: BellRing
-      };
-    }
-    if (score.risk === 'HIGH') {
-      return {
-        label: '📞 Reengajar',
-        action: () => {
-          const phone = patient.phone?.replace(/\D/g, '');
-          if (phone) {
-            window.open(`https://wa.me/55${phone}?text=Olá! Sentimos sua falta. Como está o acompanhamento?`, '_blank');
-          } else {
-            toast.warning('Número não cadastrado');
-          }
-        },
-        icon: Bell
-      };
-    }
-    if (score.risk === 'MEDIUM' || !isDietReady) {
-      return {
-        label: '🍽️ Montar dieta',
-        action: () => onOpenDietBuilder(patient),
-        icon: Utensils
-      };
-    }
-    return {
-      label: '📋 Abrir prontuário',
-      action: () => router.push(`/admin/paciente/${patient.id}/historico`),
-      icon: Users
-    };
-  };
-  
-  const primaryAction = getPrimaryAction();
-  const PrimaryIcon = primaryAction.icon;
   
   const getScoreColor = () => {
     if (score.total >= 70) return 'text-emerald-600';
@@ -306,216 +259,300 @@ export function PatientCard({
       )}
       
       <div className="p-4 relative z-10">
-        {/* Header: Status + Score + Menu */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className={cn('flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold', config.bg, config.color)}>
+        {/* Header: Status + Score + Ações discretas + Menu */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={cn('flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0', config.bg, config.color)}>
+              <config.icon size={10} />
               <span>{config.label}</span>
             </div>
             
-            {/* Score */}
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[9px] font-bold">
+            {/* Score (breakdown em tooltip) */}
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[9px] font-bold cursor-help"
+              title={`Engajamento ${score.engagement} · Recência ${score.recency} · Adesão ${score.adherence}`}
+            >
               {getScoreIcon()}
               <span className={cn('font-mono', getScoreColor())}>{score.total}</span>
               <span className="text-stone-400 text-[8px]">/100</span>
             </div>
           </div>
           
-          {/* Menu ⋯ */}
-          <div className="relative menu-button">
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-              className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              <MoreHorizontal size={16} />
-            </button>
-            
-            <AnimatePresence>
-              {showMenu && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                  className="absolute right-0 top-8 z-20 w-44 bg-white dark:bg-stone-800 rounded-xl shadow-xl border border-stone-100 dark:border-stone-700 overflow-hidden"
-                >
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onEditProfile(patient);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Pill de cobrança discreta (só para quem precisa) */}
+            {(score.risk === 'CRITICAL' || score.risk === 'HIGH') && patient.phone && (
+              <a
+                href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(score.risk === 'CRITICAL' ? 'Olá! Seu acompanhamento está pendente. Vamos retomar?' : 'Olá! Sentimos sua falta. Como está o acompanhamento?')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onAutoReminder) onAutoReminder(patient.id, patient.phone!);
+                }}
+                className={cn(
+                  'flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-bold border transition-all active:scale-[0.95]',
+                  score.risk === 'CRITICAL'
+                    ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                    : 'bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/40'
+                )}
+                title={score.suggestedAction}
+              >
+                <BellRing size={9} /> {score.risk === 'CRITICAL' ? 'Cobrar' : 'Reengajar'}
+              </a>
+            )}
+
+            {/* Menu ⋯ */}
+            <div className="relative menu-button">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+                className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                aria-label="Mais ações"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              
+              <AnimatePresence>
+                {showMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                    className="absolute right-0 top-8 z-20 w-48 bg-white dark:bg-stone-800 rounded-xl shadow-xl border border-stone-100 dark:border-stone-700 overflow-hidden"
                   >
-                    <Edit2 size={12} /> Editar perfil
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onOpenEvalModal(patient);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
-                  >
-                    <Eye size={12} /> Ver avaliação
-                  </button>
-                  
-                  {isDietReady && (
                     <button
                       onClick={() => {
                         setShowMenu(false);
-                        onGeneratePDF(patient);
+                        onEditProfile(patient);
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
-                      <FileText size={12} /> Baixar PDF da dieta
+                      <Edit2 size={12} /> Editar perfil
                     </button>
-                  )}
-                  
-                  {isDietReady && (
+                    
                     <button
                       onClick={() => {
                         setShowMenu(false);
-                        onDeleteDiet(patient.id);
+                        onOpenEvalModal(patient);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
-                      <Trash2 size={12} /> Excluir dieta
+                      <Eye size={12} /> Ver avaliação
                     </button>
-                  )}
-                  
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onOpenClinicalModal(patient);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
-                  >
-                    <Activity size={12} /> Dados clínicos
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    
+                    {/* Cobrar via WhatsApp (acessível a todos) */}
+                    {patient.phone && (
+                      <a
+                        href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá! Seu acompanhamento está pendente. Vamos retomar?`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowMenu(false)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      >
+                        <BellRing size={12} /> Cobrar via WhatsApp
+                      </a>
+                    )}
+                    
+                    {isDietReady && (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          onGeneratePDF(patient);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      >
+                        <FileText size={12} /> Baixar PDF da dieta
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onOpenClinicalModal(patient);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                    >
+                      <Activity size={12} /> Dados clínicos
+                    </button>
+                    
+                    {/* Upgrade premium (movido para o menu) */}
+                    {patient.account_type !== 'premium' && (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          toast.info('🔒 Upgrade para Premium', {
+                            description: 'Desbloqueie análises avançadas, histórico completo e recomendações automáticas.',
+                            duration: 8000,
+                            action: {
+                              label: 'Quero Upgrade',
+                              onClick: () => toast.success('Em breve! Link de pagamento será enviado.')
+                            }
+                          });
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                      >
+                        <Star size={12} /> Liberar Premium
+                      </button>
+                    )}
+                    
+                    {isDietReady && (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          onDeleteDiet(patient.id);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors border-t border-stone-100 dark:border-stone-700"
+                      >
+                        <Trash2 size={12} /> Excluir dieta
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
         
-        {/* Nome + Badge Premium + Badge de Mensagens (ao lado do nome, como era antes) */}
-        <div className="flex items-center justify-between mb-2">
-          <Link href={`/admin/paciente/${patient.id}/historico`} className="group flex-1">
-            <h3 className="font-black text-base tracking-tight text-stone-900 dark:text-white group-hover:text-nutri-600 transition-colors">
+        {/* Nome + PRO (sem caneta: editar perfil está no menu ⋯) */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <Link href={`/admin/paciente/${patient.id}/historico`} className="group flex-1 min-w-0">
+            <h3 className={cn(ui.textCardTitle, 'truncate group-hover:text-nutri-600 transition-colors')}>
               {patient.full_name || 'Sem nome'}
             </h3>
           </Link>
-          <div className="flex items-center gap-1.5">
-            {/* Badge de mensagens - exatamente como era antes */}
-            <span className={cn(ui.badge, ui.badgeNeutral, 'text-[9px] py-0.5 px-1.5 flex items-center gap-1')}>
-              <MessageCircle size={9} />
-              {usage} {usage === 1 ? 'msg' : 'msgs'}
+          {patient.account_type === 'premium' && (
+            <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md shrink-0">
+              <Star size={10} className="fill-amber-500" /> PRO
             </span>
-            {patient.account_type === 'premium' && (
-              <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md">
-                <Star size={10} className="fill-amber-500" /> PRO
-              </span>
-            )}
-          </div>
+          )}
         </div>
+        
+        {/* Badges de estado (Dieta/Pendente + NOVO + AUSENTE + msgs) */}
+        <div className="flex flex-wrap items-center gap-1 mb-1.5">
+          {/* Identidade visual: esmeralda = dieta PRONTA | âmbar = PENDENTE */}
+          <span className={cn(
+            ui.badge, ui.textCardBadge, 'text-[8px] py-0.5 px-1.5 gap-1',
+            isDietReady
+              ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm shadow-emerald-700/30'
+              : 'bg-amber-500 text-white border border-amber-600 shadow-sm shadow-amber-600/30'
+          )}>
+            {isDietReady ? <CheckCircle2 size={8} className="shrink-0" /> : <Clock size={8} className="shrink-0" />}
+            {isDietReady ? 'Dieta' : 'Pendente'}
+          </span>
+          {patient.is_new && (
+            <span className={cn(ui.badge, ui.badgeInfo, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
+              <Bell size={7} className="inline mr-0.5 animate-pulse" /> NOVO
+            </span>
+          )}
+          {patient.is_late && (
+            <span className={cn(ui.badge, ui.badgeWarning, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
+              <AlertCircle size={7} className="inline mr-0.5" /> AUSENTE
+            </span>
+          )}
+          <span className={cn(ui.badge, ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1 flex items-center gap-0.5')}>
+            <MessageCircle size={7} /> {usage} {usage === 1 ? 'msg' : 'msgs'}
+          </span>
+        </div>
+        <p className={cn(ui.textCardMeta, 'text-[8px] mb-2')}>
+          {patient.is_late ? 'Última interação: +7 dias' : patient.is_new ? 'Ativo agora' : 'Ativo hoje'}
+        </p>
         
         {/* Meta e Perfil */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div className="bg-stone-50 dark:bg-stone-800/50 p-1.5 rounded-md text-center">
-            <p className="text-[7px] text-stone-400 uppercase font-bold">Meta</p>
-            <p className="text-[11px] font-bold text-stone-700 dark:text-stone-300">
+            <p className={cn(ui.textCardMeta, 'text-[7px] uppercase font-bold')}>Meta</p>
+            <p className={cn(ui.textCardSub, 'text-[11px] font-bold')}>
               {patient.meta_peso ? `${patient.meta_peso} kg` : 'Não definida'}
             </p>
           </div>
           <div className="bg-stone-50 dark:bg-stone-800/50 p-1.5 rounded-md text-center">
-            <p className="text-[7px] text-stone-400 uppercase font-bold">Perfil</p>
-            <p className="text-[11px] font-semibold text-stone-700 dark:text-stone-300 capitalize">
+            <p className={cn(ui.textCardMeta, 'text-[7px] uppercase font-bold')}>Perfil</p>
+            <p className={cn(ui.textCardSub, 'text-[11px] font-semibold capitalize')}>
               {patient.tipo_perfil || 'Não definido'}
             </p>
           </div>
         </div>
         
-        {/* Score Breakdown */}
-        <div className="mb-3 p-2 bg-stone-50 dark:bg-stone-800/30 rounded-lg">
-          <div className="flex justify-between text-[8px] text-stone-500 mb-1">
-            <span>Engajamento</span>
-            <span>Recência</span>
-            <span>Adesão</span>
+        {/* Preview da Avaliação (Inicial + QFA + Alergias) */}
+        {patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0 ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenEvalModal(patient); }}
+            className="action-button w-full flex items-center justify-between bg-stone-50 dark:bg-stone-800/30 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all p-1.5 rounded-md mb-3 group text-left"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-nutri-600 dark:text-nutri-400 text-[8px] uppercase tracking-wider flex items-center gap-0.5">
+                <Eye size={9} /> Inicial + QFA + Alergias
+              </p>
+              <p className="line-clamp-1 text-[9px] font-medium text-stone-500 dark:text-stone-400 italic truncate">
+                &ldquo;{String(Object.values(patient.evaluation_answers)[0] || '').substring(0, 45)}...&rdquo;
+              </p>
+            </div>
+            <ChevronRight size={12} className="text-nutri-400 group-hover:text-nutri-600 transition-colors shrink-0" />
+          </button>
+        ) : (
+          <div className="text-center py-1.5 mb-3 bg-stone-50 dark:bg-stone-800/30 rounded-md">
+            <FileText size={10} className="inline text-stone-300 mr-0.5" />
+            <span className={cn(ui.textCardMeta, 'text-[9px]')}>Sem avaliação</span>
           </div>
-          <div className="flex gap-1 h-1.5">
-            <div className="flex-1 bg-stone-200 rounded-full overflow-hidden">
-              <div className="h-full bg-nutri-400 rounded-full" style={{ width: `${score.engagement}%` }} />
-            </div>
-            <div className="flex-1 bg-stone-200 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-400 rounded-full" style={{ width: `${score.recency}%` }} />
-            </div>
-            <div className="flex-1 bg-stone-200 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${score.adherence}%` }} />
-            </div>
-          </div>
-        </div>
+        )}
         
-        {/* Recomendação Automática */}
-        <div className="mb-3 p-1.5 bg-nutri-50 dark:bg-nutri-950/30 rounded-lg border border-nutri-100 dark:border-nutri-800">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[9px]">🤖</span>
-            <span className="text-[9px] font-medium text-nutri-700 dark:text-nutri-300">
-              Recomendação:
-            </span>
-            <span className="text-[9px] font-bold text-stone-700 dark:text-stone-300">
-              {score.suggestedAction}
-            </span>
-          </div>
-        </div>
-        
-        {/* CTA Principal */}
+        {/* CTA PRIMÁRIO: Dieta/Editar (identidade: esmeralda = pronta | âmbar = pendente) */}
         <button
           onClick={(e) => {
+            e.stopPropagation();
             createRippleEffect(e);
-            primaryAction.action();
+            onOpenDietBuilder(patient);
           }}
           className={cn(
-            'action-button w-full py-2.5 rounded-xl font-bold text-sm transition-all duration-200',
-            'flex items-center justify-center gap-2',
-            'hover:scale-[1.02] active:scale-[0.97]',
-            config.cta.style,
-            'text-white shadow-lg'
+            'action-button w-full',
+            isDietReady ? ui.buttonPrimarySuccess : ui.buttonPrimaryWarning,
+            'h-10 md:h-11 rounded-xl text-sm font-bold shadow-lg'
           )}
         >
-          <PrimaryIcon size={14} />
-          {primaryAction.label}
+          {isDietReady ? <CheckCircle2 size={15} /> : <Utensils size={15} />}
+          {isDietReady ? 'Editar dieta' : 'Montar dieta'}
         </button>
         
-        {/* Botão WhatsApp direto */}
-        <a
-          href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá!`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[9px] font-medium bg-[#25D366]/10 text-[#25D366] border border-[#25D366]/20 hover:bg-[#25D366]/20 transition-colors"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <MessageCircle size={10} /> WhatsApp
-        </a>
-        
-        {/* Upgrade para não-premium */}
-        {patient.account_type !== 'premium' && (
+        {/* LINHA DE AÇÕES SECUNDÁRIAS (forma uniforme via ui.buttonSecondary) */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2.5 border-t border-stone-100 dark:border-stone-800">
+          {/* Botão PDF */}
+          {isDietReady && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                createRippleEffect(e);
+                onGeneratePDF(patient);
+              }}
+              className={cn('action-button', ui.buttonSecondary, ui.buttonSecondaryNeutral)}
+              title="Gerar PDF da dieta"
+            >
+              <FileText size={11} /> PDF
+            </button>
+          )}
+
+          {/* Botão Clínico */}
           <button
             onClick={(e) => {
               e.stopPropagation();
-              toast.info('🔒 Upgrade para Premium', {
-                description: 'Desbloqueie análises avançadas, histórico completo e recomendações automáticas.',
-                duration: 8000,
-                action: {
-                  label: 'Quero Upgrade',
-                  onClick: () => toast.success('Em breve! Link de pagamento será enviado.')
-                }
-              });
+              onOpenClinicalModal(patient);
             }}
-            className="mt-2 w-full py-1 rounded-lg text-[8px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1"
+            className={cn('action-button', ui.buttonSecondary, ui.buttonSecondaryInfo)}
+            title="Dados clínicos"
           >
-            <Star size={9} />
-            🔒 Liberar Premium
+            <Activity size={11} /> Clínico
           </button>
-        )}
+
+          {/* Botão Zap (WhatsApp) */}
+          <a
+            href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá!`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className={cn(ui.buttonSecondary, ui.buttonSecondaryWhatsapp)}
+            title="Conversar no WhatsApp"
+          >
+            <MessageCircle size={11} /> Zap
+          </a>
+        </div>
       </div>
     </motion.div>
   );

@@ -4,12 +4,13 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Plus, Trash2, Save, Utensils, Check, 
   ChevronDown, ChevronUp, 
-  CheckCircle2, CheckCircle, AlertCircle, CalendarRange, Loader2,
-  Target, X, Clock, ChevronRight, Search,
-  ChevronLeft, Calendar
+  CheckCircle2, CheckCircle, AlertTriangle, CalendarRange, Loader2,
+  X, Clock, ChevronRight,
+  ChevronLeft, Calendar, Ban, ClipboardList
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { cn, ui } from '@/ui/system';
 
 // ✅ CORREÇÃO: FoodItem agora é importado do SSOT correto (patient)
 import { FoodRestriction, FoodItem } from '@/types/patient';
@@ -32,25 +33,21 @@ import {
 
 // ✅ CORREÇÃO: Removido o FoodItem daqui, pois agora vem de patient
 import { 
-  MacroAnalysis,
   MacroTargets
 } from '@/types/macroEngine';
 
 import { MacroSuggestions } from '@/components/MacroSuggestions';
 
 // ============================================================================
-// 🔥 CONSTANTES DE DIAS (ORDEM CORRETA)
+// 🔥 MÓDULOS EXTRAÍDOS (Fase D — arquitetura)
 // ============================================================================
-
-const ORDERED_DAYS = [
-  "Segunda-feira",
-  "Terça-feira",
-  "Quarta-feira",
-  "Quinta-feira",
-  "Sexta-feira",
-  "Sábado",
-  "Domingo"
-];
+import { ORDERED_DAYS, MEAL_TYPES, MEAL_TIMES } from '@/components/dietBuilder/constants';
+import { quickFoods } from '@/components/dietBuilder/foods';
+import { TimeSelector } from '@/components/dietBuilder/TimeSelector';
+import { RestrictionsSidebar } from '@/components/dietBuilder/RestrictionsSidebar';
+import { MacrosSidebar } from '@/components/dietBuilder/MacrosSidebar';
+import { FoodItemCard } from '@/components/dietBuilder/FoodItemCard';
+import { SearchableFoodList } from '@/components/dietBuilder/SearchableFoodList';
 
 // ============================================================================
 // 🔥 NORMALIZAÇÃO CENTRAL
@@ -124,6 +121,8 @@ interface DietBuilderProps {
   onClose: () => void;
   targetRecommendation: TargetRecommendation | null;
   foodRestrictions?: FoodRestriction[]; 
+  /** Opcional: notifica o pai quando há alterações não salvas (para proteger o botão de fechar externo) */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export interface Option {
@@ -146,850 +145,9 @@ export interface Meal {
 }
 
 // =========================================================================
-// COMPONENTE DE SELETOR DE HORÁRIO
-// =========================================================================
-
-interface TimeSelectorProps {
-  value: string;
-  onChange: (time: string) => void;
-  mealType: string;
-  className?: string;
-}
-
-function TimeSelector({ value, onChange, mealType, className = '' }: TimeSelectorProps) {
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [customTime, setCustomTime] = useState('');
-  
-  const suggestedTimes = MEAL_TIMES[mealType] || ["08:00", "12:00", "19:00"];
-  const hasSuggested = suggestedTimes.includes(value);
-  
-  const handleCustomTimeSubmit = () => {
-    if (customTime && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(customTime)) {
-      onChange(customTime);
-      setShowCustomInput(false);
-      setCustomTime('');
-    } else if (customTime) {
-      toast.error('Formato de horário inválido. Use HH:MM (ex: 14:30)');
-    }
-  };
-  
-  return (
-    <div className={`space-y-2 ${className}`}>
-      <div className="flex flex-wrap gap-2">
-        {suggestedTimes.slice(0, 4).map(time => (
-          <button
-            key={time}
-            onClick={() => {
-              onChange(time);
-              setShowCustomInput(false);
-            }}
-            className={`px-3 py-2 rounded-xl text-[11px] font-bold tracking-wider transition-all duration-300 active:scale-95 ${
-              value === time && !showCustomInput
-                ? 'bg-stone-800 text-white shadow-md shadow-stone-800/20'
-                : 'bg-white border border-stone-200 text-stone-500 hover:border-stone-400 hover:text-stone-800'
-            }`}
-          >
-            {time}
-          </button>
-        ))}
-        
-        {!showCustomInput && (
-          <button
-            onClick={() => {
-              setShowCustomInput(true);
-              if (!hasSuggested) setCustomTime(value);
-            }}
-            className={`px-3 py-2 rounded-xl text-[11px] font-bold tracking-wider transition-all duration-300 active:scale-95 ${
-              !hasSuggested && value && !showCustomInput
-                ? 'bg-stone-800 text-white shadow-md shadow-stone-800/20'
-                : 'bg-stone-50 border border-stone-200 border-dashed text-stone-500 hover:border-stone-400 hover:text-stone-800'
-            }`}
-          >
-            {!hasSuggested && value ? value : 'Outro'}
-          </button>
-        )}
-      </div>
-      
-      {showCustomInput && (
-        <div className="flex gap-2 items-center animate-in fade-in slide-in-from-left-2 mt-2">
-          <div className="relative">
-            <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input
-              type="text"
-              placeholder="HH:MM"
-              value={customTime || (value && !hasSuggested ? value : '')}
-              onChange={(e) => setCustomTime(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleCustomTimeSubmit()}
-              className="w-24 pl-8 pr-3 py-2 rounded-xl border border-stone-200 font-bold text-stone-800 outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-500/10 bg-white text-sm transition-all"
-              autoFocus
-            />
-          </div>
-          <button
-            onClick={handleCustomTimeSubmit}
-            className="px-4 py-2 bg-stone-800 text-white rounded-xl text-xs font-bold hover:bg-stone-700 transition-colors shadow-sm"
-          >
-            OK
-          </button>
-          <button
-            onClick={() => {
-              setShowCustomInput(false);
-              setCustomTime('');
-            }}
-            className="px-3 py-2 bg-stone-100 text-stone-500 hover:text-stone-700 rounded-xl transition-colors"
-            title="Cancelar"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =========================================================================
-// COMPONENTE DE RESTRIÇÕES SIDEBAR
-// =========================================================================
-
-interface RestrictionsSidebarProps {
-  restrictionsSummary: {
-    hasRestrictions: boolean;
-    allergies: number;
-    intolerances: number;
-    restrictions: number;
-  };
-}
-
-function RestrictionsSidebar({ restrictionsSummary }: RestrictionsSidebarProps) {
-  if (!restrictionsSummary?.hasRestrictions) return null;
-
-  return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        <AlertCircle size={16} className="text-amber-600" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-amber-800">
-          Restrições
-        </span>
-      </div>
-
-      <div className="text-[11px] font-medium text-amber-700 space-y-1.5">
-        {restrictionsSummary.allergies > 0 && (
-          <div className="flex items-center gap-1.5"><span className="text-[10px]">🚫</span> {restrictionsSummary.allergies} alergia(s)</div>
-        )}
-        {restrictionsSummary.intolerances > 0 && (
-          <div className="flex items-center gap-1.5"><span className="text-[10px]">⚠️</span> {restrictionsSummary.intolerances} intolerância(s)</div>
-        )}
-        {restrictionsSummary.restrictions > 0 && (
-          <div className="flex items-center gap-1.5"><span className="text-[10px]">📋</span> {restrictionsSummary.restrictions} restrição(ões)</div>
-        )}
-      </div>
-
-      <div className="text-[9px] font-bold text-amber-600 pt-2 border-t border-amber-200/50 leading-relaxed">
-        Alimentos bloqueados aparecem com estilo cortado e não podem ser adicionados.
-      </div>
-    </div>
-  );
-}
-
-// =========================================================================
-// COMPONENTE DE MACROS SIDEBAR
-// =========================================================================
-
-interface MacrosSidebarProps {
-  totals: { kcal: number; p: number; c: number; g: number };
-  targets: { kcal: number; protein: number; carbs: number; fat: number };
-  analysis?: MacroAnalysis;
-}
-
-function MacrosSidebar({ totals, targets, analysis }: MacrosSidebarProps) {
-  const getPercentage = (current: number, target: number) => {
-    if (!target) return 0;
-    return Math.min((current / target) * 100, 100);
-  };
-
-  const getStatusBadge = (status?: string) => {
-    if (!status) return null;
-    switch (status) {
-      case 'low':
-        return <span className="ml-1 text-[8px] font-black text-red-500">v</span>;
-      case 'high':
-        return <span className="ml-1 text-[8px] font-black text-amber-500">^</span>;
-      default:
-        return <span className="ml-1 text-[8px] font-black text-emerald-500">ok</span>;
-    }
-  };
-
-  const rows = [
-    {
-      key: 'kcal',
-      label: 'Kcal',
-      current: Math.round(totals.kcal),
-      target: targets.kcal,
-      display: `${Math.round(totals.kcal)} / ${targets.kcal}`,
-      tone: 'text-stone-800',
-      track: 'bg-stone-100',
-      fill: 'bg-stone-800',
-      chip: 'bg-stone-900 text-white',
-      status: analysis?.status.kcal,
-    },
-    {
-      key: 'protein',
-      label: 'Proteina',
-      current: Math.round(totals.p),
-      target: targets.protein,
-      display: `${Math.round(totals.p)}g / ${targets.protein}g`,
-      tone: 'text-red-600',
-      track: 'bg-red-100',
-      fill: 'bg-red-500',
-      chip: 'border border-red-100 bg-red-50 text-red-700',
-      status: analysis?.status.protein,
-    },
-    {
-      key: 'carbs',
-      label: 'Carboidrato',
-      current: Math.round(totals.c),
-      target: targets.carbs,
-      display: `${Math.round(totals.c)}g / ${targets.carbs}g`,
-      tone: 'text-amber-600',
-      track: 'bg-amber-100',
-      fill: 'bg-amber-500',
-      chip: 'border border-amber-100 bg-amber-50 text-amber-700',
-      status: analysis?.status.carbs,
-    },
-    {
-      key: 'fat',
-      label: 'Gordura',
-      current: Math.round(totals.g),
-      target: targets.fat,
-      display: `${Math.round(totals.g)}g / ${targets.fat}g`,
-      tone: 'text-blue-600',
-      track: 'bg-blue-100',
-      fill: 'bg-blue-500',
-      chip: 'border border-blue-100 bg-blue-50 text-blue-700',
-      status: analysis?.status.fat,
-    },
-  ];
-
-  return (
-    <div className="space-y-3.5 rounded-[1.7rem] border border-stone-200/90 bg-[radial-gradient(circle_at_top_left,rgba(214,211,209,0.16),transparent_38%),linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(250,250,249,0.98)_100%)] p-4 shadow-[0_14px_40px_-28px_rgba(28,25,23,0.32)]">
-      <div className="flex items-center gap-2 border-b border-stone-100 pb-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600 ring-1 ring-stone-200/80">
-          <Target size={14} />
-        </div>
-        <div>
-          <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-stone-500">Metas do Dia</span>
-          <span className="block text-[11px] font-semibold text-stone-400">Comparativo ao vivo</span>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {rows.map((row) => (
-          <div key={row.key} className="rounded-[1.05rem] border border-stone-200/80 bg-white/80 px-3 py-2 shadow-[0_10px_24px_-22px_rgba(28,25,23,0.32)] backdrop-blur-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center">
-                  <span className={`text-[11px] font-black tracking-[0.01em] ${row.tone}`}>{row.label}</span>
-                  {getStatusBadge(row.status)}
-                </div>
-                <p className="mt-0.5 text-[9px] font-medium text-stone-400">
-                  Meta {row.target}{row.key === 'kcal' ? '' : 'g'}
-                </p>
-              </div>
-
-              <div className={`shrink-0 rounded-full px-2.5 py-[0.3rem] text-[9px] font-black tracking-tight ${row.chip}`}>
-                {row.display}
-              </div>
-            </div>
-
-            <div className={`mt-1.5 h-1.5 overflow-hidden rounded-full ${row.track}`}>
-              <div
-                className={`h-full rounded-full ${row.fill} transition-all duration-500`}
-                style={{ width: `${getPercentage(row.current, row.target)}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// =========================================================================
-// COMPONENTE DE FOOD ITEM
-// =========================================================================
-
-interface FoodItemCardProps {
-  foodItem: FoodItem;
-  index: number;
-  isActive: boolean;
-  onUpdateGrams: (grams: number) => void;
-  onDelete: () => void;
-  onActivate: () => void;
-}
-
-function FoodItemCard({ 
-  foodItem, 
-  isActive, 
-  onUpdateGrams, 
-  onDelete, 
-  onActivate 
-}: FoodItemCardProps) {
-  const grams = foodItem.grams;
-  const baseGrams = getBaseGrams(foodItem.id);
-  const ratio = grams / baseGrams;
-  
-  const presets = [100, 150, 200];
-  
-  const handlePresetClick = (preset: number) => {
-    onUpdateGrams(preset);
-  };
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value;
-    if (rawValue === '') {
-      onUpdateGrams(0);
-    } else {
-      const parsedValue = parseInt(rawValue, 10);
-      if (!isNaN(parsedValue)) {
-        onUpdateGrams(parsedValue);
-      }
-    }
-  };
-  
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateGrams(Number(e.target.value));
-  };
-  
-  return (
-    <div 
-      className={`bg-white border rounded-xl p-3 transition-all duration-200 ${
-        isActive 
-          ? 'ring-2 ring-stone-800 shadow-md border-stone-800' 
-          : 'border-stone-200 hover:border-stone-300 hover:shadow-sm'
-      }`}
-      onClick={onActivate}
-    >
-      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
-        <span className="text-sm font-bold text-stone-800 w-full xl:w-48 shrink-0 truncate">
-          {foodItem.name}
-        </span>
-        
-        <div className="flex flex-1 flex-wrap items-center gap-3 xl:gap-4">
-          
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex items-center gap-1 bg-stone-50 border border-stone-200 rounded-lg px-2 py-1">
-              <input
-                type="number"
-                inputMode="numeric"
-                value={Math.round(grams)}
-                onChange={handleInputChange}
-                className="w-12 text-sm font-bold text-center bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <span className="text-[10px] font-bold text-stone-400 uppercase">g</span>
-            </div>
-            
-            {isActive && presets.map(preset => (
-              <button
-                key={preset}
-                onClick={(e) => { e.stopPropagation(); handlePresetClick(preset); }}
-                className="text-[10px] font-bold px-2 py-1 rounded-md bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-800 transition-all active:scale-95 hidden sm:block"
-              >
-                {preset}g
-              </button>
-            ))}
-          </div>
-          
-          <div className={`flex-1 min-w-[80px] hidden sm:block ${isActive ? 'opacity-100' : 'opacity-0 xl:opacity-100 xl:opacity-30 pointer-events-none xl:pointer-events-auto transition-opacity'}`}>
-            <input
-              type="range"
-              min={0}
-              max={300}
-              step={10}
-              value={Math.min(grams, 300)}
-              onChange={handleSliderChange}
-              className="w-full h-1 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-700 opacity-70 hover:opacity-100 transition-opacity"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2 text-[10px] font-bold shrink-0 opacity-80 xl:ml-auto">
-            <span className="text-stone-500 w-12 text-right">{Math.round(foodItem.kcal * ratio)} kcal</span>
-            <span className="text-red-500 w-8 text-right">P {Math.round(foodItem.macros.p * ratio)}</span>
-            <span className="text-amber-500 w-8 text-right">C {Math.round(foodItem.macros.c * ratio)}</span>
-            <span className="text-blue-500 w-8 text-right">G {Math.round(foodItem.macros.g * ratio)}</span>
-          </div>
-          
-          <button 
-            onClick={(e) => { e.stopPropagation(); onDelete(); }} 
-            className="text-stone-300 hover:text-rose-600 transition-colors p-1 ml-auto xl:ml-0 shrink-0"
-            title="Remover Alimento"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =========================================================================
-// BANCO VISUAL
-// =========================================================================
-
-interface QuickFoodConfigItem {
-  id: string;
-  label: string;
-}
-
-interface QuickFoodCategoryConfig {
-  category: string;
-  items: QuickFoodConfigItem[];
-}
-
-const QUICK_FOODS_CONFIG: QuickFoodCategoryConfig[] = [
-  { 
-    category: "🥩 Proteínas (Carnes e Ovos)", 
-    items:[
-      { id: "egg_scrambled", label: "Ovo mexido (2 un)" }, 
-      { id: "egg_boiled", label: "Ovo cozido (2 un)" }, 
-      { id: "egg_poached", label: "Ovo pochê (2 un)" },
-      { id: "chicken_breast_grilled", label: "Frango grelhado (100g)" }, 
-      { id: "chicken_shredded", label: "Frango desfiado (3 col)" }, 
-      { id: "chicken_breast_roasted", label: "Peito de frango assado (100g)" },
-      { id: "chicken_thigh_roasted", label: "Sobrecoxa frango assada (100g)" }, 
-      { id: "beef_minced_lean", label: "Carne moída magra (100g)" }, 
-      { id: "beef_minced_5", label: "Carne moída 5% (100g)" },
-      { id: "filet_mignon", label: "Filé mignon grelhado (100g)" }, 
-      { id: "striploin", label: "Contra-filé grelhado (100g)" }, 
-      { id: "beef_knuckle_minced", label: "Patinho moído (100g)" },
-      { id: "rump_steak", label: "Alcatra grelhada (100g)" }, 
-      { id: "tri_tip", label: "Maminha assada (100g)" }, 
-      { id: "fish_filet", label: "Filé de peixe (100g)" },
-      { id: "salmon_grilled", label: "Salmão grelhado (100g)" }, 
-      { id: "tuna_solid", label: "Atum sólido (1 lata)" }, 
-      { id: "sardine_roasted", label: "Sardinha assada (100g)" },
-      { id: "shrimp_grilled", label: "Camarão grelhado (100g)" }, 
-      { id: "pork_loin_grilled", label: "Lombo de porco grelhado (100g)" }, 
-      { id: "turkey_sliced", label: "Peru fatiado (3 fatias)" },
-      { id: "hamburger_homemade", label: "Hambúrguer caseiro (100g)" }
-    ] 
-  },
-  { 
-    category: "🥛 Laticínios e Proteínas Vegetais", 
-    items:[
-      { id: "milk_whole", label: "Leite Integral (1 copo 200ml)" }, 
-      { id: "milk_skim", label: "Leite Desnatado (1 copo 200ml)" }, 
-      { id: "milk_lactose_free", label: "Leite Sem lactose (1 copo 200ml)" },
-      { id: "almond_milk", label: "Leite de amêndoas (200ml)" }, 
-      { id: "soy_milk", label: "Leite de soja (200ml)" }, 
-      { id: "yogurt_natural", label: "Iogurte Natural (1 pote 170g)" },
-      { id: "yogurt_greek", label: "Iogurte Grego (170g)" }, 
-      { id: "yogurt_protein", label: "Iogurte Proteico (170g)" }, 
-      { id: "kefir", label: "Kefir (200ml)" },
-      { id: "cheese_minas", label: "Queijo Minas (1 fatia 30g)" }, 
-      { id: "cheese_mozzarella", label: "Queijo Mussarela (2 fatias 30g)" }, 
-      { id: "cheese_prato", label: "Queijo Prato (1 fatia 30g)" },
-      { id: "cheese_cottage", label: "Queijo Cottage (2 col 50g)" }, 
-      { id: "cheese_ricotta", label: "Queijo Ricota (2 col 50g)" }, 
-      { id: "cheese_parmesan", label: "Queijo Parmesão (1 col 10g)" },
-      { id: "tofu_grilled", label: "Tofu grelhado (100g)" }, 
-      { id: "chickpeas_cooked", label: "Grão de bico cozido (3 col)" }, 
-      { id: "lentils_cooked", label: "Lentilha cozida (3 col)" },
-      { id: "peas_fresh", label: "Ervilha fresca (3 col)" }, 
-      { id: "tempeh", label: "Tempeh (100g)" }, 
-      { id: "seitan", label: "Seitan (100g)" }
-    ] 
-  },
-  { 
-    category: "🍚 Carboidratos (Grãos e Cereais)", 
-    items:[
-      { id: "rice_white_cooked", label: "Arroz branco cozido (100g)" }, 
-      { id: "rice_brown_cooked", label: "Arroz integral cozido (100g)" }, 
-      { id: "rice_parboiled", label: "Arroz parboilizado (100g)" },
-      { id: "rice_7_grains", label: "Arroz 7 grãos (100g)" }, 
-      { id: "pasta_whole", label: "Macarrão integral (100g)" }, 
-      { id: "pasta_regular", label: "Macarrão comum (100g)" },
-      { id: "pasta_rice", label: "Macarrão de arroz (100g)" }, 
-      { id: "quinoa_cooked", label: "Quinoa cozida (100g)" }, 
-      { id: "corn_couscous", label: "Cuscuz de milho (100g)" },
-      { id: "corn_green", label: "Milho verde (3 col)" }, 
-      { id: "oats_flakes", label: "Aveia em flocos (30g)" }, 
-      { id: "granola_sugar_free", label: "Granola s/ açúcar (3 col)" },
-      { id: "cereal_breakfast", label: "Cereal matinal (30g)" }, 
-      { id: "bread_french", label: "Pão francês (1 un)" }, 
-      { id: "bread_whole", label: "Pão integral (2 fatias)" },
-      { id: "bread_white", label: "Pão de forma branco (2 fatias)" }, 
-      { id: "cheese_bread", label: "Pão de queijo (1 un)" }, 
-      { id: "tapioca", label: "Tapioca (3 col sopa 50g)" },
-      { id: "crepioca", label: "Crepioca (1 un)" }, 
-      { id: "pancake_whole", label: "Panqueca integral (1 un)" }
-    ] 
-  },
-  { 
-    category: "🥔 Tubérculos e Raízes", 
-    items:[
-      { id: "sweet_potato_cooked", label: "Batata doce cozida (100g)" }, 
-      { id: "potato_cooked", label: "Batata inglesa cozida (150g)" }, 
-      { id: "potato_roasted", label: "Batata assada (150g)" },
-      { id: "potato_saute", label: "Batata sauté (150g)" }, 
-      { id: "potato_mash", label: "Purê de batata (3 col)" }, 
-      { id: "cassava_cooked", label: "Mandioca cozida (100g)" },
-      { id: "cassava_fried", label: "Mandioca frita (100g)" }, 
-      { id: "yam_cooked", label: "Inhame cozido (100g)" }, 
-      { id: "cara_cooked", label: "Cará cozido (100g)" },
-      { id: "arracacha_cooked", label: "Batata baroa (100g)" }
-    ] 
-  },
-  { 
-    category: "🍌 Frutas", 
-    items:[
-      { id: "banana_prata", label: "Banana prata (1 un)" }, 
-      { id: "banana_nanica", label: "Banana nanica (1 un)" }, 
-      { id: "banana_maca", label: "Banana maçã (1 un)" },
-      { id: "apple", label: "Maçã (1 un média)" }, 
-      { id: "apple_green", label: "Maçã verde (1 un)" }, 
-      { id: "pear", label: "Pera (1 un)" },
-      { id: "papaya", label: "Mamão (1 fatia média)" }, 
-      { id: "orange", label: "Laranja (1 un)" }, 
-      { id: "tangerine", label: "Mexerica (1 un)" },
-      { id: "pineapple", label: "Abacaxi (1 fatia)" }, 
-      { id: "watermelon", label: "Melancia (1 fatia)" }, 
-      { id: "melon", label: "Melão (1 fatia)" },
-      { id: "mango", label: "Manga (1 un pequena)" }, 
-      { id: "strawberry", label: "Morango (10 un)" }, 
-      { id: "grape", label: "Uva (15 un)" },
-      { id: "kiwi", label: "Kiwi (1 un)" }, 
-      { id: "avocado", label: "Abacate (2 col sopa)" }, 
-      { id: "coconut_fresh", label: "Coco fresco (1 fatia)" },
-      { id: "acai", label: "Açaí (100g s/ xarope)" }
-    ] 
-  },
-  { 
-    category: "🥬 Verduras e Legumes", 
-    items:[
-      { id: "salad_leaves", label: "Salada de folhas (à vontade)" }, 
-      { id: "lettuce_iceberg", label: "Alface americana (5 folhas)" }, 
-      { id: "arugula", label: "Rúcula (1 prato)" },
-      { id: "spinach_sauteed", label: "Espinafre refogado (3 col)" }, 
-      { id: "kale_sauteed", label: "Couve refogada (3 col)" }, 
-      { id: "broccoli_cooked", label: "Brócolis cozido (3 ramos)" },
-      { id: "cauliflower_cooked", label: "Couve-flor cozida (3 col)" }, 
-      { id: "zucchini_sauteed", label: "Abobrinha refogada (3 col)" }, 
-      { id: "eggplant_sauteed", label: "Berinjela refogada (3 col)" },
-      { id: "chayote_sauteed", label: "Chuchu refogado (3 col)" }, 
-      { id: "carrot_cooked", label: "Cenoura cozida (3 col)" }, 
-      { id: "carrot_grated", label: "Cenoura ralada (3 col)" },
-      { id: "beet_cooked", label: "Beterraba cozida (3 col)" }, 
-      { id: "tomato", label: "Tomate (1 un)" }, 
-      { id: "cucumber", label: "Pepino (1/2 un)" },
-      { id: "bell_pepper", label: "Pimentão (1/2 un)" }, 
-      { id: "green_beans", label: "Vagem cozida (3 col)" }, 
-      { id: "asparagus_grilled", label: "Aspargo grelhado (5 un)" },
-      { id: "heart_of_palm", label: "Palmito (3 talos)" }, 
-      { id: "mushroom_sauteed", label: "Cogumelo refogado (3 col)" }
-    ] 
-  },
-  { 
-    category: "🍲 Leguminosas (Feijões e Grãos)", 
-    items:[
-      { id: "black_beans_broth", label: "Feijão preto caldo (1 concha)" }, 
-      { id: "black_beans_grains", label: "Feijão preto grãos (1 escumadeira)" }, 
-      { id: "pinto_beans_broth", label: "Feijão carioca caldo (1 concha)" },
-      { id: "white_beans", label: "Feijão branco (3 col)" }, 
-      { id: "black_eyed_peas", label: "Feijão fradinho (3 col)" }, 
-      { id: "lentils_cooked", label: "Lentilha (1 escumadeira)" },
-      { id: "chickpeas_cooked", label: "Grão de bico (3 col)" }, 
-      { id: "peas_fresh", label: "Ervilha fresca (3 col)" }, 
-      { id: "soybeans_cooked", label: "Soja cozida (3 col)" },
-      { id: "edamame", label: "Edamame (100g)" }
-    ] 
-  },
-  { 
-    category: "🧈 Gorduras e Óleos", 
-    items:[
-      { id: "olive_oil", label: "Azeite de oliva (1 col sopa)" }, 
-      { id: "coconut_oil", label: "Óleo de coco (1 col sopa)" }, 
-      { id: "sesame_oil", label: "Óleo de gergelim (1 col sopa)" },
-      { id: "butter", label: "Manteiga (1 col chá 10g)" }, 
-      { id: "ghee_butter", label: "Manteiga ghee (1 col chá)" }, 
-      { id: "peanut_butter", label: "Pasta de amendoim (1 col sopa)" },
-      { id: "peanut_butter_whole", label: "Pasta de amendoim integral (1 col)" }, 
-      { id: "cashew_butter", label: "Pasta de castanha (1 col sopa)" }, 
-      { id: "almond_butter", label: "Pasta de amêndoas (1 col sopa)" },
-      { id: "cream_cheese_light", label: "Requeijão light (1 col sopa)" }, 
-      { id: "cream_cheese", label: "Requeijão cremoso (1 col sopa)" }, 
-      { id: "heavy_cream_light", label: "Creme de leite light (1 col sopa)" },
-      { id: "mayonnaise", label: "Maionese (1 col sopa)" }, 
-      { id: "mayonnaise_light", label: "Maionese light (1 col sopa)" }
-    ] 
-  },
-  { 
-    category: "🥜 Oleaginosas e Sementes", 
-    items:[
-      { id: "brazil_nut", label: "Castanha do Pará (3 un)" }, 
-      { id: "cashew_nut", label: "Castanha de caju (10 un)" }, 
-      { id: "almonds", label: "Amêndoas (10 un)" },
-      { id: "walnuts", label: "Nozes (3 un)" }, 
-      { id: "macadamia", label: "Macadâmia (5 un)" }, 
-      { id: "pistachio", label: "Pistache (15 un)" },
-      { id: "peanut_roasted", label: "Amendoim torrado (30g)" }, 
-      { id: "mixed_nuts", label: "Mix de castanhas (30g)" }, 
-      { id: "pumpkin_seed", label: "Semente de abóbora (1 col sopa)" },
-      { id: "sunflower_seed", label: "Semente de girassol (1 col sopa)" }, 
-      { id: "chia_seed", label: "Chia (1 col sopa)" }, 
-      { id: "flaxseed_golden", label: "Linhaça dourada (1 col sopa)" },
-      { id: "flaxseed_brown", label: "Linhaça marrom (1 col sopa)" }, 
-      { id: "sesame_seed", label: "Gergelim (1 col sopa)" }, 
-      { id: "coconut_grated_dry", label: "Coco ralado seco (1 col sopa)" },
-      { id: "coconut_grated_fresh", label: "Coco ralado fresco (1 col sopa)" }
-    ] 
-  },
-  { 
-    category: "🥤 Bebidas e Suplementos", 
-    items:[
-      { id: "whey_protein", label: "Whey Protein (1 scoop 30g)" }, 
-      { id: "whey_isolate", label: "Whey Isolado (1 scoop)" }, 
-      { id: "whey_vegan", label: "Whey Vegano (1 scoop)" },
-      { id: "albumin", label: "Albumina (1 scoop)" }, 
-      { id: "casein", label: "Caseína (1 scoop)" }, 
-      { id: "creatine", label: "Creatina (5g)" },
-      { id: "bcaa", label: "BCAA (5g)" }, 
-      { id: "glutamine", label: "Glutamina (5g)" }, 
-      { id: "coffee_black", label: "Café preto (1 xícara)" },
-      { id: "coffee_milk", label: "Café com leite (1 xícara)" }, 
-      { id: "coffee_plant_milk", label: "Café com leite vegetal (1 xíc)" }, 
-      { id: "green_tea", label: "Chá verde (1 xícara)" },
-      { id: "mate_tea", label: "Chá mate (1 xícara)" }, 
-      { id: "chamomile_tea", label: "Chá de camomila (1 xícara)" }, 
-      { id: "orange_juice", label: "Suco de laranja natural (1 copo)" },
-      { id: "lemon_juice", label: "Suco de limão (1 copo)" }, 
-      { id: "green_juice", label: "Suco verde (1 copo 300ml)" }, 
-      { id: "coconut_water", label: "Água de coco (300ml)" },
-      { id: "beer", label: "Cerveja (1 lata 350ml)" }, 
-      { id: "wine_red", label: "Vinho tinto (1 taça 150ml)" }, 
-      { id: "wine_white", label: "Vinho branco (1 taça 150ml)" },
-      { id: "distilled_spirits", label: "Destilados (1 dose 50ml)" }
-    ] 
-  },
-  { 
-    category: "🍰 Doces e Extras", 
-    items:[
-      { id: "honey", label: "Mel (1 col sopa)" }, 
-      { id: "demerara_sugar", label: "Açúcar demerara (1 col chá)" }, 
-      { id: "coconut_sugar", label: "Açúcar de coco (1 col chá)" },
-      { id: "stevia", label: "Stévia (líquido)" }, 
-      { id: "xylitol", label: "Xilitol (1 col chá)" }, 
-      { id: "erythritol", label: "Eritritol (1 col chá)" },
-      { id: "diet_fruit_jelly", label: "Geleia de fruta diet (1 col sopa)" }, 
-      { id: "dulce_de_leche", label: "Doce de leite (1 col sopa)" }, 
-      { id: "nutella", label: "Nutella (1 col sopa)" },
-      { id: "chocolate_70", label: "Chocolate 70% (1 quadrado)" }, 
-      { id: "chocolate_white", label: "Chocolate branco (1 quadrado)" }, 
-      { id: "brigadeiro", label: "Brigadeiro (1 un)" },
-      { id: "beijinho", label: "Beijinho (1 un)" }, 
-      { id: "ice_cream_vanilla", label: "Sorvete de creme (1 bola)" }, 
-      { id: "ice_cream_diet", label: "Sorvete diet (1 bola)" },
-      { id: "fruit_popsicle", label: "Picolé de fruta (1 un)" }, 
-      { id: "cake_plain", label: "Bolo simples (1 fatia)" }, 
-      { id: "cake_whole", label: "Bolo integral (1 fatia)" },
-      { id: "cookie", label: "Cookie (1 un)" }, 
-      { id: "brownie", label: "Brownie (1 un)" }, 
-      { id: "pancake_sweet", label: "Panqueca doce (1 un)" },
-      { id: "waffle", label: "Waffle (1 un)" }
-    ] 
-  }
-];
-
-const quickFoods: QuickFoodCategoryConfig[] = QUICK_FOODS_CONFIG.map(cat => {
-  const validItems = cat.items.filter(uiItem => {
-    const exists = FOOD_REGISTRY.some(f => f.id === uiItem.id);
-    if (!exists) console.warn(`[DietBuilder UI Warning] Alimento não encontrado no Registry: ${uiItem.id}`);
-    return exists;
-  });
-  return { ...cat, items: validItems };
-}).filter(cat => cat.items.length > 0);
-
-const flatFoodsList = quickFoods.flatMap(cat => cat.items);
-
-const MEAL_TYPES =[
-  "Café da Manhã", "Lanche da Manhã", "Almoço", "Lanche da Tarde", 
-  "Jantar", "Ceia", "Pré-treino", "Pós-treino", "Refeição Livre"
-];
-
-const MEAL_TIMES: Record<string, string[]> = {
-  "Café da Manhã": ["07:00", "07:30", "08:00", "08:30"],
-  "Lanche da Manhã": ["09:30", "10:00", "10:30"],
-  "Almoço": ["11:30", "12:00", "12:30", "13:00"],
-  "Lanche da Tarde": ["15:00", "15:30", "16:00"],
-  "Jantar": ["18:30", "19:00", "19:30", "20:00"],
-  "Ceia": ["21:00", "21:30", "22:00"],
-  "Pré-treino": ["Antes do treino", "06:00", "07:00", "16:00"],
-  "Pós-treino": ["Após o treino", "08:00", "09:00", "18:00"],
-  "Refeição Livre": ["Quando desejar", "12:00", "19:00"]
-};
-
-// =========================================================================
-// COMPONENTE DE BUSCA
-// =========================================================================
-
-interface SearchableFoodListProps {
-  onSelectFood: (foodId: string) => void;
-  blockedFoodIds: Set<string>;
-  foodRestrictions: FoodRestriction[];
-  autoFocus?: boolean;
-}
-
-function SearchableFoodList({ onSelectFood, blockedFoodIds, foodRestrictions, autoFocus = false }: SearchableFoodListProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [highlightIndex, setHighlightIndex] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const getFilteredFoods = () => {
-    const normalizedSearch = searchTerm.toLowerCase().trim();
-    if (!normalizedSearch) return [];
-
-    return flatFoodsList
-      .map(item => {
-        const label = item.label.toLowerCase();
-        let score = 0;
-        if (label.startsWith(normalizedSearch)) score += 3;
-        else if (label.includes(normalizedSearch)) score += 2;
-        return { ...item, score };
-      })
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
-  };
-
-  const filteredFoods = getFilteredFoods();
-
-  useEffect(() => {
-    const el = listRef.current?.children[highlightIndex] as HTMLElement;
-    if (el) {
-      el.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightIndex]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!filteredFoods.length) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev < filteredFoods.length - 1 ? prev + 1 : prev));
-    }
-
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev > 0 ? prev - 1 : 0));
-    }
-
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const selected = filteredFoods[highlightIndex];
-      if (selected) {
-        onSelectFood(selected.id);
-        setSearchTerm('');
-        setHighlightIndex(0);
-        inputRef.current?.focus();
-      }
-    }
-
-    if (e.key === 'Escape') {
-      setSearchTerm('');
-      setHighlightIndex(0);
-    }
-  };
-
-  const handleSelect = (foodId: string) => {
-    onSelectFood(foodId);
-    setSearchTerm('');
-    setHighlightIndex(0);
-    inputRef.current?.focus();
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Buscar alimento... (ex: frango, arroz, banana)"
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setHighlightIndex(0);
-          }}
-          onKeyDown={handleKeyDown}
-          className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-stone-800 focus:ring-4 focus:ring-stone-800/10 transition-all"
-          autoFocus={autoFocus}
-        />
-      </div>
-
-      {searchTerm.length > 0 && (
-        <div 
-          ref={listRef}
-          className="space-y-1 max-h-64 overflow-y-auto border border-stone-200 rounded-xl bg-white p-1 shadow-sm"
-        >
-          {filteredFoods.length === 0 ? (
-            <div className="px-3 py-4 text-center text-xs text-stone-400">
-              Nenhum alimento encontrado
-            </div>
-          ) : (
-            filteredFoods.map((item, index) => {
-              const food = FOOD_REGISTRY.find(f => f.id === item.id);
-              const isBlocked = blockedFoodIds.has(item.id);
-              const restrictionInfo = getRestrictionInfo(item.id, foodRestrictions);
-              
-              let restrictionIcon = '';
-              
-              if (isBlocked) {
-                if (restrictionInfo?.type === 'allergy') {
-                  restrictionIcon = '🚫';
-                } else if (restrictionInfo?.type === 'intolerance') {
-                  restrictionIcon = '⚠️';
-                } else {
-                  restrictionIcon = '📋';
-                }
-              }
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => !isBlocked && handleSelect(item.id)}
-                  disabled={isBlocked}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all ${
-                    index === highlightIndex
-                      ? 'bg-stone-800 text-white'
-                      : isBlocked
-                        ? 'bg-red-50 text-red-400 cursor-not-allowed opacity-70'
-                        : 'hover:bg-stone-50 text-stone-700'
-                  }`}
-                >
-                  <span className="truncate flex items-center gap-1.5">
-                    {restrictionIcon && <span className="text-[10px]">{restrictionIcon}</span>}
-                    {item.label}
-                  </span>
-                  {food && (
-                    <span className={`text-[9px] font-bold ml-2 ${
-                      index === highlightIndex ? 'text-white/70' : 'text-stone-400'
-                    }`}>
-                      {food.kcal} kcal
-                    </span>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =========================================================================
 // COMPONENTE PRINCIPAL
 // =========================================================================
-export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose, foodRestrictions = [] }: DietBuilderProps) {
+export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose, foodRestrictions = [], onDirtyChange }: DietBuilderProps) {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -1000,7 +158,22 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   const [activeFoodKey, setActiveFoodKey] = useState<string | null>(null);
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // ============================================================================
+  // 🔥 CONTROLE DE ALTERAÇÕES NÃO SALVAS (Fase A)
+  // Toda mutação de refeições passa por updateMeals → marca isDirty.
+  // O load inicial usa setMeals direto (não é alteração do usuário).
+  // ============================================================================
+  const updateMeals = (updater: (prev: Meal[]) => Meal[]) => {
+    setMeals(updater);
+    setIsDirty(true);
+  };
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // ============================================================================
   // 🔥 FLUXO GUIADO POR DIA (NOVO)
@@ -1209,7 +382,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       return;
     }
 
-    setMeals(prevMeals => prevMeals.map(m => {
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1253,7 +426,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   ) => {
     const safeGrams = Math.max(0, Math.floor(newGrams || 0));
 
-    setMeals(prevMeals => prevMeals.map(m => {
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1287,7 +460,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const deleteFoodItem = (mealId: string, optId: string, foodItemId: string) => {
-    setMeals(prevMeals => prevMeals.map(m => {
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id !== mealId) return m;
 
       return {
@@ -1324,23 +497,24 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
       name: nextMealName, 
       options: [{ id: `opt-${Date.now()}`, day: 'Todos os dias', foodItems: [], kcal: 0, macros: { p: 0, c: 0, g: 0 } }] 
     };
-    setMeals(prevMeals => [...prevMeals, newMeal]);
+    updateMeals(prevMeals => [...prevMeals, newMeal]);
     setExpandedMealId(newMeal.id); 
   };
 
   const removeMeal = (mealId: string) => {
-    setMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
+    if (!window.confirm('Excluir esta refeição? Essa ação não pode ser desfeita.')) return;
+    updateMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
     if (expandedMealId === mealId) setExpandedMealId(null);
     if (activeTimeMealId === mealId) setActiveTimeMealId(null);
   };
 
-  const updateMealTime = (mealId: string, time: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, time } : m));
-  const updateMealName = (mealId: string, name: string) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, name } : m));
+  const updateMealTime = (mealId: string, time: string) => updateMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, time } : m));
+  const updateMealName = (mealId: string, name: string) => updateMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, name } : m));
 
   const addOption = (mealId: string) => {
     const newOptionId = `opt-${Date.now()}`;
 
-    setMeals(prevMeals => prevMeals.map(m => {
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
         return {
           ...m,
@@ -1355,7 +529,15 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const splitIntoFullWeek = (mealId: string) => {
-    setMeals(prevMeals => prevMeals.map(m => {
+    const targetMeal = meals.find(m => m.id === mealId);
+    const hasVariations = targetMeal && targetMeal.options.length > 1;
+    if (hasVariations) {
+      const ok = window.confirm(
+        'Copiar para a semana inteira vai SUBSTITUIR as variações já montadas para cada dia. Deseja continuar?'
+      );
+      if (!ok) return;
+    }
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId && m.options.length > 0) {
         const baseOption = m.options[0];
         const newOptions = ORDERED_DAYS.map((day, idx) => ({
@@ -1370,7 +552,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   };
 
   const updateMacro = (mealId: string, optionId: string, macro: 'p' | 'c' | 'g', value: number) => {
-    setMeals(prevMeals => prevMeals.map(m => {
+    updateMeals(prevMeals => prevMeals.map(m => {
       if (m.id === mealId) {
         const newOptions = m.options.map(o => {
           if (o.id === optionId) {
@@ -1386,7 +568,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }));
   };
 
-  const updateKcal = (mealId: string, optionId: string, kcal: number) => setMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, kcal } : o) } : m));
+  const updateKcal = (mealId: string, optionId: string, kcal: number) => updateMeals(prevMeals => prevMeals.map(m => m.id === mealId ? { ...m, options: m.options.map(o => o.id === optionId ? { ...o, kcal } : o) } : m));
 
   // =========================================================================
   // TOTAIS PARA SIDEBAR
@@ -1463,7 +645,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
   // =========================================================================
   // SAVE
   // =========================================================================
-  const handleSave = async () => {
+  // SAVE (Fase A: rascunho separado de liberação)
+  // =========================================================================
+  const savePlan = async (mode: 'draft' | 'release') => {
     setIsSaving(true);
     setExpandedMealId(null);
     
@@ -1490,16 +674,41 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     }
     
     try {
-      const { error } = await supabase.from('profiles').update({ meal_plan: cleanedMeals, status: 'plano_liberado' }).eq('id', patientId);
+      // Rascunho: salva o plano mantendo o status atual (não libera para o paciente)
+      const { error } = await supabase.from('profiles').update({
+        meal_plan: cleanedMeals,
+        status: mode === 'release' ? 'plano_liberado' : 'pendente'
+      }).eq('id', patientId);
       if (error) throw error;
-      setSaved(true);
-      toast.success("Cardápio salvo e liberado para o paciente!");
-      setTimeout(() => { setSaved(false); onClose(); }, 1500);
+      setIsDirty(false);
+      if (mode === 'release') {
+        setSaved(true);
+        toast.success("Cardápio salvo e liberado para o paciente!");
+        setTimeout(() => { setSaved(false); onClose(); }, 1500);
+      } else {
+        toast.success("Rascunho salvo! Você pode continuar editando quando quiser.");
+      }
     } catch {
       toast.error("Erro ao salvar cardápio. Verifique sua conexão.");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = () => savePlan('release');
+  const handleSaveDraft = () => savePlan('draft');
+
+  // =========================================================================
+  // FASE A: PROTEÇÃO DE SAÍDA (alerta se houver alterações não salvas)
+  // =========================================================================
+  const handleRequestClose = () => {
+    if (isDirty) {
+      const ok = window.confirm(
+        'Há alterações não salvas neste cardápio. Deseja realmente sair? As alterações serão perdidas.'
+      );
+      if (!ok) return;
+    }
+    onClose();
   };
 
   return (
@@ -1521,6 +730,12 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                     • {patientName}
                   </span>
                 </h2>
+                {isDirty && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Alterações não salvas
+                  </span>
+                )}
               </div>
             </div>
             
@@ -1529,10 +744,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
               <Calendar size={14} className="text-stone-500" />
               <select
                 value={activeDay}
-                onChange={(e) => {
-                  setActiveDay(e.target.value);
-                  toast.info(`Visualizando: ${e.target.value}`);
-                }}
+                onChange={(e) => setActiveDay(e.target.value)}
                 className="bg-transparent text-sm font-bold text-stone-800 outline-none cursor-pointer"
               >
                 {ORDERED_DAYS.map(day => (
@@ -1542,8 +754,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
             </div>
             
             <button 
-              onClick={onClose} 
+              onClick={handleRequestClose} 
               className="p-2 bg-stone-50 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-full transition-all active:scale-95"
+              title={isDirty ? "Fechar (alterações não salvas)" : "Fechar"}
             >
               <X size={18} strokeWidth={2.5} />
             </button>
@@ -1557,20 +770,19 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
               return (
                 <button
                   key={day}
-                  onClick={() => {
-                    setActiveDay(day);
-                    toast.info(`Visualizando: ${day}`);
-                  }}
-                  className={`flex-1 text-[8px] font-black uppercase tracking-wider py-1.5 rounded-lg transition-all ${
+                  onClick={() => setActiveDay(day)}
+                  title={day}
+                  className={cn(
+                    'flex-1 text-[8px] font-black uppercase tracking-wider py-1.5 rounded-lg transition-all flex items-center justify-center gap-1',
                     isActive
                       ? 'bg-stone-800 text-white shadow-md'
                       : isComplete
-                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                        : 'bg-stone-100 text-stone-400'
-                  }`}
+                        ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm shadow-emerald-700/30'
+                        : 'bg-stone-100 text-stone-400 hover:bg-stone-200 hover:text-stone-600'
+                  )}
                 >
                   {day.substring(0, 3)}
-                  {isComplete && <Check size={8} className="inline ml-1" />}
+                  {isComplete && <Check size={8} strokeWidth={3.5} />}
                 </button>
               );
             })}
@@ -1596,12 +808,17 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
             <div className="sticky top-4 space-y-4">
               
               {/* BADGE DO DIA ATIVO */}
-              <div className="bg-stone-100 rounded-xl p-3 text-center">
+              <div className={cn(
+                'rounded-xl p-3 text-center border transition-colors',
+                isDayComplete(activeDay)
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-stone-100 border-stone-200/60'
+              )}>
                 <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">Dia Ativo</span>
                 <p className="text-lg font-black text-stone-800">{activeDay}</p>
                 {isDayComplete(activeDay) && (
-                  <span className="inline-block mt-1 text-[8px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                    ✓ Completo
+                  <span className="inline-flex items-center gap-1 mt-1 text-[8px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                    <Check size={8} strokeWidth={3.5} /> Completo
                   </span>
                 )}
               </div>
@@ -1784,29 +1001,29 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                   {option.day === "Todos os dias" ? "Base" : option.day}
                                 </span>
                                 {option.day !== activeDay && option.day !== "Todos os dias" && (
-                                  <span className="text-[8px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-md">
-                                    ⚠️ Não exibido hoje
+                                  <span className="text-[8px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-md flex items-center gap-0.5">
+                                    <AlertTriangle size={8} className="shrink-0" /> Não exibido hoje
                                   </span>
                                 )}
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="flex items-center bg-stone-50 rounded-xl border border-stone-200 p-0.5 shadow-inner overflow-hidden">
-                                  <div className="flex items-center pl-2 pr-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-red-50 transition-colors">
-                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">P</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-red-600 outline-none text-center" />
+                                <div className="flex items-stretch bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden divide-x divide-stone-200/70">
+                                  <div className="flex items-center px-2.5 py-1.5 group focus-within:bg-red-50/60 transition-colors" title="Proteína (g)">
+                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-1.5">P</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.p || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'p', Number(e.target.value))} className="w-10 bg-transparent text-sm font-bold text-red-600 outline-none text-center" />
                                   </div>
-                                  <div className="flex items-center px-1.5 py-1 border-r border-stone-200/60 group focus-within:bg-amber-50 transition-colors">
-                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">C</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-amber-600 outline-none text-center" />
+                                  <div className="flex items-center px-2.5 py-1.5 group focus-within:bg-amber-50/60 transition-colors" title="Carboidrato (g)">
+                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-1.5">C</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.c || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'c', Number(e.target.value))} className="w-10 bg-transparent text-sm font-bold text-amber-600 outline-none text-center" />
                                   </div>
-                                  <div className="flex items-center px-1.5 py-1 group focus-within:bg-blue-50 transition-colors">
-                                    <span className="text-[8px] font-black uppercase text-stone-400 mr-1">G</span>
-                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-7 bg-transparent text-xs font-bold text-blue-600 outline-none text-center" />
+                                  <div className="flex items-center px-2.5 py-1.5 group focus-within:bg-blue-50/60 transition-colors" title="Gordura (g)">
+                                    <span className="text-[9px] font-black uppercase text-stone-400 mr-1.5">G</span>
+                                    <input type="number" inputMode="decimal" value={Math.round(option.macros?.g || 0)} onChange={(e) => updateMacro(meal.id, option.id, 'g', Number(e.target.value))} className="w-10 bg-transparent text-sm font-bold text-blue-600 outline-none text-center" />
                                   </div>
-                                  <div className="flex items-center pl-1.5 pr-1 py-1 bg-stone-800 rounded-lg shadow-sm ml-0.5">
-                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-8 bg-transparent text-xs font-black text-white outline-none text-center" />
-                                    <span className="text-[7px] font-black uppercase text-stone-400 ml-0.5">Kcal</span>
+                                  <div className="flex items-center px-2.5 py-1.5 bg-stone-800 shadow-sm" title="Calorias (kcal)">
+                                    <input type="number" inputMode="decimal" value={Math.round(option.kcal || 0)} onChange={(e) => updateKcal(meal.id, option.id, Number(e.target.value))} className="w-11 bg-transparent text-sm font-black text-white outline-none text-center" />
+                                    <span className="text-[8px] font-black uppercase text-stone-400 ml-1">kcal</span>
                                   </div>
                                 </div>
                               </div>
@@ -1862,14 +1079,15 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                 </div>
                                 <div className="space-y-1 max-h-[250px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-200">
                                   {quickFoods.map((cat) => {
-                                    const isExpanded = expandedCategories[`${meal.id}-${option.id}-${cat.category}`] || false;
+                                    // Expansão GLOBAL por categoria (memória entre refeições/opções)
+                                    const isExpanded = expandedCategories[cat.category] || false;
                                     
                                     return (
                                       <div key={cat.category} className="border border-stone-200 rounded-xl overflow-hidden bg-white">
                                         <button
                                           onClick={() => setExpandedCategories(prev => ({
                                             ...prev,
-                                            [`${meal.id}-${option.id}-${cat.category}`]: !prev[`${meal.id}-${option.id}-${cat.category}`]
+                                            [cat.category]: !prev[cat.category]
                                           }))}
                                           className="w-full flex items-center justify-between px-2 py-1.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
                                         >
@@ -1896,13 +1114,13 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                                 if (isBlocked) {
                                                   if (restrictionInfo?.type === 'allergy') {
                                                     btnClass = "px-2 py-1 bg-red-50 border border-red-300 rounded-lg text-[9px] font-bold text-red-600 line-through cursor-not-allowed opacity-80";
-                                                    tooltipText = "🚫 PROIBIDO - Alergia grave";
+                                                    tooltipText = "PROIBIDO - Alergia grave";
                                                   } else if (restrictionInfo?.type === 'intolerance') {
                                                     btnClass = "px-2 py-1 bg-amber-50 border border-amber-300 rounded-lg text-[9px] font-bold text-amber-700 line-through cursor-not-allowed opacity-80";
-                                                    tooltipText = "⚠️ CUIDADO - Intolerância alimentar";
+                                                    tooltipText = "CUIDADO - Intolerância alimentar";
                                                   } else {
                                                     btnClass = "px-2 py-1 bg-blue-50 border border-blue-300 rounded-lg text-[9px] font-bold text-blue-700 line-through cursor-not-allowed opacity-80";
-                                                    tooltipText = "📋 EVITAR - Restrição alimentar";
+                                                    tooltipText = "EVITAR - Restrição alimentar";
                                                   }
                                                 }
 
@@ -1915,9 +1133,9 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                                                     className={btnClass}
                                                   >
                                                     {foodUI.label}
-                                                    {isBlocked && restrictionInfo?.type === 'allergy' && <span className="text-red-500 text-[7px] ml-0.5">🚫</span>}
-                                                    {isBlocked && restrictionInfo?.type === 'intolerance' && <span className="text-amber-500 text-[7px] ml-0.5">⚠️</span>}
-                                                    {isBlocked && restrictionInfo?.type === 'restriction' && <span className="text-blue-500 text-[7px] ml-0.5">📋</span>}
+                                                    {isBlocked && restrictionInfo?.type === 'allergy' && <Ban size={8} className="inline ml-0.5 text-red-500 -mt-0.5" />}
+                                                    {isBlocked && restrictionInfo?.type === 'intolerance' && <AlertTriangle size={8} className="inline ml-0.5 text-amber-500 -mt-0.5" />}
+                                                    {isBlocked && restrictionInfo?.type === 'restriction' && <ClipboardList size={8} className="inline ml-0.5 text-blue-500 -mt-0.5" />}
                                                   </button>
                                                 );
                                               })}
@@ -1936,7 +1154,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                         <div className="flex flex-wrap gap-2 pt-1">
                           <button 
                             onClick={() => addOption(meal.id)} 
-                            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-600 bg-white shadow-sm border border-stone-200 hover:border-stone-800 hover:text-stone-800 px-3 py-1.5 rounded-xl transition-all active:scale-95"
+                            className={cn(ui.buttonSecondary, ui.buttonSecondaryNutri, 'font-black uppercase tracking-widest')}
                           >
                             <Plus size={12} strokeWidth={2.5} /> Adicionar Variação para {activeDay}
                           </button>
@@ -1944,7 +1162,7 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                           {meal.options.length === 1 && meal.options[0].day === "Segunda-feira" && (
                             <button 
                               onClick={() => splitIntoFullWeek(meal.id)} 
-                              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-800 bg-stone-100 border border-stone-200 hover:bg-stone-200 px-3 py-1.5 rounded-xl transition-all active:scale-95 shadow-sm"
+                              className={cn(ui.buttonSecondary, ui.buttonSecondaryNeutral, 'font-black uppercase tracking-widest')}
                             >
                               <CalendarRange size={12} strokeWidth={2.5} /> Copiar para Semana Inteira
                             </button>
@@ -1982,26 +1200,42 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
         <div className="border-t border-stone-100 bg-white/95 p-3 sm:p-4 shrink-0">
           <div className="flex flex-row items-center gap-2">
             <button 
-              onClick={onClose} 
+              onClick={handleRequestClose} 
               className="px-4 sm:px-5 py-2.5 font-bold text-stone-500 hover:text-stone-800 bg-stone-50 hover:bg-stone-100 rounded-xl transition-all active:scale-[0.98] shrink-0 text-xs sm:text-sm"
             >
               Cancelar
             </button>
             <button 
+              onClick={handleSaveDraft} 
+              disabled={isSaving} 
+              className={cn(
+                ui.buttonSecondary,
+                ui.buttonSecondaryNeutral,
+                'flex-1 h-11 rounded-xl font-bold text-xs sm:text-sm disabled:opacity-60'
+              )}
+              title="Salva o progresso sem liberar para o paciente"
+            >
+              {isSaving ? (
+                <><Loader2 size={16} strokeWidth={2.5} className="animate-spin shrink-0"/> <span className="truncate">Salvando...</span></>
+              ) : (
+                <><Save size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Salvar rascunho</span></>
+              )}
+            </button>
+            <button 
               onClick={handleSave} 
               disabled={isSaving} 
-              className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl font-bold text-white transition-all duration-300 shadow-md active:scale-[0.98] text-xs sm:text-sm ${
-                saved 
-                  ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20' 
-                  : 'bg-stone-900 hover:bg-stone-800'
-              }`}
+              className={cn(
+                ui.buttonPrimarySuccess,
+                'flex-1 h-11 rounded-xl font-bold text-xs sm:text-sm disabled:opacity-60'
+              )}
+              title="Salva e libera o cardápio para o paciente"
             >
               {isSaving ? (
                 <><Loader2 size={16} strokeWidth={2.5} className="animate-spin shrink-0"/> <span className="truncate">Salvando...</span></>
               ) : saved ? (
                 <><CheckCircle2 size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Salvo!</span></>
               ) : (
-                <><Save size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Liberar Cardápio</span></>
+                <><CheckCircle2 size={16} strokeWidth={2.5} className="shrink-0"/> <span className="truncate">Liberar Cardápio</span></>
               )}
             </button>
           </div>
@@ -2011,3 +1245,4 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
     </div>
   );
 }
+

@@ -76,6 +76,59 @@ export const ui = {
     rounded-lg px-3 h-8 flex items-center justify-center gap-1.5 text-xs font-medium
   `,
 
+  // ============================================================
+  // BOTÕES PRIMÁRIOS POR ESTADO (identidade visual Dieta × Pendente)
+  // Mesma forma do buttonPrimary; a cor conta o estado do plano:
+  //   esmeralda = plano PRONTO | âmbar = plano PENDENTE
+  // ============================================================
+  buttonPrimarySuccess: `
+    relative overflow-hidden
+    bg-emerald-600 dark:bg-emerald-600 text-white font-semibold
+    border border-emerald-700 dark:border-emerald-500
+    shadow-md shadow-emerald-700/30 dark:shadow-emerald-900/50
+
+    hover:bg-emerald-500 dark:hover:bg-emerald-500
+    hover:border-amber-400 dark:hover:border-amber-500
+    hover:shadow-xl hover:shadow-amber-500/30
+    hover:-translate-y-0.5
+    hover:text-amber-50
+
+    active:bg-emerald-700 dark:active:bg-emerald-700
+    active:border-amber-500 dark:active:border-amber-400
+    active:shadow-2xl active:shadow-amber-500/50
+    active:text-amber-100
+    active:ring-2 active:ring-amber-400/60 active:ring-offset-2
+    active:ring-offset-white dark:active:ring-offset-stone-900
+    active:scale-[0.97]
+
+    transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+    rounded-xl px-4 h-9 md:px-5 md:h-11 flex items-center justify-center gap-1.5 text-xs md:text-sm
+  `,
+
+  buttonPrimaryWarning: `
+    relative overflow-hidden
+    bg-amber-500 dark:bg-amber-500 text-white font-semibold
+    border border-amber-600 dark:border-amber-400
+    shadow-md shadow-amber-600/30 dark:shadow-amber-900/50
+
+    hover:bg-amber-400 dark:hover:bg-amber-400
+    hover:border-amber-700 dark:hover:border-amber-500
+    hover:shadow-xl hover:shadow-amber-500/40
+    hover:-translate-y-0.5
+    hover:text-white
+
+    active:bg-amber-600 dark:active:bg-amber-600
+    active:border-amber-700 dark:active:border-amber-500
+    active:shadow-2xl active:shadow-amber-600/50
+    active:text-amber-50
+    active:ring-2 active:ring-amber-400/60 active:ring-offset-2
+    active:ring-offset-white dark:active:ring-offset-stone-900
+    active:scale-[0.97]
+
+    transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+    rounded-xl px-4 h-9 md:px-5 md:h-11 flex items-center justify-center gap-1.5 text-xs md:text-sm
+  `,
+
   buttonDanger: `
     relative overflow-hidden
     bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 font-medium
@@ -129,6 +182,98 @@ export const ui = {
 
     transition-all duration-200
     rounded-lg px-2 h-7 text-[10px] flex items-center justify-center gap-1
+  `,
+
+  // ============================================================
+  // BOTÕES SECUNDÁRIOS (linha de ações do card — forma uniforme)
+  // Uma única base de forma (h-8, raio, fonte); a cor varia por variante.
+  // Uso: ui.buttonSecondary + ui.buttonSecondary* (cor por semântica)
+  // ============================================================
+  buttonSecondary: `
+    relative overflow-hidden
+    inline-flex items-center justify-center gap-1
+    h-8 px-3 rounded-lg text-[10px] font-medium
+    bg-white dark:bg-stone-800 text-stone-600 dark:text-stone-300
+    border border-stone-200 dark:border-stone-700
+    shadow-sm
+
+    hover:border-amber-300 dark:hover:border-amber-700
+    hover:text-amber-600 dark:hover:text-amber-400
+    hover:bg-amber-50 dark:hover:bg-amber-950/30
+    hover:-translate-y-0.5
+
+    active:scale-[0.97]
+    active:ring-1 active:ring-amber-400/40
+
+    transition-all duration-200
+  `,
+
+  // Variante neutra (ex.: PDF, ações informativas secundárias)
+  buttonSecondaryNeutral: `
+    bg-stone-50 dark:bg-stone-800/60 text-stone-500 dark:text-stone-400
+    border-stone-200 dark:border-stone-700
+    hover:bg-stone-100 dark:hover:bg-stone-700
+    hover:border-amber-300 dark:hover:border-amber-700
+    hover:text-amber-600 dark:hover:text-amber-400
+  `,
+
+  // Variante nutri (ação de negócio recomendada, ex.: Montar dieta pendente)
+  buttonSecondaryNutri: `
+    bg-nutri-50 dark:bg-nutri-950/40 text-nutri-700 dark:text-nutri-300
+    border-nutri-200 dark:border-nutri-800
+    hover:bg-nutri-100 dark:hover:bg-nutri-900/40
+    hover:border-nutri-400 dark:hover:border-nutri-600
+    hover:text-nutri-800 dark:hover:text-nutri-200
+  `,
+
+  // Variante warning (ação de cobrança/urgência, ex.: Cobrar)
+  buttonSecondaryWarning: `
+    bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400
+    border-amber-200 dark:border-amber-800
+    hover:bg-amber-100 dark:hover:bg-amber-900/40
+    hover:border-amber-400 dark:hover:border-amber-600
+    hover:text-amber-700 dark:hover:text-amber-300
+  `,
+
+  // Variante info (informação clínica, ex.: Dados clínicos)
+  buttonSecondaryInfo: `
+    bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400
+    border-blue-100 dark:border-blue-800
+    hover:bg-blue-100 dark:hover:bg-blue-900/40
+    hover:border-blue-300 dark:hover:border-blue-700
+    hover:text-blue-700 dark:hover:text-blue-300
+  `,
+
+  // Variante whatsapp (contato, ex.: Zap)
+  buttonSecondaryWhatsapp: `
+    bg-[#25D366]/10 text-[#25D366] border-[#25D366]/25
+    hover:bg-[#25D366]/20
+    hover:border-[#25D366]/40
+    hover:text-[#1DA851]
+  `,
+
+  // ============================================================
+  // ESCALA TIPOGRÁFICA DO CARD (textCard*)
+  // Escala única para os cards de paciente — substitui tamanhos soltos.
+  // ============================================================
+  textCardTitle: `
+    text-sm md:text-base font-black tracking-tight text-stone-900 dark:text-white
+  `,
+
+  textCardSub: `
+    text-[11px] font-semibold text-stone-600 dark:text-stone-300
+  `,
+
+  textCardMeta: `
+    text-[10px] font-medium text-stone-500 dark:text-stone-400
+  `,
+
+  textCardBadge: `
+    text-[9px] font-bold uppercase tracking-wider
+  `,
+
+  textCardButton: `
+    text-[10px] font-medium
   `,
 
   // ============================================================

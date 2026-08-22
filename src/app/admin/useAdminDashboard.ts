@@ -588,6 +588,7 @@ export function useAdminDashboard() {
       handleLogout,
       setSearchTerm,
       setStatusFilter,
+      setShowOnlyNew,
       setEditingId,
       setEditForm,
       updateProfile,

@@ -1,11 +1,12 @@
 'use client';
 
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   LogOut, Calendar, Link2, Copy, Check, ExternalLink, Settings, Save, 
   Loader2, X, ChevronRight, Filter, Search, Users, Target, MessageCircle, 
   UserPlus, Star, FileText, AlertCircle, Utensils,
-  Moon, Sun, AlertTriangle
+  Moon, Sun, AlertTriangle, Bell
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn, ui, SkeletonCard } from '@/ui/system';
@@ -392,6 +393,7 @@ export default function AdminDashboardPage() {
   
   // =========================================================================
   // 1. SCORE INTELIGENTE DOS PACIENTES
+  // (calculado sobre TODOS os pacientes: auto-ações e críticos são globais)
   // =========================================================================
   const { 
     patientsWithScore, 
@@ -421,6 +423,21 @@ export default function AdminDashboardPage() {
   };
   
   useAutoActions(patientsWithScore, handleAutoReminder);
+  
+  // =========================================================================
+  // 1b. PACIENTES VISÍVEIS (aplica busca, filtro de status e "só novos")
+  // O score é global (auto-ações), mas o grid respeita os filtros da UI.
+  // =========================================================================
+  const visiblePatients = useMemo(() => {
+    const term = state.searchTerm.trim().toLowerCase();
+    return patientsWithScore.filter(p => {
+      if (term && !(p.full_name || '').toLowerCase().includes(term)) return false;
+      if (state.statusFilter === 'plano_liberado' && !(p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0)) return false;
+      if (state.statusFilter === 'pendente' && (p.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0)) return false;
+      if (state.showOnlyNew && !p.is_new) return false;
+      return true;
+    });
+  }, [patientsWithScore, state.searchTerm, state.statusFilter, state.showOnlyNew]);
   
   // =========================================================================
   // 4. HANDLERS ESPECÍFICOS (EDIT MODAL, ETC)
@@ -477,9 +494,19 @@ export default function AdminDashboardPage() {
     actions.setEditingId(null);
   };
   
+  // Fase A: proteção de saída do modal de dieta (botões externos do wrapper)
+  const [dietIsDirty, setDietIsDirty] = useState(false);
+  const closeDietModal = () => {
+    if (dietIsDirty && !window.confirm('Há alterações não salvas neste cardápio. Deseja realmente sair? As alterações serão perdidas.')) return;
+    actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
+    actions.fetchAdminData();
+    setDietIsDirty(false);
+  };
+  
   const handleClearFilters = () => {
     actions.setSearchTerm('');
     actions.setStatusFilter('todos');
+    actions.setShowOnlyNew(false);
     actions.fetchAdminData();
     toast.success('Filtros limpos', { description: 'Mostrando todos os pacientes' });
   };
@@ -551,6 +578,26 @@ export default function AdminDashboardPage() {
               aria-label="Alternar tema"
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            
+            {/* Sino de Novos Pacientes (restaurado) */}
+            <button
+              onClick={actions.handleBellClick}
+              title={state.showOnlyNew ? 'Remover filtro' : 'Filtrar novos pacientes'}
+              className={cn(
+                'relative flex items-center justify-center h-9 w-9 md:h-11 md:w-11 rounded-xl transition-all duration-300',
+                state.showOnlyNew
+                  ? 'bg-nutri-50 dark:bg-nutri-950/50 text-nutri-700 dark:text-nutri-400 ring-1 ring-nutri-200 dark:ring-nutri-800'
+                  : 'bg-stone-50 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 border border-stone-200/60 dark:border-stone-700'
+              )}
+              aria-label="Filtrar novos pacientes"
+            >
+              <Bell size={18} className={state.unseenPatientsCount > 0 ? 'animate-pulse text-nutri-600 dark:text-nutri-400' : ''} />
+              {state.unseenPatientsCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full border-2 border-white dark:border-stone-900 shadow-sm">
+                  {state.unseenPatientsCount}
+                </span>
+              )}
             </button>
             
             {/* Logout Button */}
@@ -656,7 +703,7 @@ export default function AdminDashboardPage() {
         {/* TELA DE PACIENTES COM SCORE INTELIGENTE */}
         {state.activeTab === 'pacientes' && (
           <PatientGrid
-            patients={patientsWithScore}
+            patients={visiblePatients}
             usageStats={state.usageStats}
             editingId={state.editingId}
             editFormData={editFormData}
@@ -1040,11 +1087,9 @@ export default function AdminDashboardPage() {
           <div className="w-full max-w-5xl relative my-auto h-full md:h-auto flex flex-col animate-in zoom-in-95 duration-300">
             <div className="hidden md:flex justify-end mb-3">
               <button
-                onClick={() => {
-                  actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
-                  actions.fetchAdminData();
-                }}
+                onClick={closeDietModal}
                 className="bg-white/10 hover:bg-white/20 text-white rounded-full p-2 backdrop-blur-md transition-all"
+                aria-label="Fechar montador de dieta"
               >
                 <X size={20} />
               </button>
@@ -1053,11 +1098,9 @@ export default function AdminDashboardPage() {
               <div className="md:hidden flex justify-between items-center p-3 border-b border-stone-100 dark:border-stone-800 bg-white dark:bg-stone-900 shrink-0">
                 <span className="font-bold text-sm text-stone-800 dark:text-stone-200">Montar Dieta</span>
                 <button
-                  onClick={() => {
-                    actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
-                    actions.fetchAdminData();
-                  }}
+                  onClick={closeDietModal}
                   className="p-1.5 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-full"
+                  aria-label="Fechar montador de dieta"
                 >
                   <X size={16} />
                 </button>
@@ -1069,9 +1112,11 @@ export default function AdminDashboardPage() {
                   onClose={() => {
                     actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
                     actions.fetchAdminData();
+                    setDietIsDirty(false);
                   }}
                   targetRecommendation={state.dietModalOpen.targetRecommendation}
                   foodRestrictions={state.dietModalOpen.foodRestrictions}
+                  onDirtyChange={setDietIsDirty}
                 />
               </div>
             </div>
@@ -1095,4 +1140,3 @@ export default function AdminDashboardPage() {
 
 // Import necessário para o createClient no handleSaveProfile
 import { createClient } from '@/lib/supabase/client';
-import { useState } from 'react';
