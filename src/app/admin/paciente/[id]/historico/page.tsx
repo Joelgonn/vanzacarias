@@ -17,6 +17,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Scatter 
 } from 'recharts';
 import { toast } from 'sonner';
+import { cn } from '@/ui/system';
 
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
 // 🔥 Importamos o motor de cálculo e validador de QFA para usar no componente Pai
@@ -786,6 +787,63 @@ export default function PacienteHistoricoAdmin() {
   const warningCount = activeAlerts.filter(a => a.type === 'warning').length;
   const successCount = activeAlerts.filter(a => a.type === 'success').length;
 
+  const daysSinceLastCheckin = useMemo(() => {
+    if (history.length === 0) return null;
+    const lastCheckin = history[history.length - 1];
+    return Math.floor((new Date().getTime() - new Date(lastCheckin.created_at).getTime()) / (1000 * 60 * 60 * 24));
+  }, [history]);
+
+  const clinicalBrief = useMemo(() => {
+    if (hasCriticalFoodRisk) {
+      return {
+        eyebrow: 'Bloqueio clínico',
+        title: 'Revisar QFA antes da prescrição',
+        body: qfaWarnings[0] || 'Conflito alimentar detectado no perfil do paciente.',
+        action: 'Ajustar segurança alimentar',
+        tone: 'danger' as const,
+      };
+    }
+
+    if (daysSinceLastCheckin !== null && daysSinceLastCheckin > 14) {
+      return {
+        eyebrow: 'Risco de evasão',
+        title: `Paciente sem check-in há ${daysSinceLastCheckin} dias`,
+        body: 'Vale priorizar reengajamento e cobrança ativa.',
+        action: 'Cobrar retorno',
+        tone: 'danger' as const,
+      };
+    }
+
+    const topAlert = activeAlerts[0];
+    if (topAlert) {
+      return {
+        eyebrow: topAlert.type === 'danger' ? 'Ação imediata' : topAlert.type === 'warning' ? 'Atenção do momento' : 'Ponto positivo',
+        title: topAlert.text,
+        body: topAlert.waText ? `Próximo passo: ${topAlert.waText}` : 'Revisar o ponto clínico com tranquilidade.',
+        action: topAlert.waText || 'Revisar agora',
+        tone: topAlert.type,
+      };
+    }
+
+    if (masterRecommendation) {
+      return {
+        eyebrow: 'Prescrição sugerida',
+        title: `${masterRecommendation.calories} kcal/dia`,
+        body: `${masterRecommendation.goal} · ${masterRecommendation.strategy}`,
+        action: 'Usar recomendação',
+        tone: 'success' as const,
+      };
+    }
+
+    return {
+      eyebrow: 'Leitura estável',
+      title: 'Nenhum alerta relevante no momento',
+      body: 'Use as demais abas para aprofundar medidas, exames e evolução.',
+      action: 'Manter acompanhamento',
+      tone: 'success' as const,
+    };
+  }, [activeAlerts, daysSinceLastCheckin, hasCriticalFoodRisk, masterRecommendation, qfaWarnings]);
+
   // =========================================================================
   // SUB-COMPONENTES
   // =========================================================================
@@ -843,13 +901,94 @@ export default function PacienteHistoricoAdmin() {
           </Link>
           
           <div className="text-right flex-1 truncate">
-            <p className="text-[10px] md:text-xs text-stone-400 uppercase font-bold tracking-widest mb-0.5">Prontuário Eletrônico</p>
-            <h1 className="text-lg md:text-2xl lg:text-3xl font-extrabold text-stone-900 flex items-center justify-end gap-2 tracking-tight truncate">
-              <User size={20} className="text-nutri-600 hidden sm:block" /> 
+            <p className="text-[9px] md:text-[10px] text-stone-400 uppercase font-bold tracking-[0.22em] mb-0.5">Prontuário Eletrônico</p>
+            <h1 className="text-base md:text-xl lg:text-2xl font-extrabold text-stone-900 flex items-center justify-end gap-1.5 tracking-tight truncate">
+              <User size={16} className="text-nutri-600 hidden sm:block" /> 
               <span className="truncate">{profile?.full_name}</span>
             </h1>
+            <div className="mt-1.5 flex flex-wrap justify-end gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-[3px] text-[9px] md:text-[10px] font-bold text-stone-600">
+                <User size={10} className="text-stone-400" />
+                {patientAge !== null ? `${patientAge} anos` : 'Idade indisponível'}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-[3px] text-[9px] md:text-[10px] font-bold text-stone-600 capitalize">
+                <Stethoscope size={10} className="text-stone-400" />
+                {profile?.tipo_perfil || 'Perfil não definido'}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-[3px] text-[9px] md:text-[10px] font-bold text-stone-600 capitalize">
+                <Clock size={10} className="text-stone-400" />
+                {daysSinceLastCheckin !== null ? `${daysSinceLastCheckin}d sem check-in` : 'Sem check-in registrado'}
+              </span>
+              <span className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-[9px] md:text-[10px] font-bold',
+                dangerCount > 0
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : warningCount > 0
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              )}>
+                <AlertTriangle size={10} />
+                {activeAlerts.length} alerta{activeAlerts.length === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
         </nav>
+
+        <section className="mb-5 md:mb-6 overflow-hidden rounded-[1.5rem] border border-stone-200 bg-stone-900 text-white shadow-[0_16px_50px_rgba(15,23,42,0.16)]">
+          <div className="grid gap-3 p-3.5 md:p-4 lg:grid-cols-[1.35fr_0.95fr] lg:items-center">
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-white/70">
+                  <Zap size={12} className="text-amber-400" /> Leitura rápida
+                </span>
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]',
+                  clinicalBrief.tone === 'danger'
+                    ? 'border-rose-400/20 bg-rose-500/15 text-rose-200'
+                    : clinicalBrief.tone === 'warning'
+                      ? 'border-amber-400/20 bg-amber-500/15 text-amber-200'
+                      : 'border-emerald-400/20 bg-emerald-500/15 text-emerald-200'
+                )}>
+                  {clinicalBrief.eyebrow}
+                </span>
+              </div>
+
+              <div className="max-w-3xl space-y-2">
+                <h2 className="text-lg md:text-xl lg:text-[1.75rem] font-black tracking-tight leading-tight">
+                  {clinicalBrief.title}
+                </h2>
+                <p className="max-w-2xl text-xs md:text-sm leading-relaxed text-stone-300">
+                  {clinicalBrief.body}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-2">
+                <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-stone-400">Check-ins</p>
+                <p className="mt-1 text-lg md:text-xl font-black leading-none">{history.length}</p>
+                <p className="mt-0.5 text-[9px] text-stone-400">registros</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-2">
+                <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-stone-400">Diário</p>
+                <p className="mt-1 text-lg md:text-xl font-black leading-none">{dailyLogs.length}</p>
+                <p className="mt-0.5 text-[9px] text-stone-400">dias rastreados</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-2">
+                <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-stone-400">Exames</p>
+                <p className="mt-1 text-lg md:text-xl font-black leading-none">{bioData.length}</p>
+                <p className="mt-0.5 text-[9px] text-stone-400">janelas</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-2">
+                <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-stone-400">Próximo passo</p>
+                <p className="mt-1 text-xs md:text-sm font-bold leading-snug text-white">
+                  {clinicalBrief.action}
+                </p>
+                <p className="mt-0.5 text-[9px] text-stone-400">ação sugerida</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* =========================================================================
             LINHA SUPERIOR DE DASHBOARD (Resumo, Metabolismo, Alertas)

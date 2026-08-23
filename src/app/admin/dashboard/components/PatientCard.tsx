@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import type { MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import { 
   Edit2, Activity, 
   MoreHorizontal, AlertCircle, Bell, BellRing, Star, FileText, Trash2,
   MessageCircle, Utensils, TrendingUp, CheckCircle, CheckCircle2, X, Eye, Save,
-  Calendar, Weight, User, ClipboardList, ChevronRight, AlertTriangle, Zap, Clock
+  Calendar, Weight, User, ClipboardList, AlertTriangle, Zap, Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -86,12 +86,14 @@ export function PatientCard({
   onSaveProfile,
   onCancelEdit
 }: PatientCardProps) {
-  const router = useRouter();
   const [showMenu, setShowMenu] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [chargeHandled, setChargeHandled] = useState(false);
+  const [chargeSending, setChargeSending] = useState(false);
   
   const config = priorityConfig[patient.score.risk];
   const score = patient.score;
+  const chargeStorageKey = `admin-charge:${patient.id}`;
   
   useEffect(() => {
     if (!hasAnimated && (score.risk === 'CRITICAL' || score.risk === 'HIGH')) {
@@ -105,6 +107,14 @@ export function PatientCard({
       };
     }
   }, [score.risk, hasAnimated]);
+
+  useEffect(() => {
+    try {
+      setChargeHandled(localStorage.getItem(chargeStorageKey) === '1');
+    } catch {
+      setChargeHandled(false);
+    }
+  }, [chargeStorageKey]);
   
   const getScoreIcon = () => {
     if (score.total >= 70) return <CheckCircle size={12} className="text-emerald-500" />;
@@ -213,168 +223,231 @@ export function PatientCard({
       </motion.div>
     );
   }
-  
+
+  const recencyLabel =
+    patient.days_since_last === null || patient.days_since_last === undefined
+      ? 'Sem recência registrada'
+      : patient.days_since_last <= 1
+        ? 'Ativo hoje'
+        : `Sem atividade há ${patient.days_since_last} dia${patient.days_since_last === 1 ? '' : 's'}`;
+
+  const evaluationLabel =
+    patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0
+      ? 'Avaliação pronta'
+      : 'Sem avaliação inicial';
+
+  const primaryStatusLabel = isDietReady ? 'Dieta pronta' : 'Plano pendente';
+  const chargeLabel = chargeHandled
+    ? 'Cobrado hoje'
+    : score.risk === 'CRITICAL'
+      ? 'Cobrar'
+      : 'Reengajar';
+
+  const handleChargeAction = async (event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    if (chargeSending) return;
+
+    const phone = patient.phone?.replace(/\D/g, '');
+    const message = score.risk === 'CRITICAL'
+      ? 'Olá! Seu acompanhamento está pendente. Vamos retomar?'
+      : 'Olá! Sentimos sua falta. Como está o acompanhamento?';
+
+    setChargeSending(true);
+    try {
+      if (phone) {
+        window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+        onAutoReminder?.(patient.id, patient.phone!);
+      } else {
+        toast.info('Paciente sem telefone cadastrado.', {
+          description: 'A cobrança foi marcada apenas no painel.',
+        });
+      }
+
+      try {
+        localStorage.setItem(chargeStorageKey, '1');
+      } catch {}
+
+      window.dispatchEvent(
+        new CustomEvent('admin-charge-updated', {
+          detail: { patientId: patient.id },
+        })
+      );
+
+      setChargeHandled(true);
+      toast.success('Cobrança marcada como concluída.');
+    } finally {
+      setChargeSending(false);
+    }
+  };
+
   // Modo normal de exibição
   return (
     <motion.div
       id={`patient-${patient.id}`}
       layout
       initial={{ opacity: 0, y: 20 }}
-      animate={{ 
-        opacity: 1, 
+      animate={{
+        opacity: 1,
         y: 0,
-        scale: hasAnimated ? [1, 1.02, 1] : 1
+        scale: hasAnimated ? [1, 1.02, 1] : 1,
       }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        'group relative rounded-2xl transition-all duration-300 cursor-pointer',
-        'bg-white dark:bg-stone-900',
-        'border',
+        'group relative overflow-hidden rounded-3xl border bg-white dark:bg-stone-900 transition-all duration-300 cursor-default',
         config.border,
-        'hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]'
+        'hover:shadow-xl'
       )}
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest('.action-button, .menu-button, .edit-button')) return;
-        router.push(`/admin/paciente/${patient.id}/historico`);
-      }}
     >
-      {/* Efeito vidro */}
-      <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition duration-300 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
-      
-      {/* Barra de status */}
+      <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition duration-300 bg-gradient-to-br from-white/5 via-transparent to-amber-50/20 pointer-events-none" />
+
       <div className={cn(
-        'absolute top-0 left-0 right-0 h-1 rounded-t-2xl',
+        'absolute top-0 left-0 right-0 h-1 rounded-t-3xl',
         score.risk === 'CRITICAL' ? 'bg-rose-400' :
         score.risk === 'HIGH' ? 'bg-orange-400' :
         score.risk === 'MEDIUM' ? 'bg-amber-400' : 'bg-emerald-400'
       )} />
-      
-      {/* Indicador pulsante para críticos */}
+
       {score.risk === 'CRITICAL' && (
         <>
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
         </>
       )}
-      
-      <div className="p-4 relative z-10">
-        {/* Header: Status + Score + Ações discretas + Menu */}
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={cn('flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0', config.bg, config.color)}>
-              <config.icon size={10} />
-              <span>{config.label}</span>
+
+      <div className="p-4 md:p-5 relative z-10">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 border', config.bg, config.color)}>
+                <config.icon size={10} />
+                <span>{config.label}</span>
+              </div>
+              <div
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-[10px] font-bold cursor-help border border-stone-200 dark:border-stone-700"
+                title={`Engajamento ${score.engagement} · Recência ${score.recency} · Adesão ${score.adherence}`}
+              >
+                {getScoreIcon()}
+                <span className={cn('font-mono', getScoreColor())}>{score.total}</span>
+                <span className="text-stone-400 text-[8px]">/100</span>
+              </div>
             </div>
-            
-            {/* Score (breakdown em tooltip) */}
-            <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[9px] font-bold cursor-help"
-              title={`Engajamento ${score.engagement} · Recência ${score.recency} · Adesão ${score.adherence}`}
-            >
-              {getScoreIcon()}
-              <span className={cn('font-mono', getScoreColor())}>{score.total}</span>
-              <span className="text-stone-400 text-[8px]">/100</span>
+
+            <div className="flex items-start justify-between gap-2 min-w-0">
+              <div className="min-w-0">
+                <Link href={`/admin/paciente/${patient.id}/historico`} className="group/name inline-flex min-w-0">
+                  <h3 className={cn(ui.textCardTitle, 'truncate group-hover/name:text-nutri-600 transition-colors')}>
+                    {patient.full_name || 'Sem nome'}
+                  </h3>
+                </Link>
+                <p className="mt-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                  {patient.tipo_perfil || 'Perfil não definido'}
+                  {patient.meta_peso ? ` · Meta ${patient.meta_peso} kg` : ''}
+                  {patient.account_type === 'premium' ? ' · PRO' : ''}
+                </p>
+              </div>
+
             </div>
           </div>
-          
+
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Pill de cobrança discreta (só para quem precisa) */}
             {(score.risk === 'CRITICAL' || score.risk === 'HIGH') && patient.phone && (
-              <a
-                href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(score.risk === 'CRITICAL' ? 'Olá! Seu acompanhamento está pendente. Vamos retomar?' : 'Olá! Sentimos sua falta. Como está o acompanhamento?')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onAutoReminder) onAutoReminder(patient.id, patient.phone!);
-                }}
-                className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-bold border transition-all active:scale-[0.95]',
-                  score.risk === 'CRITICAL'
-                    ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
-                    : 'bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/40'
-                )}
-                title={score.suggestedAction}
-              >
-                <BellRing size={9} /> {score.risk === 'CRITICAL' ? 'Cobrar' : 'Reengajar'}
-              </a>
+              chargeHandled ? (
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[9px] font-bold border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                  title="Cobrança registrada"
+                >
+                  <CheckCircle2 size={9} /> Cobrado hoje
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleChargeAction}
+                  className={cn(
+                    'flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[9px] font-bold border transition-all active:scale-[0.95]',
+                    score.risk === 'CRITICAL'
+                      ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                      : 'bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/40'
+                  )}
+                  title={score.suggestedAction}
+                >
+                  <BellRing size={9} /> {chargeLabel}
+                </button>
+              )
             )}
 
-            {/* Menu ⋯ */}
             <div className="relative menu-button">
               <button
-                onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(!showMenu);
+                }}
+                className="p-1.5 rounded-xl text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                 aria-label="Mais ações"
               >
                 <MoreHorizontal size={16} />
               </button>
-              
+
               <AnimatePresence>
                 {showMenu && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: -10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    className="absolute right-0 top-8 z-20 w-48 bg-white dark:bg-stone-800 rounded-xl shadow-xl border border-stone-100 dark:border-stone-700 overflow-hidden"
+                    className="absolute right-0 top-8 z-20 w-52 bg-white dark:bg-stone-800 rounded-2xl shadow-xl border border-stone-100 dark:border-stone-700 overflow-hidden"
                   >
                     <button
                       onClick={() => {
                         setShowMenu(false);
                         onEditProfile(patient);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
                       <Edit2 size={12} /> Editar perfil
                     </button>
-                    
+
                     <button
                       onClick={() => {
                         setShowMenu(false);
                         onOpenEvalModal(patient);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
                       <Eye size={12} /> Ver avaliação
                     </button>
-                    
-                    {/* Cobrar via WhatsApp (acessível a todos) */}
+
                     {patient.phone && (
-                      <a
-                        href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá! Seu acompanhamento está pendente. Vamos retomar?`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowMenu(false)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      <button
+                        type="button"
+                        onClick={handleChargeAction}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors text-left"
                       >
-                        <BellRing size={12} /> Cobrar via WhatsApp
-                      </a>
+                        <BellRing size={12} /> {chargeHandled ? 'Cobrado hoje' : 'Cobrar via WhatsApp'}
+                      </button>
                     )}
-                    
+
                     {isDietReady && (
                       <button
                         onClick={() => {
                           setShowMenu(false);
                           onGeneratePDF(patient);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                       >
                         <FileText size={12} /> Baixar PDF da dieta
                       </button>
                     )}
-                    
+
                     <button
                       onClick={() => {
                         setShowMenu(false);
                         onOpenClinicalModal(patient);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
                       <Activity size={12} /> Dados clínicos
                     </button>
-                    
-                    {/* Upgrade premium (movido para o menu) */}
+
                     {patient.account_type !== 'premium' && (
                       <button
                         onClick={() => {
@@ -384,23 +457,23 @@ export function PatientCard({
                             duration: 8000,
                             action: {
                               label: 'Quero Upgrade',
-                              onClick: () => toast.success('Em breve! Link de pagamento será enviado.')
-                            }
+                              onClick: () => toast.success('Em breve! Link de pagamento será enviado.'),
+                            },
                           });
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
                       >
                         <Star size={12} /> Liberar Premium
                       </button>
                     )}
-                    
+
                     {isDietReady && (
                       <button
                         onClick={() => {
                           setShowMenu(false);
                           onDeleteDiet(patient.id);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors border-t border-stone-100 dark:border-stone-700"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors border-t border-stone-100 dark:border-stone-700"
                       >
                         <Trash2 size={12} /> Excluir dieta
                       </button>
@@ -411,91 +484,49 @@ export function PatientCard({
             </div>
           </div>
         </div>
-        
-        {/* Nome + PRO (sem caneta: editar perfil está no menu ⋯) */}
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <Link href={`/admin/paciente/${patient.id}/historico`} className="group flex-1 min-w-0">
-            <h3 className={cn(ui.textCardTitle, 'truncate group-hover:text-nutri-600 transition-colors')}>
-              {patient.full_name || 'Sem nome'}
-            </h3>
-          </Link>
-          {patient.account_type === 'premium' && (
-            <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md shrink-0">
-              <Star size={10} className="fill-amber-500" /> PRO
-            </span>
-          )}
+
+        <div className="rounded-2xl border border-stone-100 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/30 p-3 md:p-4 mb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-stone-400 mb-1">
+                {chargeHandled ? 'Cobrança concluída' : 'Próxima ação'}
+              </p>
+              <p className="text-sm md:text-base font-bold text-stone-900 dark:text-stone-100 leading-snug">
+                {chargeHandled ? 'Contato já registrado no painel' : score.suggestedAction}
+              </p>
+              <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">
+                {recencyLabel}
+              </p>
+            </div>
+            <div className="shrink-0 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-2.5 py-2 text-right">
+              <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">Status</p>
+              <p className="text-[11px] font-bold text-stone-800 dark:text-stone-200">{primaryStatusLabel}</p>
+            </div>
+          </div>
         </div>
-        
-        {/* Badges de estado (Dieta/Pendente + NOVO + AUSENTE + msgs) */}
-        <div className="flex flex-wrap items-center gap-1 mb-1.5">
-          {/* Identidade visual: esmeralda = dieta PRONTA | âmbar = PENDENTE */}
+
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span className={cn(
-            ui.badge, ui.textCardBadge, 'text-[8px] py-0.5 px-1.5 gap-1',
+            ui.badge,
+            ui.textCardBadge,
+            'text-[8px] py-0.5 px-1.5 gap-1',
             isDietReady
               ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm shadow-emerald-700/30'
               : 'bg-amber-500 text-white border border-amber-600 shadow-sm shadow-amber-600/30'
           )}>
             {isDietReady ? <CheckCircle2 size={8} className="shrink-0" /> : <Clock size={8} className="shrink-0" />}
-            {isDietReady ? 'Dieta' : 'Pendente'}
+            {primaryStatusLabel}
           </span>
-          {patient.is_new && (
-            <span className={cn(ui.badge, ui.badgeInfo, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
-              <Bell size={7} className="inline mr-0.5 animate-pulse" /> NOVO
-            </span>
-          )}
-          {patient.is_late && (
-            <span className={cn(ui.badge, ui.badgeWarning, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
-              <AlertCircle size={7} className="inline mr-0.5" /> AUSENTE
-            </span>
-          )}
+
           <span className={cn(ui.badge, ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1 flex items-center gap-0.5')}>
             <MessageCircle size={7} /> {usage} {usage === 1 ? 'msg' : 'msgs'}
           </span>
+
+          <span className={cn(ui.badge, patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0 ? ui.badgeInfo : ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
+            <Eye size={7} className="inline mr-0.5" /> {evaluationLabel}
+          </span>
         </div>
-        <p className={cn(ui.textCardMeta, 'text-[8px] mb-2')}>
-          {patient.is_late ? 'Última interação: +7 dias' : patient.is_new ? 'Ativo agora' : 'Ativo hoje'}
-        </p>
-        
-        {/* Meta e Perfil */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-stone-50 dark:bg-stone-800/50 p-1.5 rounded-md text-center">
-            <p className={cn(ui.textCardMeta, 'text-[7px] uppercase font-bold')}>Meta</p>
-            <p className={cn(ui.textCardSub, 'text-[11px] font-bold')}>
-              {patient.meta_peso ? `${patient.meta_peso} kg` : 'Não definida'}
-            </p>
-          </div>
-          <div className="bg-stone-50 dark:bg-stone-800/50 p-1.5 rounded-md text-center">
-            <p className={cn(ui.textCardMeta, 'text-[7px] uppercase font-bold')}>Perfil</p>
-            <p className={cn(ui.textCardSub, 'text-[11px] font-semibold capitalize')}>
-              {patient.tipo_perfil || 'Não definido'}
-            </p>
-          </div>
-        </div>
-        
-        {/* Preview da Avaliação (Inicial + QFA + Alergias) */}
-        {patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0 ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpenEvalModal(patient); }}
-            className="action-button w-full flex items-center justify-between bg-stone-50 dark:bg-stone-800/30 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all p-1.5 rounded-md mb-3 group text-left"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-nutri-600 dark:text-nutri-400 text-[8px] uppercase tracking-wider flex items-center gap-0.5">
-                <Eye size={9} /> Inicial + QFA + Alergias
-              </p>
-              <p className="line-clamp-1 text-[9px] font-medium text-stone-500 dark:text-stone-400 italic truncate">
-                &ldquo;{String(Object.values(patient.evaluation_answers)[0] || '').substring(0, 45)}...&rdquo;
-              </p>
-            </div>
-            <ChevronRight size={12} className="text-nutri-400 group-hover:text-nutri-600 transition-colors shrink-0" />
-          </button>
-        ) : (
-          <div className="text-center py-1.5 mb-3 bg-stone-50 dark:bg-stone-800/30 rounded-md">
-            <FileText size={10} className="inline text-stone-300 mr-0.5" />
-            <span className={cn(ui.textCardMeta, 'text-[9px]')}>Sem avaliação</span>
-          </div>
-        )}
-        
-        {/* CTA PRIMÁRIO: Dieta/Editar (identidade: esmeralda = pronta | âmbar = pendente) */}
+
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -505,16 +536,14 @@ export function PatientCard({
           className={cn(
             'action-button w-full',
             isDietReady ? ui.buttonPrimarySuccess : ui.buttonPrimaryWarning,
-            'h-10 md:h-11 rounded-xl text-sm font-bold shadow-lg'
+            'h-10 md:h-11 rounded-2xl text-sm font-bold shadow-lg'
           )}
         >
           {isDietReady ? <CheckCircle2 size={15} /> : <Utensils size={15} />}
           {isDietReady ? 'Editar dieta' : 'Montar dieta'}
         </button>
-        
-        {/* LINHA DE AÇÕES SECUNDÁRIAS (forma uniforme via ui.buttonSecondary) */}
+
         <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2.5 border-t border-stone-100 dark:border-stone-800">
-          {/* Botão PDF */}
           {isDietReady && (
             <button
               onClick={(e) => {
@@ -529,7 +558,6 @@ export function PatientCard({
             </button>
           )}
 
-          {/* Botão Clínico */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -541,7 +569,6 @@ export function PatientCard({
             <Activity size={11} /> Clínico
           </button>
 
-          {/* Botão Zap (WhatsApp) */}
           <a
             href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá!`}
             target="_blank"
@@ -553,6 +580,10 @@ export function PatientCard({
             <MessageCircle size={11} /> Zap
           </a>
         </div>
+
+        <p className="mt-3 text-[10px] font-medium text-stone-400 dark:text-stone-500">
+          Abra o histórico pelo nome do paciente.
+        </p>
       </div>
     </motion.div>
   );

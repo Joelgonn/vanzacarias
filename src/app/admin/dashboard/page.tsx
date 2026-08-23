@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   LogOut, Calendar, Link2, Copy, Check, ExternalLink, Settings, Save, 
@@ -423,6 +423,19 @@ export default function AdminDashboardPage() {
   };
   
   useAutoActions(patientsWithScore, handleAutoReminder);
+
+  const [chargeRefreshTick, setChargeRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const handleChargeUpdate = () => setChargeRefreshTick(v => v + 1);
+    window.addEventListener('admin-charge-updated', handleChargeUpdate as EventListener);
+    window.addEventListener('storage', handleChargeUpdate);
+
+    return () => {
+      window.removeEventListener('admin-charge-updated', handleChargeUpdate as EventListener);
+      window.removeEventListener('storage', handleChargeUpdate);
+    };
+  }, []);
   
   // =========================================================================
   // 1b. PACIENTES VISÍVEIS (aplica busca, filtro de status e "só novos")
@@ -438,6 +451,36 @@ export default function AdminDashboardPage() {
       return true;
     });
   }, [patientsWithScore, state.searchTerm, state.statusFilter, state.showOnlyNew]);
+
+  const chargedPatientIds = useMemo(() => {
+    if (typeof window === 'undefined') return new Set<string>();
+    return new Set(
+      state.patients
+        .filter(patient => {
+          try {
+            return localStorage.getItem(`admin-charge:${patient.id}`) === '1';
+          } catch {
+            return false;
+          }
+        })
+        .map(patient => patient.id)
+    );
+  }, [state.patients, chargeRefreshTick]);
+
+  const priorityPatient = useMemo(() => {
+    const eligiblePatients = visiblePatients.filter(patient => !chargedPatientIds.has(patient.id));
+    if (eligiblePatients.length === 0) return null;
+
+    return [...eligiblePatients].sort((a, b) => {
+      const priorityOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+      const riskA = priorityOrder[a.score.risk] ?? 0;
+      const riskB = priorityOrder[b.score.risk] ?? 0;
+
+      if (riskA !== riskB) return riskB - riskA;
+      if ((b.score.total ?? 0) !== (a.score.total ?? 0)) return (b.score.total ?? 0) - (a.score.total ?? 0);
+      return (b.days_since_last ?? 0) - (a.days_since_last ?? 0);
+    })[0] ?? null;
+  }, [visiblePatients, chargedPatientIds]);
   
   // =========================================================================
   // 4. HANDLERS ESPECÍFICOS (EDIT MODAL, ETC)
@@ -579,8 +622,7 @@ export default function AdminDashboardPage() {
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            
-            {/* Sino de Novos Pacientes (restaurado) */}
+
             <button
               onClick={actions.handleBellClick}
               title={state.showOnlyNew ? 'Remover filtro' : 'Filtrar novos pacientes'}
@@ -611,35 +653,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-row gap-2 md:gap-4 pt-4 md:pt-6 border-t border-stone-100/80 dark:border-stone-800/80">
-          <div className="relative flex-1 group">
-            <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 group-focus-within:text-nutri-700 dark:group-focus-within:text-nutri-400 transition-colors" size={16} />
-            <input
-              type="text"
-              placeholder="Buscar por nome..."
-              className={cn(ui.input, 'pl-9 md:pl-12 pr-3 md:pr-4 h-9 md:h-12 text-sm')}
-              onChange={e => actions.setSearchTerm(e.target.value)}
-              value={state.searchTerm}
-            />
-          </div>
-          
-          {state.activeTab === 'pacientes' && (
-            <div className="relative group w-[130px] md:min-w-[240px]">
-              <Filter className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 group-focus-within:text-nutri-700 dark:group-focus-within:text-nutri-400 transition-colors pointer-events-none" size={16} />
-              <select
-                className="w-full px-3 md:pl-11 md:pr-10 h-9 md:h-12 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-800 focus:bg-white dark:focus:bg-stone-800 outline-none focus:border-nutri-400 dark:focus:border-nutri-500 focus:ring-4 focus:ring-nutri-50 dark:focus:ring-nutri-950/30 transition-all font-medium text-xs md:text-sm text-stone-700 dark:text-stone-200 appearance-none cursor-pointer shadow-sm"
-                onChange={e => actions.setStatusFilter(e.target.value)}
-                value={state.statusFilter}
-              >
-                <option value="todos">Todos os status</option>
-                <option value="pendente">Pendente (sem dieta)</option>
-                <option value="plano_liberado">Plano liberado</option>
-              </select>
-              <ChevronRight className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 rotate-90 pointer-events-none" size={14} />
-            </div>
-          )}
-        </div>
       </header>
 
       {/* ==================== STATS BAR ==================== */}
@@ -653,6 +666,15 @@ export default function AdminDashboardPage() {
           churnRisk={churnRisk}
           atRiskCount={atRiskCount}
           inactiveCount={inactiveCount}
+          focusPatient={priorityPatient ? {
+            id: priorityPatient.id,
+            name: priorityPatient.full_name,
+            phone: priorityPatient.phone,
+            risk: priorityPatient.score.risk,
+            suggestedAction: priorityPatient.score.suggestedAction,
+            daysSinceLast: priorityPatient.days_since_last,
+            totalScore: priorityPatient.score.total,
+          } : null}
         />
       </div>
 
@@ -702,23 +724,74 @@ export default function AdminDashboardPage() {
       >
         {/* TELA DE PACIENTES COM SCORE INTELIGENTE */}
         {state.activeTab === 'pacientes' && (
-          <PatientGrid
-            patients={visiblePatients}
-            usageStats={state.usageStats}
-            editingId={state.editingId}
-            editFormData={editFormData}
-            onOpenDietBuilder={actions.handleOpenDietBuilder}
-            onOpenEvalModal={actions.handleOpenEvalModal}
-            onOpenClinicalModal={(p) => actions.setSelectedPatient({ id: p.id, name: p.full_name })}
-            onEditProfile={handleEditProfile}
-            onDeleteDiet={actions.handleDeleteDiet}
-            onGeneratePDF={generatePatientPDF}
-            onClearFilters={handleClearFilters}
-            onAutoReminder={handleAutoReminder}
-            onEditFormChange={handleEditFormChange}
-            onSaveProfile={handleSaveProfile}
-            onCancelEdit={handleCancelEdit}
-          />
+          <div className="space-y-4 md:space-y-5">
+            <div className="flex flex-col gap-3 rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-white/80 dark:bg-stone-900/80 p-3 md:p-4 shadow-sm backdrop-blur-sm">
+              <div className="flex flex-col gap-1.5 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-stone-400 dark:text-stone-500">
+                    Triagem dos pacientes
+                  </p>
+                  <p className="text-sm md:text-base font-semibold text-stone-700 dark:text-stone-300">
+                    {visiblePatients.length} paciente(s) visível(is) com os filtros atuais
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="self-start md:self-auto inline-flex items-center gap-2 rounded-full border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-stone-600 dark:text-stone-300 hover:bg-white dark:hover:bg-stone-700 transition-colors"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[1fr_auto_auto] md:items-center">
+                <div className="relative group">
+                  <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 group-focus-within:text-nutri-700 dark:group-focus-within:text-nutri-400 transition-colors" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome..."
+                    className={cn(ui.input, 'pl-9 md:pl-12 pr-3 md:pr-4 h-10 md:h-11 text-sm')}
+                    onChange={e => actions.setSearchTerm(e.target.value)}
+                    value={state.searchTerm}
+                  />
+                </div>
+
+                <div className="relative group">
+                  <Filter className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 group-focus-within:text-nutri-700 dark:group-focus-within:text-nutri-400 transition-colors pointer-events-none" size={16} />
+                  <select
+                    className="w-full min-w-[180px] px-3 md:pl-11 md:pr-10 h-10 md:h-11 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-800 focus:bg-white dark:focus:bg-stone-800 outline-none focus:border-nutri-400 dark:focus:border-nutri-500 focus:ring-4 focus:ring-nutri-50 dark:focus:ring-nutri-950/30 transition-all font-medium text-xs md:text-sm text-stone-700 dark:text-stone-200 appearance-none cursor-pointer shadow-sm"
+                    onChange={e => actions.setStatusFilter(e.target.value)}
+                    value={state.statusFilter}
+                  >
+                    <option value="todos">Todos os status</option>
+                    <option value="pendente">Pendente (sem dieta)</option>
+                    <option value="plano_liberado">Plano liberado</option>
+                  </select>
+                  <ChevronRight className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 rotate-90 pointer-events-none" size={14} />
+                </div>
+
+              </div>
+            </div>
+
+            <PatientGrid
+              patients={visiblePatients}
+              usageStats={state.usageStats}
+              editingId={state.editingId}
+              editFormData={editFormData}
+              onOpenDietBuilder={actions.handleOpenDietBuilder}
+              onOpenEvalModal={actions.handleOpenEvalModal}
+              onOpenClinicalModal={(p) => actions.setSelectedPatient({ id: p.id, name: p.full_name })}
+              onEditProfile={handleEditProfile}
+              onDeleteDiet={actions.handleDeleteDiet}
+              onGeneratePDF={generatePatientPDF}
+              onClearFilters={handleClearFilters}
+              onAutoReminder={handleAutoReminder}
+              onEditFormChange={handleEditFormChange}
+              onSaveProfile={handleSaveProfile}
+              onCancelEdit={handleCancelEdit}
+            />
+          </div>
         )}
 
         {/* TELA DE LEADS */}
