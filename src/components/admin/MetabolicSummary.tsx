@@ -120,7 +120,7 @@ export default function MetabolicSummary({
           <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] text-stone-500 uppercase tracking-widest font-black flex items-center gap-1.5">
-                <Zap size={14} className="text-amber-500" fill="currentColor" /> GET Atual Real
+                <Zap size={14} className="text-amber-500" fill="currentColor" /> GET estimado
               </p>
               <p className="font-black text-stone-900 text-xl tracking-tight">
                 {get} <span className="text-xs text-stone-500">kcal/dia</span>

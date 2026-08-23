@@ -20,8 +20,10 @@ import { toast } from 'sonner';
 import { cn } from '@/ui/system';
 
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
-// 🔥 Importamos o motor de cálculo e validador de QFA para usar no componente Pai
-import { generateRecommendation, validateQFAConsistency } from '@/lib/nutrition'; 
+// 🔥 Sprint Z-001: histórico delega o cálculo metabólico ao modelo único (SSOT)
+import { buildMetabolicSnapshot, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
+// Validador de QFA (perfil alimentar) — mantido aqui
+import { validateQFAConsistency } from '@/lib/nutrition'; 
 // NOVO: Tipos para o perfil alimentar
 import type { FoodRestriction } from '@/types/patient';
 
@@ -707,61 +709,49 @@ export default function PacienteHistoricoAdmin() {
   }, [timelineData, profile, history, antroData]); 
 
   // =========================================================================
-  // 🔥 LÓGICA DE FONTE ÚNICA DE VERDADE (SINGLE SOURCE OF TRUTH)
-  // Calculamos a recomendação AQUI no Pai e enviamos para os filhos
+  // 🔥 LÓGICA METABÓLICA VIA MODELO ÚNICO (Sprint Z-001 — SSOT)
+  // O historico não recalcula mais TMB/GET/tendência: delega ao metabolicModel.
   // =========================================================================
 
   const avgActivityKcal = useMemo(() => {
     if (!dailyLogs || dailyLogs.length === 0) return 0;
     const last7 = dailyLogs.slice(0, 7);
+    // Média pela QUANTIDADE REAL de logs (correção: não dividir por 7 fixo)
     const total = last7.reduce((acc, log) => acc + (Number(log.activity_kcal) || 0), 0);
-    return Math.round(total / 7);
+    return Math.round(total / last7.length);
   }, [dailyLogs]);
 
-  const { tmb, tmbMethod } = useMemo(() => {
+  const metabolicSnapshot = useMemo(() => {
     const weight = latestMetabolicData.weight;
     const height = latestMetabolicData.height;
     const age = patientAge;
     const leanMass = latestMetabolicData.leanMass;
     const gender = profile?.sexo;
 
-    if (!weight || !height || !age) return { tmb: 0, tmbMethod: '' };
+    if (!weight || !height || !age) return null;
 
-    const normalizedHeight = height < 3 ? height * 100 : height;
-    const g = gender?.toLowerCase().trim() || '';
-    const isFemale = ['f', 'feminino', 'female', 'mulher'].some(v => g.startsWith(v));
-    const sex: 'M' | 'F' = isFemale ? 'F' : 'M';
+    const weightVelocity = calculateWeightVelocity(
+      history
+        .filter(h => typeof h.peso === 'number' && !isNaN(h.peso))
+        .map(h => ({ peso: h.peso, created_at: h.created_at }))
+    );
 
-    if (leanMass && leanMass > 0) {
-      return {
-        tmb: Math.round(370 + (21.6 * leanMass)),
-        tmbMethod: 'Katch-McArdle (via Massa Magra)'
-      };
-    }
+    return buildMetabolicSnapshot({
+      weight,
+      height,
+      age,
+      gender,
+      bf: latestMetabolicData.bf,
+      leanMass,
+      avgActivity: avgActivityKcal,
+      weightTrend: calculateWeightTrend(history.map(h => h.peso)),
+      weightVelocity
+    });
+  }, [latestMetabolicData, patientAge, profile?.sexo, avgActivityKcal, history]);
 
-    const calc = sex === 'M'
-        ? (10 * weight) + (6.25 * normalizedHeight) - (5 * age) + 5
-        : (10 * weight) + (6.25 * normalizedHeight) - (5 * age) - 161;
-
-    return {
-      tmb: Math.round(calc),
-      tmbMethod: 'Mifflin-St Jeor (Estimativa)'
-    };
-  }, [latestMetabolicData, patientAge, profile?.sexo]);
-
-  const getVal = useMemo(() => {
-    return tmb > 0 ? Math.round((tmb * 1.2) + avgActivityKcal) : 0;
-  }, [tmb, avgActivityKcal]);
-
-  const weightTrend = useMemo(() => {
-      if (history.length < 2) return 'stable';
-      const w1 = history[history.length - 1].peso;
-      const w2 = history[history.length - 2].peso;
-      const diff = w1 - w2;
-      if (diff <= -0.5) return 'losing';
-      if (diff >= 0.5) return 'gaining';
-      return 'stable';
-  }, [history]);
+  const tmb = metabolicSnapshot?.tmb || 0;
+  const tmbMethod = metabolicSnapshot?.tmbMethod || '';
+  const getVal = metabolicSnapshot?.get || 0;
 
   const masterRecommendation = useMemo(() => {
     // 🔥 BLOQUEIO CLÍNICO DE SEGURANÇA
@@ -769,18 +759,8 @@ export default function PacienteHistoricoAdmin() {
 
     if (!tmb || !getVal || !latestMetabolicData.weight) return null;
 
-    return generateRecommendation({
-      weight: latestMetabolicData.weight,
-      height: latestMetabolicData.height,
-      bf: latestMetabolicData.bf,
-      leanMass: latestMetabolicData.leanMass,
-      tmb,
-      get: getVal,
-      avgActivity: avgActivityKcal,
-      gender: profile?.sexo,
-      weightTrend 
-    });
-  }, [tmb, getVal, latestMetabolicData, avgActivityKcal, profile?.sexo, weightTrend, hasCriticalFoodRisk]);
+    return metabolicSnapshot?.recommendation || null;
+  }, [tmb, getVal, latestMetabolicData, metabolicSnapshot, hasCriticalFoodRisk]);
 
 
   const dangerCount = activeAlerts.filter(a => a.type === 'danger').length;

@@ -1,21 +1,22 @@
 // =========================================================================
-// Unit tests — Metabolic Engine (SSOT)
-// Sprint A1-03.0
-// =========================================================================
-// Run:  npm test
+// Unit tests — Metabolic Model (SSOT — Sprint Z-001)
+// Paridade numérica validada na auditoria:
+//   - Homem 75kg/178cm/25a (Mifflin): 1743 kcal
+//   - Mulher 60kg/165cm/25a (Mifflin): 1345 kcal
+//   - leanMass 69kg (Katch-McArdle): 1860 kcal
+// Run: npx vitest run
 // =========================================================================
 
 import { describe, it, expect } from 'vitest';
 import {
-  calculateMetabolism,
   calculateTMB,
   calculateGET,
-  validateInputs,
-  clamp,
+  calculateAvgActivity,
+  calculateWeightTrend,
+  calculateWeightVelocity,
   normalizeHeight,
-  ACTIVITY_FACTORS,
-  type MetabolicInput,
-} from '../../../src/lib/metabolicEngine';
+  buildMetabolicSnapshot,
+} from '../../../src/lib/metabolicModel';
 
 // --------------------------------------------------------------------------
 // Fixtures
@@ -23,321 +24,213 @@ import {
 
 const MALE_INPUT = {
   weight: 75,
-  height: 178, // cm
+  height: 178,
   age: 25,
   gender: 'masculino',
-  avgActivity: 200,
-} satisfies MetabolicInput;
+};
 
 const FEMALE_INPUT = {
   weight: 60,
-  height: 165, // cm
+  height: 165,
   age: 25,
   gender: 'feminino',
-  avgActivity: 200,
-} satisfies MetabolicInput;
+};
 
 // --------------------------------------------------------------------------
-// 1. TMB — Mifflin-St Jeor
+// 1. TMB — Mifflin-St Jeor (paridade da auditoria)
 // --------------------------------------------------------------------------
 
 describe('TMB — Mifflin-St Jeor', () => {
-  it('masculino ~1750', () => {
-    // 10*75 + 6.25*178 - 5*25 + 5 = 750 + 1112.5 - 125 + 5 = 1742.5 → 1743
-    const tmb = calculateTMB({
-      weight: MALE_INPUT.weight,
-      height: MALE_INPUT.height,
-      age: MALE_INPUT.age,
-      gender: MALE_INPUT.gender,
-    });
+  it('homem 75kg/178cm/25a → 1743 kcal', () => {
+    const { tmb, method } = calculateTMB(MALE_INPUT);
     expect(tmb).toBe(1743);
-    expect(tmb).toBeGreaterThan(1700);
-    expect(tmb).toBeLessThan(1800);
+    expect(method).toBe('Mifflin-St Jeor');
   });
 
-  it('feminino ~1400', () => {
-    // 10*60 + 6.25*165 - 5*25 - 161 = 600 + 1031.25 - 125 - 161 = 1345.25 → 1345
-    const tmb = calculateTMB({
-      weight: FEMALE_INPUT.weight,
-      height: FEMALE_INPUT.height,
-      age: FEMALE_INPUT.age,
-      gender: FEMALE_INPUT.gender,
-    });
+  it('mulher 60kg/165cm/25a → 1345 kcal', () => {
+    const { tmb, method } = calculateTMB(FEMALE_INPUT);
     expect(tmb).toBe(1345);
-    expect(tmb).toBeGreaterThan(1300);
-    expect(tmb).toBeLessThan(1450);
+    expect(method).toBe('Mifflin-St Jeor');
   });
 });
 
 // --------------------------------------------------------------------------
-// 2. TMB — Katch-McArdle
+// 2. TMB — Katch-McArdle (paridade da auditoria)
 // --------------------------------------------------------------------------
 
 describe('TMB — Katch-McArdle', () => {
-  it('~1860 com leanMass=69', () => {
-    // 370 + 21.6*69 = 370 + 1490.4 = 1860.4 → 1860
-    const tmb = calculateTMB({
-      weight: 85,
-      height: 178,
-      age: 30,
-      gender: 'masculino',
-      leanMass: 69,
-    });
+  it('leanMass=69 → 1860 kcal', () => {
+    const { tmb, method } = calculateTMB({ ...MALE_INPUT, leanMass: 69 });
     expect(tmb).toBe(1860);
-    expect(tmb).toBeGreaterThan(1850);
-    expect(tmb).toBeLessThan(1880);
+    expect(method).toBe('Katch-McArdle');
   });
 
   it('prioriza Katch-McArdle quando leanMass > 0 (ignora sexo/idade)', () => {
-    const maleTmb = calculateTMB({
-      weight: 85, height: 178, age: 30, gender: 'masculino', leanMass: 69,
-    });
-    const femaleTmb = calculateTMB({
-      weight: 85, height: 178, age: 30, gender: 'feminino', leanMass: 69,
-    });
-    // Katch usa só leanMass → mesmo valor independente do sexo
-    expect(maleTmb).toBe(femaleTmb);
+    const male = calculateTMB({ ...MALE_INPUT, leanMass: 69 });
+    const female = calculateTMB({ ...FEMALE_INPUT, leanMass: 69 });
+    expect(male.tmb).toBe(female.tmb);
   });
 });
 
 // --------------------------------------------------------------------------
-// 3. GET — fator de atividade
+// 3. GET — estimado (TMB × 1.2 + atividade média)
 // --------------------------------------------------------------------------
 
-describe('GET — Gasto Energético Total', () => {
-  it('sedentário (×1.2)', () => {
-    const tmb = 1742;
-    const get = calculateGET({ tmb, activityFactor: ACTIVITY_FACTORS.sedentary });
-    // 1742 * 1.2 = 2090.4 → 2090
-    expect(get).toBe(2090);
-    // Clamp: GET nunca < TMB
-    expect(get).toBeGreaterThanOrEqual(tmb);
+describe('GET — Gasto Energético Total (estimado)', () => {
+  it('TMB 1743 + atividade 200 → 2292 kcal', () => {
+    // 1743 * 1.2 = 2091.6 → 2092 (arredondado) + 200 = 2292
+    const get = calculateGET(1743, 200);
+    expect(get).toBe(2292);
+    expect(get).toBeGreaterThanOrEqual(1743); // nunca < TMB
   });
 
-  it('moderado (×1.55)', () => {
-    const tmb = 1742;
-    const get = calculateGET({ tmb, activityFactor: ACTIVITY_FACTORS.moderate });
-    // 1742 * 1.55 = 2700.1 → 2700
-    expect(get).toBe(2700);
-    expect(get).toBeGreaterThanOrEqual(tmb);
-  });
-
-  it('clamp: GET nunca fica abaixo de TMB', () => {
-    const tmb = 2000;
-    // Fator explícito acima do clamp máximo (2.5) — deve permitir, mas abaixo de 1.0 deve subir para 1.0
-    const get = calculateGET({ tmb, activityFactor: 0.5 });
-    expect(get).toBeGreaterThanOrEqual(tmb); // clamp min = TMB
+  it('sem atividade → 1.2 × TMB', () => {
+    expect(calculateGET(1743, 0)).toBe(2092);
   });
 });
 
 // --------------------------------------------------------------------------
-// 4. Clamps de segurança — entradas
+// 4. Média de atividade (divisão pela quantidade REAL de logs)
 // --------------------------------------------------------------------------
 
-describe('Clamps de segurança', () => {
-  it('weight=0 lança erro', () => {
-    expect(() =>
-      calculateMetabolism({ ...MALE_INPUT, weight: 0 })
-    ).toThrow(/peso/i);
-    expect(() =>
-      validateInputs({ weight: 0, height: 178, age: 25 })
-    ).toThrow();
+describe('Média de atividade', () => {
+  it('3 logs: 100/120/80 → 100 kcal/dia (não /7)', () => {
+    const avg = calculateAvgActivity([
+      { activity_kcal: 100 },
+      { activity_kcal: 120 },
+      { activity_kcal: 80 },
+    ]);
+    expect(avg).toBe(100); // (100+120+80)/3 = 100 — corrige a subestimativa de /7
   });
 
-  it('height=0 lança erro', () => {
-    expect(() =>
-      calculateMetabolism({ ...MALE_INPUT, height: 0 })
-    ).toThrow(/altura/i);
-    expect(() =>
-      validateInputs({ weight: 75, height: 0, age: 25 })
-    ).toThrow();
+  it('7 logs com gaps → divide pela quantidade real', () => {
+    const avg = calculateAvgActivity([
+      { activity_kcal: 200 },
+      { activity_kcal: 200 },
+      { activity_kcal: 200 },
+      { activity_kcal: 200 },
+    ]);
+    expect(avg).toBe(200);
   });
 
-  it('clamp(value, min, max) respeita limites', () => {
-    expect(clamp(5, 0, 10)).toBe(5);
-    expect(clamp(-1, 0, 10)).toBe(0);
-    expect(clamp(99, 0, 10)).toBe(10);
+  it('sem logs → 0', () => {
+    expect(calculateAvgActivity([])).toBe(0);
+  });
+});
+
+// --------------------------------------------------------------------------
+// 5. Tendência de peso (últimos 2 check-ins, limiar 0.5 kg)
+// --------------------------------------------------------------------------
+
+describe('Tendência de peso', () => {
+  it('perda ≥ 0.5 kg → losing', () => {
+    expect(calculateWeightTrend([80, 79.4])).toBe('losing');
   });
 
-  it('normalizeHeight converte metros → cm', () => {
-    expect(normalizeHeight(1.78)).toBeCloseTo(178, 5);
+  it('ganho ≥ 0.5 kg → gaining', () => {
+    expect(calculateWeightTrend([79, 79.8])).toBe('gaining');
+  });
+
+  it('variação < 0.5 kg → stable', () => {
+    expect(calculateWeightTrend([80, 79.8])).toBe('stable');
+  });
+
+  it('menos de 2 check-ins → stable', () => {
+    expect(calculateWeightTrend([80])).toBe('stable');
+  });
+});
+
+// --------------------------------------------------------------------------
+// 6. Velocidade de peso (kg/semana)
+// --------------------------------------------------------------------------
+
+describe('Velocidade de peso', () => {
+  it('perdeu 0.5 kg em 7 dias → ≈ -0.5 kg/semana', () => {
+    const v = calculateWeightVelocity([
+      { peso: 80, created_at: '2025-01-01T00:00:00Z' },
+      { peso: 79.5, created_at: '2025-01-08T00:00:00Z' },
+    ]);
+    expect(v).toBeCloseTo(-0.5, 1);
+  });
+
+  it('menos de 2 check-ins → null', () => {
+    expect(calculateWeightVelocity([{ peso: 80, created_at: '2025-01-01T00:00:00Z' }])).toBeNull();
+  });
+
+  it('ordena por data (não depende da ordem de chegada)', () => {
+    const v = calculateWeightVelocity([
+      { peso: 79.5, created_at: '2025-01-08T00:00:00Z' },
+      { peso: 80, created_at: '2025-01-01T00:00:00Z' },
+    ]);
+    expect(v).toBeCloseTo(-0.5, 1);
+  });
+});
+
+// --------------------------------------------------------------------------
+// 7. Normalização de altura (m → cm)
+// --------------------------------------------------------------------------
+
+describe('Normalização de altura', () => {
+  it('1.78 m → 178 cm', () => {
+    expect(normalizeHeight(1.78)).toBe(178);
+  });
+
+  it('178 cm → 178 cm (intacto)', () => {
     expect(normalizeHeight(178)).toBe(178);
   });
 
-  it('piso metabólico: calorias nunca < TMB * 0.8', () => {
-    // Cenário de déficit extremo (BF alto, perda de gordura) — calories deve respeitar piso
-    const result = calculateMetabolism({
-      weight: 120,
-      height: 170,
-      age: 40,
-      gender: 'masculino',
-      bf: 35, // perda de gordura agressiva
-      avgActivity: 100, // sedentário → TMB baixo, risco de piso
-    });
-    expect(result.recommendation.calories).toBeGreaterThanOrEqual(
-      Math.round(result.tmb * 0.8) - 1 // tolerância de arredondamento
-    );
+  it('null → null', () => {
+    expect(normalizeHeight(null)).toBeNull();
   });
 });
 
 // --------------------------------------------------------------------------
-// 5. Ajustes clínicos
+// 8. Snapshot completo (SSOT)
 // --------------------------------------------------------------------------
 
-describe('Ajustes clínicos', () => {
-  it('diabetes: reduz carboidratos (≤40% kcal, piso 130g)', () => {
-    const baseInput = {
-      weight: 80,
-      height: 175,
-      age: 45,
+describe('buildMetabolicSnapshot', () => {
+  it('retorna tmb, tmbMethod, get e recommendation coerentes', () => {
+    const snap = buildMetabolicSnapshot({
+      weight: 75,
+      height: 178,
+      age: 25,
       gender: 'masculino',
-      avgActivity: 300,
-    } satisfies MetabolicInput;
-
-    const without = calculateMetabolism(baseInput);
-    const withDiabetes = calculateMetabolism({
-      ...baseInput,
-      conditions: ['diabetes'],
+      avgActivity: 200,
     });
 
-    // Flag registrada
-    expect(withDiabetes.clinicalFlags).toContain('diabetes');
-    expect(without.clinicalFlags).not.toContain('diabetes');
-
-    // Teto: carboidratos limitados a 40% das kcal (em g): kcal * 0.4 / 4
-    const carbCapGrams =
-      (withDiabetes.recommendation.calories * 0.4) / 4;
-    expect(withDiabetes.recommendation.macros.carbs).toBeLessThanOrEqual(
-      carbCapGrams + 1 // tolerância de arredondamento
-    );
-
-    // A flag 'diabetes' já é validada acima
+    expect(snap.tmb).toBe(1743);
+    expect(snap.tmbMethod).toBe('Mifflin-St Jeor');
+    expect(snap.get).toBe(2292);
+    expect(snap.get).toBeGreaterThanOrEqual(snap.tmb);
+    expect(snap.recommendation).not.toBeNull();
+    expect(snap.recommendation!.calories).toBeGreaterThan(0);
+    expect(snap.recommendation!.macros.protein).toBeGreaterThan(0);
+    expect(snap.weightTrend).toBe('stable');
+    expect(snap.weightVelocity).toBeNull();
   });
 
-  it('hypertension: alerta de restrição de sódio', () => {
-    const baseInput = {
-      weight: 80,
-      height: 175,
-      age: 55,
+  it('dados insuficientes → recommendation null e tmb 0', () => {
+    const snap = buildMetabolicSnapshot({
+      weight: null,
+      height: null,
+      age: null,
+      avgActivity: 0,
+    });
+    expect(snap.tmb).toBe(0);
+    expect(snap.recommendation).toBeNull();
+  });
+
+  it('aceita weightVelocity e weightTrend na entrada', () => {
+    const snap = buildMetabolicSnapshot({
+      weight: 75,
+      height: 178,
+      age: 25,
       gender: 'masculino',
-      avgActivity: 300,
-    } satisfies MetabolicInput;
-
-    const withHtn = calculateMetabolism({
-      ...baseInput,
-      conditions: ['hypertension'],
+      avgActivity: 200,
+      weightTrend: 'losing',
+      weightVelocity: -0.8,
     });
-
-    expect(withHtn.clinicalFlags).toContain('hypertension');
-
-    // Sódio não é macro: macros não devem mudar substancialmente
-    const without = calculateMetabolism(baseInput);
-    expect(withHtn.recommendation.macros).toEqual(without.recommendation.macros);
-
-    // Alerta menciona sódio / limite 2300mg
-    const alertLower = withHtn.recommendation.alert.toLowerCase();
-    expect(
-      alertLower.includes('sódio') ||
-        alertLower.includes('sodio') ||
-        alertLower.includes('2300')
-    ).toBe(true);
-  });
-
-  it('pregnancy (T2): +340 kcal/dia', () => {
-    const baseInput = {
-      weight: 65,
-      height: 165,
-      age: 30,
-      gender: 'feminino',
-      avgActivity: 250,
-    } satisfies MetabolicInput;
-
-    const without = calculateMetabolism(baseInput);
-    const withPreg = calculateMetabolism({
-      ...baseInput,
-      conditions: ['pregnancy'],
-      pregnancyTrimester: 2,
-    });
-
-    expect(withPreg.clinicalFlags).toContain('pregnancy');
-
-    const delta =
-      withPreg.recommendation.calories - without.recommendation.calories;
-    // T2 = +340 kcal (tolerância ±2 por arredondamento)
-    expect(delta).toBeGreaterThanOrEqual(338);
-    expect(delta).toBeLessThanOrEqual(342);
-  });
-
-  it('pregnancy (T3): +452 kcal/dia', () => {
-    const baseInput = {
-      weight: 65,
-      height: 165,
-      age: 30,
-      gender: 'feminino',
-      avgActivity: 250,
-    } satisfies MetabolicInput;
-
-    const without = calculateMetabolism(baseInput);
-    const withPreg = calculateMetabolism({
-      ...baseInput,
-      conditions: ['pregnancy'],
-      pregnancyTrimester: 3,
-    });
-
-    const delta =
-      withPreg.recommendation.calories - without.recommendation.calories;
-    expect(delta).toBeGreaterThanOrEqual(450);
-    expect(delta).toBeLessThanOrEqual(454);
-  });
-
-  it('pregnancy (T1): sem acréscimo calórico', () => {
-    const baseInput = {
-      weight: 65,
-      height: 165,
-      age: 30,
-      gender: 'feminino',
-      avgActivity: 250,
-    } satisfies MetabolicInput;
-
-    const without = calculateMetabolism(baseInput);
-    const withPreg = calculateMetabolism({
-      ...baseInput,
-      conditions: ['pregnancy'],
-      pregnancyTrimester: 1,
-    });
-
-    expect(withPreg.clinicalFlags).toContain('pregnancy');
-    // T1 = +0 kcal → mesma prescrição calórica (pode haver re-arredondamento)
-    expect(withPreg.recommendation.calories).toBe(without.recommendation.calories);
-  });
-});
-
-// --------------------------------------------------------------------------
-// 6. Integridade do SSOT
-// --------------------------------------------------------------------------
-
-describe('Integridade do engine (smoke)', () => {
-  it('calculateMetabolism retorna tmb, get, tmbMethod, recommendation, clinicalFlags', () => {
-    const result = calculateMetabolism(MALE_INPUT);
-    expect(result).toHaveProperty('tmb');
-    expect(result).toHaveProperty('get');
-    expect(result).toHaveProperty('tmbMethod');
-    expect(result).toHaveProperty('recommendation');
-    expect(result).toHaveProperty('clinicalFlags');
-    expect(['Katch-McArdle', 'Mifflin-St Jeor']).toContain(result.tmbMethod);
-    expect(result.get).toBeGreaterThanOrEqual(result.tmb); // clamp GET ≥ TMB
-  });
-
-  it('tmbMethod = Katch-McArdle quando leanMass > 0', () => {
-    const result = calculateMetabolism({
-      ...MALE_INPUT,
-      leanMass: 60,
-    });
-    expect(result.tmbMethod).toBe('Katch-McArdle');
-  });
-
-  it('tmbMethod = Mifflin-St Jeor sem leanMass', () => {
-    const result = calculateMetabolism(MALE_INPUT);
-    expect(result.tmbMethod).toBe('Mifflin-St Jeor');
+    expect(snap.weightTrend).toBe('losing');
+    expect(snap.weightVelocity).toBe(-0.8);
   });
 });

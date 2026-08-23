@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import calculateMetabolism from '@/lib/metabolicEngine';
+import { buildMetabolicSnapshot, calculateAvgActivity, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 import type { RecommendationResult } from '@/lib/nutrition';
 
 interface MetabolicDataInput {
@@ -130,7 +130,7 @@ export async function getPatientMetabolicData(
     }
   }
 
-  // 6. Buscar média de atividade dos últimos 7 dias
+  // 6. Buscar logs de atividade dos últimos 7 dias (média pela quantidade REAL)
   const { data: recentLogs } = await supabase
     .from('daily_logs')
     .select('activity_kcal')
@@ -138,32 +138,25 @@ export async function getPatientMetabolicData(
     .order('date', { ascending: false })
     .limit(7);
 
-  let avgActivity = 0;
-  if (recentLogs && recentLogs.length > 0) {
-    const totalActivity = recentLogs.reduce((acc, log) => acc + (Number(log.activity_kcal) || 0), 0);
-    avgActivity = Math.round(totalActivity / recentLogs.length);
-  }
+  const avgActivity = calculateAvgActivity(recentLogs || []);
 
-  // 7. Calcular tendência de peso
+  // 7. Calcular tendência e velocidade de peso via modelo (SSOT)
   const { data: recentCheckins } = await supabase
     .from('checkins')
-    .select('peso')
+    .select('peso, created_at')
     .eq('user_id', patientId)
     .order('created_at', { ascending: false })
-    .limit(2);
+    .limit(7);
 
-  let weightTrend: 'losing' | 'gaining' | 'stable' = 'stable';
-  if (recentCheckins && recentCheckins.length === 2) {
-    const diff = recentCheckins[0].peso - recentCheckins[1].peso;
-    if (diff <= -0.5) weightTrend = 'losing';
-    else if (diff >= 0.5) weightTrend = 'gaining';
-  }
+  const checkinsAsc = [...(recentCheckins || [])].reverse();
+  const weightTrend = calculateWeightTrend(checkinsAsc.map(c => c.peso));
+  const weightVelocity = calculateWeightVelocity(checkinsAsc);
 
   // 8. Processar TMB, GET e Recomendação via Single Source of Truth
   let metabolic = null;
 
   if (weight && height && age !== null) {
-    metabolic = calculateMetabolism({
+    metabolic = buildMetabolicSnapshot({
       weight,
       height,
       age,
@@ -171,7 +164,8 @@ export async function getPatientMetabolicData(
       bf,
       leanMass,
       avgActivity,
-      weightTrend
+      weightTrend,
+      weightVelocity
     });
   }
 
@@ -185,7 +179,7 @@ export async function getPatientMetabolicData(
     avgActivity,
     weightTrend,
     tmb: metabolic?.tmb || 0,
-    tmbMethod: leanMass ? 'Katch-McArdle' : 'Mifflin-St Jeor',
+    tmbMethod: metabolic?.tmbMethod || (leanMass ? 'Katch-McArdle' : 'Mifflin-St Jeor'),
     getVal: metabolic?.get || 0,
     recommendation: metabolic?.recommendation || null,
     bfPercent
