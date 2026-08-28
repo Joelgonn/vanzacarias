@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import QFAForm from '@/components/QFAForm';
-import { ChevronLeft, Apple, CheckCircle2, Loader2 } from 'lucide-react';
+import { Apple, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import BackButton from '@/components/ui/BackButton';
+import { PatientPageShell, PageNavigation, PageHeader, PageContent } from '@/components/layout/PatientPageShell';
 
 export default function AvaliacaoPaciente() {
   const [alreadyAnswered, setAlreadyAnswered] = useState<boolean>(false);
@@ -51,23 +53,17 @@ export default function AvaliacaoPaciente() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 pt-16 md:pt-20 lg:pt-24 font-sans text-stone-800 flex flex-col relative">
-      <div className="max-w-2xl mx-auto flex flex-col gap-10">
-        
-        <div className="flex items-center justify-between animate-fade-in-up relative z-10">
-          <Link 
-            href="/dashboard" 
-            className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-all font-bold text-sm bg-white px-5 py-3 rounded-full border border-stone-200 shadow-sm active:scale-95"
-          >
-            <ChevronLeft size={18} /> Voltar ao Painel
-          </Link>
-          <div className="bg-white p-3 rounded-2xl text-nutri-800 border border-stone-100 shadow-sm">
-            <Apple size={24} />
-          </div>
+    <PatientPageShell maxWidth="max-w-2xl" className="bg-stone-50 relative">
+      <PageNavigation>
+        <BackButton href="/dashboard" label="Voltar ao Painel" />
+        <div className="bg-white p-3 rounded-2xl text-nutri-800 border border-stone-100 shadow-sm">
+          <Apple size={24} />
         </div>
+      </PageNavigation>
 
         {alreadyAnswered ? (
           /* TELA DE BLOQUEIO: Já respondeu */
+          <PageContent>
           <div className="bg-white p-12 rounded-[3rem] shadow-sm border border-stone-100 text-center animate-fade-in-up">
             <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8">
               <CheckCircle2 size={40} />
@@ -83,10 +79,12 @@ export default function AvaliacaoPaciente() {
               Voltar para o Início
             </Link>
           </div>
+          </PageContent>
         ) : (
           /* TELA NORMAL: Ainda não respondeu */
           <>
-            <header className="animate-fade-in-up relative z-10" style={{ animationDelay: '0.1s' }}>
+            <PageHeader>
+            <header style={{ animationDelay: '0.1s' }}>
               <h1 className="text-3xl md:text-5xl font-black text-stone-900 tracking-tight mb-4 leading-tight">
                 Raio-X Alimentar
               </h1>
@@ -94,14 +92,13 @@ export default function AvaliacaoPaciente() {
                 Marque a quantidade de porções que você consome <b>semanalmente</b>, em média, de cada categoria abaixo. Atente-se à quantidade indicada em cada item. Seja o mais sincero possível!
               </p>
             </header>
+            </PageHeader>
 
-            <div className="animate-fade-in-up relative z-10" style={{ animationDelay: '0.2s' }}>
+            <PageContent>
               <QFAForm onSuccess={handleSuccess} />
-            </div>
+            </PageContent>
           </>
         )}
-
-      </div>
-    </main>
+    </PatientPageShell>
   );
 }

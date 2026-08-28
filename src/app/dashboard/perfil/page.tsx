@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Loader2, Save, ChevronLeft, UserCircle, 
+  Loader2, Save, UserCircle, 
   User, Phone, ChevronDown, Calendar, ShieldCheck 
 } from 'lucide-react';
-import Link from 'next/link';
+import BackButton from '@/components/ui/BackButton';
+import { PatientPageShell, PageNavigation, PageContent } from '@/components/layout/PatientPageShell';
 import { toast } from 'sonner';
 
 interface ProfileRow {
@@ -81,29 +82,19 @@ export default function PerfilPaciente() {
   );
 
   return (
-    // pt-32 (128px) no mobile e pt-40 (160px) no desktop garantem que o header global não cubra o conteúdo
-    <main className="min-h-screen bg-[#FAFAFA] px-4 sm:px-6 flex flex-col pt-24 md:pt-30 pb-24 selection:bg-nutri-200 font-sans">
-      <div className="max-w-3xl mx-auto w-full flex-1 flex flex-col">
-        
-        {/* NAVEGAÇÃO DE TOPO */}
-        <nav className="flex items-center justify-between mb-8 md:mb-10 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <Link 
-            href="/dashboard" 
-            className="flex items-center justify-center gap-2 h-12 px-5 bg-white border border-stone-200 rounded-2xl shadow-sm hover:border-nutri-300 hover:text-nutri-700 hover:shadow-md active:scale-[0.98] transition-all duration-300 text-stone-600 font-bold text-sm group shrink-0"
-          >
-            <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="hidden sm:inline">Voltar ao App</span>
-            <span className="sm:hidden">Voltar</span>
-          </Link>
+    <PatientPageShell maxWidth="max-w-3xl" className="bg-[#FAFAFA] pb-24 selection:bg-nutri-200">
+      <PageNavigation>
+        <BackButton href="/dashboard" label="Voltar ao Painel" />
           
-          <div className="text-right flex-1">
+        <div className="text-right flex-1">
             <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest mb-0.5">Nutrição Clínica</p>
             <h1 className="text-sm md:text-base font-black text-stone-900 tracking-tight truncate">
               Vanusa Zacarias
             </h1>
           </div>
-        </nav>
+        </PageNavigation>
 
+        <PageContent>
         {/* CARD PRINCIPAL DO PERFIL */}
         <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-stone-100 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100 relative overflow-hidden">
           
@@ -239,7 +230,7 @@ export default function PerfilPaciente() {
           </form>
 
         </div>
-      </div>
-    </main>
+        </PageContent>
+    </PatientPageShell>
   );
 }

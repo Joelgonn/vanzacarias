@@ -1,8 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ChevronLeft, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 // =========================================================================
 // PLAN HERO — Contexto unificado do plano alimentar
@@ -110,20 +109,6 @@ export function PlanHero({ firstName, goal, adherencePercent }: PlanHeroProps) {
       <div className="pointer-events-none absolute -right-28 -top-28 h-72 w-72 rounded-full bg-nutri-50/70 blur-3xl" aria-hidden="true" />
 
       <div className="relative z-10 p-5 sm:p-7 md:p-10">
-
-        {/* ============ NAVEGAÇÃO INTEGRADA ============ */}
-        <motion.div {...fadeUp} transition={{ delay: reduceMotion ? 0 : 0.03 }} className="flex items-center justify-between mb-8">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 text-stone-500 hover:text-nutri-900 transition-colors font-bold text-sm rounded-full border border-stone-200 bg-stone-50 px-4 py-2 hover:bg-white hover:shadow-sm active:scale-95"
-          >
-            <ChevronLeft size={16} aria-hidden="true" /> Painel
-          </Link>
-          <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-stone-50 px-3 py-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" aria-hidden="true" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-500">Ativo</span>
-          </div>
-        </motion.div>
 
         {/* ============ CONTEXTO + PROGRESS RING ============ */}
         <motion.div

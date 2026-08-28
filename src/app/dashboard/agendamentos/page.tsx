@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Calendar, MessageCircle, ChevronLeft, Clock, 
+  Calendar, MessageCircle, Clock, 
   Loader2, CreditCard, ArrowRight, ShieldCheck, 
   CheckCircle2, AlertCircle
 } from 'lucide-react';
-import Link from 'next/link';
+import BackButton from '@/components/ui/BackButton';
+import { PatientPageShell, PageNavigation, PageHeader, PageContent } from '@/components/layout/PatientPageShell';
 import { useRouter } from 'next/navigation';
 
 interface ProfileRow {
@@ -117,25 +118,16 @@ export default function Agendamentos() {
   const firstName = profile?.full_name?.split(' ')[0] || 'Paciente';
 
   return (
-    <main className="min-h-screen bg-stone-50 p-4 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-[140px] md:pt-[160px]">
-      <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col">
-        
-        {/* NAVEGAÇÃO E HEADER */}
-        <nav className="flex items-center justify-between mb-8 mt-8 md:mt-10 animate-fade-in-up">
-          <Link 
-            href="/dashboard" 
-            className="group flex items-center gap-2 text-stone-500 hover:text-nutri-800 transition-colors bg-white px-4 py-2.5 rounded-full border border-stone-200 shadow-sm hover:shadow-md"
-          >
-            <ChevronLeft size={18} />
-            <span className="text-sm font-bold">Voltar ao Painel</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest">
-            <Calendar size={16} /> Agendamento Online
-          </div>
-        </nav>
+    <PatientPageShell maxWidth="max-w-6xl" className="bg-stone-50">
+      <PageNavigation>
+        <BackButton href="/dashboard" label="Voltar ao Painel" />
+        <div className="hidden md:flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest">
+          <Calendar size={16} /> Agendamento Online
+        </div>
+      </PageNavigation>
 
-        {/* MENSAGEM DE BOAS VINDAS */}
-        <div className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+      <PageHeader>
+        <div style={{ animationDelay: '0.1s' }}>
           <h1 className="text-3xl md:text-4xl font-extrabold text-stone-900 tracking-tight mb-2">
             Olá, {firstName}! Vamos agendar?
           </h1>
@@ -143,9 +135,11 @@ export default function Agendamentos() {
             Se você já realizou o pagamento ou tem direito a um retorno, basta escolher o horário na agenda abaixo. Caso seja uma nova consulta, realize o pagamento na lateral.
           </p>
         </div>
-        
+      </PageHeader>
+
+      <PageContent>
         {/* CONTEÚDO PRINCIPAL (GRID 2/3 AGENDA - 1/3 PAGAMENTO/SUPORTE) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start" style={{ animationDelay: '0.2s' }}>
           
           {/* COLUNA ESQUERDA: CALENDÁRIO (OCUPA 2 ESPAÇOS) */}
           <div className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-xl shadow-stone-200/40 border border-stone-100 overflow-hidden flex flex-col h-full min-h-[600px] md:min-h-[750px] relative group">
@@ -276,7 +270,7 @@ export default function Agendamentos() {
 
           </div>
         </div>
-      </div>
-    </main>
+        </PageContent>
+    </PatientPageShell>
   );
 }

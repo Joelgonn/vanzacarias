@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Loader2, ChevronLeft, TrendingUp, ClipboardList, 
+  Loader2, TrendingUp, ClipboardList, 
   Activity, Lock, Star, CheckCircle2, Brain, Target 
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import Link from 'next/link';
+import BackButton from '@/components/ui/BackButton';
+import { PatientPageShell, PageNavigation, PageContent } from '@/components/layout/PatientPageShell';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, ReferenceArea 
@@ -190,29 +191,19 @@ export default function Historico() {
   );
 
   return (
-    <main className="min-h-screen bg-stone-50 p-5 md:p-8 lg:p-12 font-sans text-stone-800 pt-[120px] md:pt-[140px]">
-      <div className="max-w-5xl mx-auto w-full">
+    <PatientPageShell maxWidth="max-w-5xl" className="bg-stone-50">
+      <PageNavigation>
+        <BackButton href="/dashboard" label="Voltar ao Painel" />
         
-        {/* NAVEGAÇÃO PREMIUM */}
-        <nav className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-between mb-10 md:mb-14 mt-4 md:mt-8 gap-6 sm:gap-0 animate-fade-in-up">
-          <Link 
-            href="/dashboard" 
-            className="group w-full sm:w-auto flex items-center justify-center sm:justify-start gap-3 bg-white px-6 py-4 sm:py-3 rounded-full border border-stone-200 shadow-sm hover:border-nutri-800 hover:shadow-md active:scale-[0.98] transition-all duration-300"
-          >
-            <div className="bg-stone-50 p-1.5 sm:p-1 rounded-full group-hover:bg-nutri-800 transition-colors duration-300">
-              <ChevronLeft size={18} className="text-stone-500 group-hover:text-white" />
-            </div>
-            <span className="text-sm font-semibold text-stone-600 group-hover:text-nutri-900 transition-colors">Voltar ao Painel</span>
-          </Link>
-          
-          <div className="w-full sm:w-auto text-center sm:text-right flex flex-col sm:items-end">
-            <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Perfil Clínico</span>
-            <div className="text-sm md:text-base font-bold text-nutri-900 tracking-tight capitalize bg-nutri-50 px-4 py-2 rounded-full border border-nutri-100/50">
-              {profile?.tipo_perfil || 'Adulto'}
-            </div>
+        <div className="flex flex-col items-end text-right">
+          <span className="text-[10px] md:text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Perfil Clínico</span>
+          <div className="text-sm md:text-base font-bold text-nutri-900 tracking-tight capitalize bg-nutri-50 px-4 py-2 rounded-full border border-nutri-100/50">
+            {profile?.tipo_perfil || 'Adulto'}
           </div>
-        </nav>
+        </div>
+      </PageNavigation>
 
+      <PageContent>
         {!isPremium ? (
           /* =========================================
              PAYWALL QUE CONVERTE (NÍVEL PRODUTO REAL)
@@ -440,8 +431,7 @@ export default function Historico() {
             </section>
           </div>
         )}
-
-      </div>
-    </main>
+        </PageContent>
+    </PatientPageShell>
   );
 }

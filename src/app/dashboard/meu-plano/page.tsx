@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 // COMPONENTES EXTRATOS
 // =========================================================================
 import { PlanHero } from '@/components/meu-plano/PlanHero';
+import { PatientPageShell, PageNavigation, PageHeader, PageContent } from '@/components/layout/PatientPageShell';
+import BackButton from '@/components/ui/BackButton';
 import { PaywallCard } from '@/components/meu-plano/PaywallCard';
 import { NutritionSummary } from '@/components/meu-plano/NutritionSummary';
 import type { MacroPorRefeicao } from '@/components/meu-plano/MacroCard';
@@ -1007,19 +1009,28 @@ export default function MeuPlano() {
   const selectedContextualGroup = SUBSTITUICOES_PADRAO.find(g => g.categoria === contextualCategory);
 
   return (
-    <main className="min-h-screen bg-stone-50 md:bg-stone-100 p-4 md:p-8 lg:p-12 font-sans text-stone-800 flex flex-col pt-24 md:pt-32 relative selection:bg-nutri-200 selection:text-nutri-900">
-      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
-        
+    <PatientPageShell maxWidth="max-w-2xl" className="bg-stone-50 md:bg-stone-100 relative selection:bg-nutri-200 selection:text-nutri-900">
+      <PageNavigation>
+        <BackButton href="/dashboard" label="Voltar ao Painel" />
+        <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" aria-hidden="true" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-500">Ativo</span>
+        </div>
+      </PageNavigation>
+
+      <PageHeader>
         <PlanHero
           firstName={profile?.full_name?.split(' ')[0] || 'Paciente'}
           goal={profile?.goal || null}
           adherencePercent={adherencePercent}
         />
+      </PageHeader>
 
-        {!canAccess ? (
-          <PaywallCard prices={prices} processingCheckout={processingCheckout} onUpgrade={handleUpgradeClick} />
-        ) : (
-          <div className="space-y-6 pb-24 mt-6">
+      <PageContent>
+      {!canAccess ? (
+        <PaywallCard prices={prices} processingCheckout={processingCheckout} onUpgrade={handleUpgradeClick} />
+      ) : (
+        <div className="space-y-6 pb-24">
 
             {hasAnyPlan && insights.length > 0 && !isReadOnly && (
               <InsightsPanel insights={insights} />
@@ -1100,7 +1111,7 @@ export default function MeuPlano() {
             )}
           </div>
         )}
-      </div>
+        </PageContent>
 
       <MarketModal 
         isOpen={isMarketModalOpen} 
@@ -1132,6 +1143,6 @@ export default function MeuPlano() {
         onAddManual={addBeliscoManual}
       />
 
-    </main>
+    </PatientPageShell>
   );
 }

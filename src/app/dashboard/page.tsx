@@ -19,6 +19,7 @@ import ProgressChart from '@/components/dashboard/ProgressChart';
 import NextBestAction from '@/components/dashboard/NextBestAction';
 import { getTotalActivityKcal } from '@/lib/activities';
 import type { Activity } from '@/lib/activities';
+import * as checkinLib from '@/lib/checkin';
 import { toast } from 'sonner';
 
 // =========================================================================
@@ -459,12 +460,7 @@ export default function Dashboard() {
     }
   };
 
-  const isCheckinDoneThisWeek = useMemo(() => {
-    if (checkins.length === 0) return false;
-    const lastCheckinDate = new Date(checkins[checkins.length - 1].created_at);
-    const diffInDays = (new Date().getTime() - lastCheckinDate.getTime()) / (1000 * 3600 * 24);
-    return diffInDays <= 7;
-  }, [checkins]);
+  const isCheckinDoneThisWeek = useMemo(() => checkinLib.isCheckinDoneThisWeek(checkins), [checkins]);
 
   const currentStreak = useMemo(() => {
     if (checkins.length === 0) return 0;
