@@ -45,7 +45,7 @@ export function MealTimeline({ filteredMeals, completedMeals, toggleMealCompleti
               <Utensils size={20} aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-2xl font-black tracking-tight text-stone-900 leading-tight">{readOnly ? 'Cardápio' : 'Hoje'}</h3>
+              <h2 className="text-2xl font-black tracking-tight text-stone-900 leading-tight">{readOnly ? 'Cardápio' : 'Hoje'}</h2>
               <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mt-0.5">{todayLabel}</p>
             </div>
           </div>

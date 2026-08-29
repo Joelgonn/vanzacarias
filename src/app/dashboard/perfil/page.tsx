@@ -88,9 +88,9 @@ export default function PerfilPaciente() {
           
         <div className="text-right flex-1">
             <p className="text-[10px] text-stone-400 uppercase font-bold tracking-widest mb-0.5">Nutrição Clínica</p>
-            <h1 className="text-sm md:text-base font-black text-stone-900 tracking-tight truncate">
+            <p className="text-sm md:text-base font-black text-stone-900 tracking-tight truncate">
               Vanusa Zacarias
-            </h1>
+            </p>
           </div>
         </PageNavigation>
 
@@ -134,7 +134,7 @@ export default function PerfilPaciente() {
                     type="text" 
                     value={profile?.full_name || ''} 
                     onChange={e => setProfile({...profile, full_name: e.target.value})} 
-                    className="w-full pl-12 pr-2 py-1.5 bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
+                    className="w-full pl-12 pr-2 py-1.5 min-h-[48px] bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
                     placeholder="Como prefere ser chamado?"
                     required
                   />
@@ -154,7 +154,7 @@ export default function PerfilPaciente() {
                     type="tel" 
                     value={profile?.phone || ''} 
                     onChange={e => setProfile({...profile, phone: e.target.value})} 
-                    className="w-full pl-12 pr-2 py-1.5 bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
+                    className="w-full pl-12 pr-2 py-1.5 min-h-[48px] bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
                     placeholder="(00) 00000-0000" 
                     required
                   />
@@ -174,7 +174,7 @@ export default function PerfilPaciente() {
                     type="date" 
                     value={profile?.data_nascimento || ''} 
                     onChange={e => setProfile({...profile, data_nascimento: e.target.value})} 
-                    className="w-full pl-12 pr-2 py-1.5 bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
+                    className="w-full pl-12 pr-2 py-1.5 min-h-[48px] bg-transparent outline-none text-stone-800 font-bold md:text-lg" 
                     required
                   />
                 </div>
@@ -192,7 +192,7 @@ export default function PerfilPaciente() {
                   <select 
                     value={profile?.sexo || ''} 
                     onChange={e => setProfile({...profile, sexo: e.target.value})} 
-                    className="w-full pl-12 pr-10 py-1.5 bg-transparent outline-none text-stone-800 font-bold md:text-lg appearance-none cursor-pointer"
+                    className="w-full pl-12 pr-10 py-1.5 min-h-[48px] bg-transparent outline-none text-stone-800 font-bold md:text-lg appearance-none cursor-pointer"
                     required
                   >
                     <option value="" disabled>Selecione...</option>

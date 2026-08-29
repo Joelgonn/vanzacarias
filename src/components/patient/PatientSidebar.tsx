@@ -10,33 +10,44 @@ import { PATIENT_NAV_GROUPS, isPatientPathActive } from '@/lib/navigation';
 import { useCheckinStatus } from '@/hooks/useCheckinStatus';
 
 interface PatientSidebarProps {
-  /** Se o usuário pode acessar o plano alimentar (controla o cadeado no menu) */
+  /**
+   * Opcional (VZ-007.1): acesso ao plano alimentar (controla o cadeado).
+   * Quando NÃO informado, a Sidebar calcula por conta própria a partir do
+   * profile (fonte única de premium) — permitindo que a moldura
+   * (PatientAppShell) monte a Sidebar sem conhecer regras de negócio.
+   */
   canAccessMealPlan?: boolean | null;
 }
 
 /**
  * Sidebar de navegação do paciente (desktop).
  *
- * História (VZ-003.1 / VZ-003.2 / VZ-003.2.1):
+ * História (VZ-003.1 / VZ-003.2 / VZ-003.2.1 · VZ-007.1):
  * - Consome PATIENT_NAV_GROUPS (fonte única) — rótulos, rotas e ícones
  *   compartilhados com o drawer mobile.
  * - Route-aware: usa usePathname() para destacar a rota ativa real e emite
  *   aria-current="page".
  * - Estado do Check-in Semanal sincronizado pela FONTE ÚNICA
  *   (src/lib/checkin · isCheckinDoneThisWeek) via useCheckinStatus.
- *
- * CONTRATO PRESERVADO: a prop `canAccessMealPlan` e a assinatura do componente
- * não mudam — o consumidor (dashboard/page.tsx) permanece intacto.
+ * - VZ-007.1: a Sidebar passa a ser montada pela moldura (PatientAppShell) e
+ *   calcula sozinha o acesso ao plano a partir do profile, mantendo a MESMA
+ *   regra de negócio (account_type === 'premium' || has_meal_plan_access).
+ *   A prop `canAccessMealPlan` permanece como override opcional para
+ *   compatibilidade; sem ela, o comportamento do cadeado não muda.
  */
-export default function PatientSidebar({ canAccessMealPlan = false }: PatientSidebarProps) {
+export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProps) {
   const router = useRouter();
   const pathname = usePathname() ?? '';
   const supabase = useMemo(() => createClient(), []);
   const reducedMotion = useReducedMotion();
-  const hasPlanAccess = canAccessMealPlan === true;
 
   const [firstName, setFirstName] = useState<string>('');
   const [isPremium, setIsPremium] = useState(false);
+  const [mealPlanAccess, setMealPlanAccess] = useState<boolean>(false);
+
+  // Regra única de negócio: override explícito OU cálculo próprio (mesmo gate
+  // do dashboard: account_type === 'premium' || has_meal_plan_access).
+  const hasPlanAccess = canAccessMealPlan != null ? canAccessMealPlan === true : mealPlanAccess === true;
 
   const { isDone: checkinDone } = useCheckinStatus(supabase);
 
@@ -47,12 +58,14 @@ export default function PatientSidebar({ canAccessMealPlan = false }: PatientSid
       if (!active || !data.session) return;
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, account_type')
+        .select('full_name, account_type, has_meal_plan_access')
         .eq('id', data.session.user.id)
         .single();
       if (!active || !profile) return;
-      setFirstName((profile as { full_name?: string | null }).full_name?.split(' ')[0] || '');
-      setIsPremium((profile as { account_type?: string | null }).account_type === 'premium');
+      const p = profile as { full_name?: string | null; account_type?: string | null; has_meal_plan_access?: boolean | null };
+      setFirstName(p.full_name?.split(' ')[0] || '');
+      setIsPremium(p.account_type === 'premium' || !!p.has_meal_plan_access);
+      setMealPlanAccess(p.account_type === 'premium' || !!p.has_meal_plan_access);
     })();
     return () => {
       active = false;

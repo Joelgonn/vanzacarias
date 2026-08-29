@@ -48,23 +48,22 @@ export function DayNavigator({ selectedOffset, onSelect, minOffset = -3, maxOffs
   const isReadOnly = selectedOffset !== 0;
 
   return (
-    <motion.div
-      {...(reduceMotion ? {} : {
-        initial: { opacity: 0, y: 10 },
-        animate: { opacity: 1, y: 0 },
-      })}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="flex items-center justify-center gap-2"
-      role="tablist"
-      aria-label="Navegação por dia"
-    >
+    <div className="overflow-x-auto scrollbar-hide -mx-4 px-4" role="tablist" aria-label="Navegação por dia">
+      <motion.div
+        {...(reduceMotion ? {} : {
+          initial: { opacity: 0, y: 10 },
+          animate: { opacity: 1, y: 0 },
+        })}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="flex items-center justify-center gap-3"
+      >
       {/* Dia anterior */}
       <button
         role="tab"
         aria-selected={selectedOffset === selectedOffset && selectedOffset < 0}
         aria-disabled={!canGoPrev}
         onClick={() => canGoPrev && onSelect(selectedOffset - 1)}
-        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
+        className={`flex items-center gap-1.5 min-h-12 px-4 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
           !canGoPrev
             ? 'bg-stone-50 text-stone-300 cursor-not-allowed'
             : selectedOffset < 0
@@ -83,7 +82,7 @@ export function DayNavigator({ selectedOffset, onSelect, minOffset = -3, maxOffs
         role="tab"
         aria-selected={selectedOffset === 0}
         onClick={() => onSelect(0)}
-        className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
+        className={`flex items-center gap-2 min-h-12 px-5 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
           selectedOffset === 0
             ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20'
             : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
@@ -103,7 +102,7 @@ export function DayNavigator({ selectedOffset, onSelect, minOffset = -3, maxOffs
         aria-selected={selectedOffset > 0}
         aria-disabled={!canGoNext}
         onClick={() => canGoNext && onSelect(selectedOffset + 1)}
-        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
+        className={`flex items-center gap-1.5 min-h-12 px-4 py-2.5 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
           !canGoNext
             ? 'bg-stone-50 text-stone-300 cursor-not-allowed'
             : selectedOffset > 0
@@ -124,5 +123,6 @@ export function DayNavigator({ selectedOffset, onSelect, minOffset = -3, maxOffs
         </span>
       )}
     </motion.div>
+    </div>
   );
 }

@@ -119,12 +119,12 @@ export function PlanHero({ firstName, goal, adherencePercent }: PlanHeroProps) {
           <ProgressRing percent={adherencePercent} />
 
           <div className="w-full flex-1 text-center md:text-left">
-            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-nutri-700 flex items-center gap-1.5 justify-center md:justify-start">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-nutri-700 flex items-center gap-1.5 justify-center md:justify-start flex-wrap gap-x-1.5 gap-y-0.5">
               <Sparkles size={13} className="text-amber-500" aria-hidden="true" />
-              {greeting} — seu plano de hoje
+              {firstName}, {greeting} — seu plano de hoje
             </p>
             <h1 className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-stone-900 leading-[1.15] md:text-[2.5rem]">
-              {firstName}
+              Meu Plano
             </h1>
             <p className="mt-1.5 max-w-md text-sm font-medium text-stone-500">
               {goal || 'Protocolo de otimização metabólica e reeducação alimentar.'}

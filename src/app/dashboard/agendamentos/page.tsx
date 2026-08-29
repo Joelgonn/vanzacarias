@@ -106,7 +106,7 @@ export default function Agendamentos() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="animate-spin text-nutri-800" size={40} />
           <p className="text-stone-400 font-medium text-sm animate-pulse">Carregando sua agenda...</p>
@@ -118,7 +118,7 @@ export default function Agendamentos() {
   const firstName = profile?.full_name?.split(' ')[0] || 'Paciente';
 
   return (
-    <PatientPageShell maxWidth="max-w-6xl" className="bg-stone-50">
+    <PatientPageShell maxWidth="max-w-6xl" className="bg-[#FAFAFA]">
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" />
         <div className="hidden md:flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest">

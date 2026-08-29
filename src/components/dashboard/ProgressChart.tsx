@@ -113,7 +113,7 @@ export default function ProgressChart({
                   key={lens}
                   onClick={() => setActiveLens(lens)}
                   aria-pressed={isActive}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-3 text-[11px] font-bold transition-all duration-200 active:scale-[0.98] sm:px-3 sm:py-2.5 sm:text-xs ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 min-h-[44px] py-3 text-[11px] font-bold transition-all duration-200 active:scale-[0.98] sm:px-3 sm:py-2.5 sm:text-xs ${
                     isActive
                       ? 'bg-white text-nutri-900 shadow-sm border border-stone-100'
                       : 'text-stone-400 hover:text-stone-600'

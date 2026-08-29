@@ -398,7 +398,7 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
             </div>
             <button
               onClick={() => router.push('/completar-perfil')}
-              className="w-full md:w-auto text-xs font-bold uppercase tracking-wider bg-amber-600 text-white px-5 py-3 rounded-xl hover:bg-amber-700 transition-colors shrink-0 shadow-sm"
+              className="w-full md:w-auto min-h-[44px] text-xs font-bold uppercase tracking-wider bg-amber-600 text-white px-5 py-3 rounded-xl hover:bg-amber-700 transition-colors shrink-0 shadow-sm"
             >
               Cadastrar agora
             </button>
@@ -457,7 +457,7 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
                             key={opt}
                             onClick={() => !isAllergy && handleSelect(item.id, opt)}
                             disabled={isAllergy}
-                            className={`flex-1 md:flex-none min-w-[50px] py-3 text-xs font-black rounded-xl transition-all duration-300 whitespace-nowrap px-2 
+                            className={`flex-1 md:flex-none min-h-[48px] min-w-[50px] py-3 flex items-center justify-center text-xs font-black rounded-xl transition-all duration-300 whitespace-nowrap px-2 
                               ${isAllergy ? (isSelected ? 'bg-red-600 text-white shadow-md' : 'text-red-300 cursor-not-allowed') : ''}
                               ${!isAllergy && notSelectedFaded} 
                               ${!isAllergy && isSelected ? 'bg-nutri-900 text-white shadow-md scale-105' : ''}

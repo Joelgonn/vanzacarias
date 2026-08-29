@@ -98,7 +98,7 @@ export default function Header() {
       };
       setFirstName(p.full_name?.split(' ')[0] || '');
       setCanAccessMealPlan(p.account_type === 'premium' || !!p.has_meal_plan_access);
-      setIsPremium(p.account_type === 'premium');
+      setIsPremium(p.account_type === 'premium' || !!p.has_meal_plan_access);
     })();
     return () => {
       active = false;
@@ -289,7 +289,7 @@ export default function Header() {
                       onClick={handleLogout}
                       title="Sair da conta"
                       aria-label="Sair da conta"
-                      className="p-2.5 rounded-full text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all duration-200 active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                      className="p-3 rounded-full text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all duration-200 active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-rose-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
                     >
                       <LogOut size={18} strokeWidth={2} />
                     </button>

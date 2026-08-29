@@ -28,7 +28,7 @@ export function PaywallCard({ prices, processingCheckout, onUpgrade }: PaywallCa
           <Lock className="text-stone-300" size={32} aria-hidden="true" />
         </div>
 
-        <h1 className="text-2xl font-black text-stone-900 mb-3 tracking-tight">Protocolo Restrito</h1>
+        <p className="text-2xl font-black text-stone-900 mb-3 tracking-tight">Protocolo Restrito</p>
         <p className="text-stone-500 text-sm mb-8 leading-relaxed max-w-sm mx-auto">
           Seu planejamento estratégico está pronto. Desbloqueie para acessar metas, acompanhamento diário e substituições inteligentes.
         </p>

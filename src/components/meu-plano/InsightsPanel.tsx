@@ -37,7 +37,7 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
             <Sparkles size={20} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-2xl font-black tracking-tight text-stone-900 leading-tight">Inteligência do Plano</h3>
+            <h2 className="text-2xl font-black tracking-tight text-stone-900 leading-tight">Inteligência do Plano</h2>
             <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mt-0.5">
               {insights.length} insight{insights.length > 1 ? 's' : ''} personalizado{insights.length > 1 ? 's' : ''}
             </p>

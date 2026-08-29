@@ -27,9 +27,74 @@ const LEGAL_LINKS = [
   { label: 'Termos de Uso', href: '/termos' },
 ];
 
-export default function Footer() {
+interface FooterProps {
+  /** 'full' = footer de marketing público (padrão). 'compact' = footer de paciente. */
+  variant?: 'full' | 'compact';
+}
+
+export default function Footer({ variant = 'full' }: FooterProps) {
   const currentYear = new Date().getFullYear();
   const whatsappMessage = encodeURIComponent("Ola! Gostaria de agendar uma consulta.");
+
+  // =========================================================================
+  // VARIANTE COMPACTA — Paciente (dentro do frame do app autenticado).
+  // Remove Newsletter, Dicas Semanais, Menu extenso e conteúdo promocional.
+  // Mantém identidade, contato essencial e links legais. Superfície clara
+  // coerente com o frame (sem a quebra abrupta do footer de marketing escuro).
+  // =========================================================================
+  if (variant === 'compact') {
+    return (
+      <footer className="border-t border-stone-200/70 bg-[#FAFAFA] text-stone-500 selection:bg-nutri-500 selection:text-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col items-center md:items-start">
+            <Link href="/" className="text-xl md:text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-nutri-900 to-nutri-700 text-center md:text-left">
+              Vanusa Zacarias
+            </Link>
+            <span className="text-[10px] md:text-xs font-semibold tracking-[0.2em] text-nutri-700 uppercase mt-1 text-center md:text-left">
+              Nutrição Clínica
+            </span>
+          </div>
+          <div className="flex flex-col items-center md:items-end gap-2 text-sm">
+            <a
+              href={`mailto:${CONTACT_INFO.email}`}
+              className="group inline-flex items-center gap-2 text-stone-500 hover:text-nutri-700 transition-colors"
+              aria-label="E-mail"
+            >
+              <Mail size={15} className="shrink-0" />
+              <span className="break-all">{CONTACT_INFO.email}</span>
+            </a>
+            <a
+              href={`https://wa.me/${CONTACT_INFO.phoneRaw}?text=${whatsappMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-2 text-stone-500 hover:text-nutri-700 transition-colors"
+              aria-label="WhatsApp"
+            >
+              <span className="shrink-0">WhatsApp</span>
+              <span className="text-stone-400">·</span>
+              <span>{CONTACT_INFO.phoneDisplay}</span>
+            </a>
+          </div>
+        </div>
+        <div className="border-t border-stone-200/60">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-stone-500">
+            <p>&copy; {currentYear} Vanusa Zacarias Nutrição. Todos os direitos reservados.</p>
+            <div className="flex items-center gap-5">
+              {LEGAL_LINKS.map(link => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="uppercase hover:text-stone-700 transition-colors"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </footer>
+    );
+  }
 
   return (
     <footer className="relative bg-stone-950 text-stone-300 pt-24 pb-12 px-6 lg:px-8 overflow-hidden selection:bg-nutri-500 selection:text-white">

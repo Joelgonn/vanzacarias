@@ -53,12 +53,14 @@ interface HistoryCheckin {
   adesao_ao_plano: number;
   humor_semanal: number;
   imc: number;
+  comentarios?: string | null;
 }
 
 interface ProfileRow {
   full_name?: string | null;
   tipo_perfil?: string | null;
   meta_peso?: number;
+  has_meal_plan_access?: boolean;
 }
 
 export default function Historico() {
@@ -89,7 +91,8 @@ export default function Historico() {
         return;
       }
 
-      const isUserPremium = profileData?.account_type === 'premium';
+      // Mesma regra funcional do Meu Plano: premium OU acesso ao plano alimentar.
+      const isUserPremium = profileData?.account_type === 'premium' || profileData?.has_meal_plan_access === true;
       setIsPremium(isUserPremium);
       setProfile(profileData);
 
@@ -100,10 +103,16 @@ export default function Historico() {
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: true });
 
-        const processedHistory = checkinData?.map(item => ({
-          ...item,
-          imc: item.peso / (item.altura * item.altura)
-        })) || [];
+        // IMC usa a altura conhecida mais recente: a altura só é gravada no 1º
+        // check-in (os demais vêm com altura NULL) — memso padrão do Dashboard/Admin.
+        let knownAltura: number | null = null;
+        const processedHistory = checkinData?.map(item => {
+          if (item.altura) knownAltura = item.altura;
+          return {
+            ...item,
+            imc: knownAltura ? Number((item.peso / (knownAltura * knownAltura)).toFixed(2)) : 0,
+          };
+        }) || [];
 
         setHistory(processedHistory);
       }
@@ -156,42 +165,56 @@ export default function Historico() {
 
   const range = getReferenceRange(profile?.tipo_perfil || 'adulto');
 
-  // --- CÁLCULOS PREMIUM (INSIGHTS AUTOMÁTICOS) ---
+  // Altura efetiva (última altura conhecida na série) para IMC e meta — altura só
+  // é gravada no 1º check-in (demais são NULL), então carregamos adiante.
+  const effectiveAltura = history.reduce<number | null>((acc, h) => (h.altura ? h.altura : acc), null);
+
+  // --- CÁLCULOS PREMIUM (INSIGHTS BASEADOS NOS DADOS) ---
   const lastCheckin = history.length > 0 ? history[history.length - 1] : null;
   const prevCheckin = history.length > 1 ? history[history.length - 2] : null;
-  
-  let trendMsg = "Continue registrando para ver sua evolução.";
-  let imcDiffStr = "";
-  
+
+  // Variável de tendência: delta numérico + seta (sempre, quando houver 2+ pontos)
+  let imcDiffStr = '';
   if (lastCheckin && prevCheckin) {
     const diff = lastCheckin.imc - prevCheckin.imc;
     const absDiff = Math.abs(diff).toFixed(1);
-    
-    if (diff < -0.1) {
-      trendMsg = "Seu IMC está diminuindo — ótimo progresso! 🔥";
-      imcDiffStr = `${absDiff} ↓`;
+    imcDiffStr = diff < -0.1 ? `${absDiff} ↓` : diff > 0.1 ? `+${absDiff} ↑` : 'Estável';
+  }
+
+  // Frase interpretativa SOMENTE com >= 3 registros (evolução temporal), sempre neutra.
+  // Com poucos dados, a ausência de frase comunica que ainda não há histórico suficiente.
+  let trendMsg = '';
+  if (lastCheckin && prevCheckin && history.length >= 3) {
+    const diff = lastCheckin.imc - prevCheckin.imc;
+    const firstImc = history[0].imc;
+    const overallDiff = lastCheckin.imc - firstImc;
+    if (overallDiff < -0.1) {
+      trendMsg = 'Você registrou uma redução de IMC desde o primeiro registro.';
+    } else if (overallDiff > 0.1) {
+      trendMsg = 'Você registrou um aumento de IMC desde o primeiro registro.';
+    } else if (diff < -0.1) {
+      trendMsg = 'Sua tendência recente é de leve redução de IMC.';
     } else if (diff > 0.1) {
-      trendMsg = "Seu IMC subiu levemente — vale revisar os hábitos ⚠️";
-      imcDiffStr = `+${absDiff} ↑`;
+      trendMsg = 'Sua tendência recente é de leve aumento de IMC.';
     } else {
-      trendMsg = "Seu IMC estabilizou — consistência é a chave! 🎯";
-      imcDiffStr = "Estável";
+      trendMsg = 'Seu IMC se manteve estável nos últimos registros.';
     }
   }
 
-  // Score do usuário (0 a 100)
-  const userScore = lastCheckin 
-    ? Math.round(((lastCheckin.adesao_ao_plano * 20) + (lastCheckin.humor_semanal * 20)) / 2) 
-    : 0;
+  // Rótulos neutros por check-in (Nível C — só thresholds objetivos, sem linguagem clínica)
+  const adhesionLabel = (a: number) => (a >= 4 ? 'Alta' : a === 3 ? 'Moderada' : 'Baixa');
+  const adhesionTone = (a: number) => (a >= 4 ? 'bg-green-500' : a === 3 ? 'bg-amber-500' : 'bg-stone-400');
+  const moodLabel = (h: number) => (h <= 2 ? 'Baixo' : h === 3 ? 'Neutro' : 'Positivo');
+  const moodTone = (h: number) => (h >= 4 ? 'bg-green-500' : h === 3 ? 'bg-amber-500' : 'bg-stone-400');
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
         <Loader2 className="animate-spin text-nutri-800" size={48} />
     </div>
   );
 
   return (
-    <PatientPageShell maxWidth="max-w-5xl" className="bg-stone-50">
+    <PatientPageShell maxWidth="max-w-5xl" className="bg-[#FAFAFA]">
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" />
         
@@ -259,15 +282,21 @@ export default function Historico() {
              ========================================= */
           <div className="space-y-8 animate-fade-in-up">
             
-            {/* INSIGHT DE TOPO (Nível IA) */}
+            {/* INSIGHT DE TOPO (baseado nos dados) */}
             <div className="mb-2">
               <p className="text-sm text-stone-500 font-medium uppercase tracking-widest mb-2">Seu status atual</p>
-              <h3 className="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight">
-                Você está evoluindo 📈
-              </h3>
-              <p className="text-stone-500 mt-2 max-w-lg text-lg">
-                {trendMsg}
-              </p>
+              <h1 className="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight">
+                {lastCheckin ? 'Veja sua evolução registrada' : 'Registre seu primeiro check-in'}
+              </h1>
+              {trendMsg ? (
+                <p className="text-stone-500 mt-2 max-w-lg text-lg">{trendMsg}</p>
+              ) : (
+                <p className="text-stone-500 mt-2 max-w-lg text-lg">
+                  {history.length > 1
+                    ? 'Com mais registros, você terá uma leitura de tendência da sua evolução.'
+                    : 'Continue registrando para acompanhar sua evolução ao longo do tempo.'}
+                </p>
+              )}
             </div>
 
             {/* CARDS DE MÉTRICAS (GRID PREMIUM) */}
@@ -285,14 +314,14 @@ export default function Historico() {
                 icon={Activity}
               />
               <MetricCard 
-                label="Score de Progresso" 
-                value={`${userScore}/100`} 
+                label="Adesão + Humor" 
+                value={lastCheckin ? `${lastCheckin.adesao_ao_plano} / ${lastCheckin.humor_semanal}` : '--'}
                 highlight
-                subtext="Baseado em humor e adesão"
+                subtext="Escala 1–5 (adesão · humor)"
                 icon={Brain}
               />
               <MetricCard 
-                label="Aderência Atual" 
+                label="Adesão à Plano" 
                 value={lastCheckin ? `${lastCheckin.adesao_ao_plano}/5` : '--'} 
                 icon={CheckCircle2}
               />
@@ -354,10 +383,10 @@ export default function Historico() {
                       animationDuration={1500}
                     />
                     
-                    {profile?.meta_peso && history.length > 0 && (
+                    {profile?.meta_peso && history.length > 0 && effectiveAltura && (
                       <Line 
                         type="step" 
-                        dataKey={() => (profile.meta_peso! / (history[0].altura * history[0].altura))} 
+                        dataKey={() => (profile.meta_peso! / (effectiveAltura * effectiveAltura))} 
                         name="Sua Meta" 
                         stroke="#d97706" 
                         strokeWidth={2}
@@ -402,18 +431,21 @@ export default function Historico() {
                           <p className="font-bold text-nutri-800 text-sm md:text-base">{item.imc.toFixed(1)}</p>
                         </div>
                         
-                        {/* Nova área: Inteligência de Análise no Histórico */}
+                        {/* Nova área: Dados objetivos + comentário do check-in */}
                         <div className="col-span-2 md:col-span-2 flex flex-col justify-center">
-                          <p className="text-[10px] md:text-xs text-stone-400 uppercase font-bold tracking-widest mb-1">Análise do Período</p>
+                          <p className="text-[10px] md:text-xs text-stone-400 uppercase font-bold tracking-widest mb-1">Avaliação (neutra)</p>
                           <div className="space-y-1">
                             <p className="text-xs md:text-sm font-medium text-stone-700 flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${item.adesao_ao_plano >= 4 ? 'bg-green-500' : 'bg-amber-500'}`}></span>
-                              {item.adesao_ao_plano >= 4 ? "Alta adesão — consistência excelente" : "Adesão média/baixa — tente retomar o foco"}
+                              <span className={`w-2 h-2 rounded-full ${adhesionTone(item.adesao_ao_plano)}`}></span>
+                              Adesão: {adhesionLabel(item.adesao_ao_plano)} ({item.adesao_ao_plano}/5)
                             </p>
                             <p className="text-xs md:text-sm font-medium text-stone-700 flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${item.humor_semanal >= 4 ? 'bg-green-500' : 'bg-red-400'}`}></span>
-                              {item.humor_semanal <= 2 ? "Humor baixo — atenção aos níveis de estresse" : "Humor positivo — continue assim"}
+                              <span className={`w-2 h-2 rounded-full ${moodTone(item.humor_semanal)}`}></span>
+                              Humor: {moodLabel(item.humor_semanal)} ({item.humor_semanal}/5)
                             </p>
+                            {item.comentarios && (
+                              <p className="text-xs md:text-sm text-stone-500 italic mt-2">“{item.comentarios}”</p>
+                            )}
                           </div>
                         </div>
 

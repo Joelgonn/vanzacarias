@@ -7,7 +7,6 @@ import {
   TrendingUp, Droplets, Star, Beef
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
 
 // =========================================================================
@@ -805,6 +804,7 @@ export default function MeuPlano() {
   const handleGenerateDynamicPDF = async () => {
     if (!mealPlanJSON) return;
 
+    const { jsPDF } = await import('jspdf');
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
@@ -995,7 +995,7 @@ export default function MeuPlano() {
   // RENDER PRINCIPAL
   // =========================================================================
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50 flex-col gap-4" role="status" aria-live="polite">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] flex-col gap-4" role="status" aria-live="polite">
       <Loader2 className="animate-spin text-nutri-800" size={48} aria-hidden="true" />
       <p className="text-stone-400 font-bold animate-pulse text-xs uppercase tracking-widest">Carregando seu protocolo...</p>
     </div>
@@ -1009,7 +1009,7 @@ export default function MeuPlano() {
   const selectedContextualGroup = SUBSTITUICOES_PADRAO.find(g => g.categoria === contextualCategory);
 
   return (
-    <PatientPageShell maxWidth="max-w-2xl" className="bg-stone-50 md:bg-stone-100 relative selection:bg-nutri-200 selection:text-nutri-900">
+    <PatientPageShell maxWidth="max-w-2xl" className="bg-[#FAFAFA] relative selection:bg-nutri-200 selection:text-nutri-900">
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" />
         <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-2">

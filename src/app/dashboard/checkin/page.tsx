@@ -22,15 +22,15 @@ export default function CheckinPage() {
   };
 
   return (
-    <PatientPageShell maxWidth="max-w-3xl" className="bg-[#F8F9FA] pb-24 selection:bg-nutri-200">
+    <PatientPageShell maxWidth="max-w-3xl" className="bg-[#FAFAFA] pb-24 selection:bg-nutri-200">
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" onClick={handleBack} />
           
         <div className="text-right flex-1">
             <p className="text-[10px] md:text-xs text-stone-400 uppercase font-bold tracking-widest mb-0.5">Nutrição Clínica</p>
-            <h1 className="text-sm md:text-lg font-extrabold text-stone-900 tracking-tight truncate">
+            <p className="text-sm md:text-lg font-extrabold text-stone-900 tracking-tight truncate">
               Vanusa Zacarias
-            </h1>
+            </p>
           </div>
         </PageNavigation>
 

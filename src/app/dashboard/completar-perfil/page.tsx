@@ -600,11 +600,11 @@ export default function CompletarPerfil() {
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
   const goToDashboard = () => router.push('/dashboard');
 
-  if (fetching) return <main className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><Loader2 className="animate-spin text-nutri-800" size={48} /></main>;
-  if (step === 5) return <main className="min-h-screen bg-[#FAFAFA] pt-24 pb-12 px-4"><div className="w-full max-w-md mx-auto"><StepSuccess onDashboard={goToDashboard} /></div></main>;
+  if (fetching) return <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><Loader2 className="animate-spin text-nutri-800" size={48} /></div>;
+  if (step === 5) return <div className="min-h-screen bg-[#FAFAFA] pt-24 pb-12 px-4"><div className="w-full max-w-md mx-auto"><StepSuccess onDashboard={goToDashboard} /></div></div>;
 
   return (
-    <main className="min-h-screen bg-[#FAFAFA] pt-16 md:pt-24 pb-12 px-4">
+    <div className="min-h-screen bg-[#FAFAFA] pt-16 md:pt-24 pb-12 px-4">
       <div className="w-full max-w-lg mx-auto bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-6 md:p-8 relative overflow-hidden">
         <ProgressTracker step={step} totalSteps={4} />
         <AnimatePresence mode="wait">
@@ -614,6 +614,6 @@ export default function CompletarPerfil() {
           {step === 4 && <StepConfirm key="step4" phone={phone} birthDate={birthDate} foodRestrictions={foodRestrictions} onConfirm={handleSubmit} onBack={prevStep} loading={loading} />}
         </AnimatePresence>
       </div>
-    </main>
+    </div>
   );
 }

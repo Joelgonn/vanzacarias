@@ -12,7 +12,6 @@ import Link from 'next/link';
 import CheckinForm from '@/components/CheckinForm';
 import ChatAssistant from '@/components/ChatAssistant';
 import AddActivityModal from '@/components/AddActivityModal';
-import PatientSidebar from '@/components/patient/PatientSidebar';
 import DashboardHero from '@/components/dashboard/DashboardHero';
 import DailyJourney from '@/components/dashboard/DailyJourney';
 import ProgressChart from '@/components/dashboard/ProgressChart';
@@ -681,7 +680,7 @@ export default function Dashboard() {
   const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="animate-spin text-nutri-800" size={40} strokeWidth={2.5} />
         <p className="text-stone-400 font-medium text-sm animate-pulse">Preparando seu painel...</p>
@@ -690,7 +689,7 @@ export default function Dashboard() {
   );
 
   if (loadError) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB] p-6">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] p-6">
       <div className="bg-white rounded-3xl border border-stone-100 shadow-md p-8 max-w-md w-full text-center flex flex-col items-center gap-4">
         <AlertCircle size={40} className="text-rose-500" />
         <div>
@@ -708,12 +707,11 @@ export default function Dashboard() {
   );
 
   return (
-    <main className="min-h-screen bg-[#F9FAFB] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
-
-      {/* 🔥 SIDEBAR DESKTOP PREMIUM (componente reutilizável) */}
-      <PatientSidebar canAccessMealPlan={canAccessMealPlan} />
+    <div className="min-h-screen bg-[#FAFAFA] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
 
       {/* ÁREA PRINCIPAL DO DASHBOARD */}
+      {/* VZ-007.1: a Sidebar deixou de ser montada aqui — agora pertence à
+          moldura única (PatientAppShell) fornecida pelo NavigationWrapper. */}
       <section className="flex-1 p-4 sm:p-6 md:p-10 lg:p-12 overflow-y-auto w-full max-w-6xl mx-auto space-y-8 md:space-y-10">
         
         {/* ALERTAS DO SISTEMA */}
@@ -725,12 +723,12 @@ export default function Dashboard() {
                   <ClipboardCheck size={22} className="text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-base md:text-lg font-bold tracking-tight leading-tight">Avaliação Pendente</h3>
+                  <p className="text-base md:text-lg font-bold tracking-tight leading-tight">Avaliação Pendente</p>
                   <p className="text-rose-100/90 text-xs md:text-sm mt-0.5 line-clamp-1 md:line-clamp-none">Preencha seu Raio-X alimentar. Assim a Nutri Vanusa poderá criar um plano personalizado para você.</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Link href="/paciente/avaliacao" className="bg-white text-rose-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-stone-50 transition-all shadow-sm">Avaliação</Link>
-                  <Link href="/dashboard/completar-perfil" className={`px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-sm ${hasFoodRestrictions ? 'bg-emerald-500 text-white hover:bg-emerald-400' : 'bg-yellow-500 text-white hover:bg-yellow-400'}`}>Perfil Alimentar</Link>
+                  <Link href="/paciente/avaliacao" className="bg-white text-rose-600 px-4 min-h-[44px] inline-flex items-center justify-center py-2 rounded-lg font-bold text-xs hover:bg-stone-50 transition-all shadow-sm">Avaliação</Link>
+                  <Link href="/dashboard/completar-perfil" className={`px-4 min-h-[44px] inline-flex items-center justify-center py-2 rounded-lg font-bold text-xs transition-all shadow-sm ${hasFoodRestrictions ? 'bg-emerald-500 text-white hover:bg-emerald-400' : 'bg-yellow-500 text-white hover:bg-yellow-400'}`}>Perfil Alimentar</Link>
                 </div>
               </div>
             </div>
@@ -846,6 +844,6 @@ export default function Dashboard() {
 
       {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE */}
       <ChatAssistant role="patient" />
-    </main>
+    </div>
   );
 }
