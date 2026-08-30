@@ -66,6 +66,7 @@ export type ChatAssistantProps =
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  isError?: boolean;
 }
 
 // ===============================
@@ -85,6 +86,17 @@ const sanitizeInput = (text: string): string => {
 };
 
 const MAX_MESSAGE_LENGTH = 500;
+
+// VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
+// chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
+// duplicam regras clínicas e não expõem conteúdo Premium no botão.
+const QUICK_ACTIONS = [
+  'Como está minha evolução?',
+  'O que devo priorizar hoje?',
+  'Como posso melhorar minha alimentação?',
+  'Quero rever meu plano',
+  'Analisar uma refeição'
+];
 
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve) => {
@@ -147,6 +159,8 @@ function useChatState() {
   const [isLoading, setIsLoading] = useState(false);
   const [avatarMood, setAvatarMood] = useState<'neutra' | 'feliz' | 'seria'>('neutra');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [retryCandidate, setRetryCandidate] = useState<{ question: string; image: string | null } | null>(null);
+  const [streamingText, setStreamingText] = useState<string>('');
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,7 +176,9 @@ function useChatState() {
     isLoading, setIsLoading,
     avatarMood, setAvatarMood,
     selectedImage, setSelectedImage,
-    handleImageSelect
+    handleImageSelect,
+    retryCandidate, setRetryCandidate,
+    streamingText, setStreamingText
   };
 }
 
@@ -201,33 +217,64 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
   const handleSend = async () => {
     if ((!state.input.trim() && !state.selectedImage) || state.isLoading) return;
 
-    // 🔥 PATCH 1: Normalizar mensagem
     const rawMessage = state.input.trim();
     const finalMessage = rawMessage.length > 0
       ? rawMessage
       : state.selectedImage
         ? "Analise este prato da imagem"
         : "";
-    
+
     if (!finalMessage) return;
 
+    await runExchange(finalMessage, state.selectedImage, true);
+  };
+
+  // VZ-013 FASE D: ações rápidas enviam uma pergunta normal ao chatbot pelo
+  // mesmo fluxo do envio manual (runExchange). Não há resposta hardcoded.
+  const ask = async (text: string) => {
+    if (!text?.trim() || state.isLoading) return;
+    state.setInput('');
+    await runExchange(text, null, true);
+  };
+
+  // VZ-013 FASE G: repete a pergunta original sem duplicar a mensagem do
+  // usuário (que já está exibida). Remove apenas o balão de erro.
+  const retry = async () => {
+    const candidate = state.retryCandidate;
+    if (!candidate || state.isLoading) return;
+    state.setMessages(prev => {
+      const next = [...prev];
+      while (next.length && next[next.length - 1].isError) next.pop();
+      return next;
+    });
+    state.setRetryCandidate(null);
+    await runExchange(candidate.question, candidate.image, false);
+  };
+
+  async function runExchange(question: string, image: string | null, appendUser: boolean) {
     // 🔥 PATCH 2: Sanitizar input
-    const sanitizedMessage = sanitizeInput(finalMessage);
+    const sanitizedMessage = sanitizeInput(question);
 
     if (sanitizedMessage.length > MAX_MESSAGE_LENGTH) {
       state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
       return;
     }
-    
-    // 🔥 PATCH 3: History limpa (sem HTML)
-    const cleanHistory = state.messages.slice(-6).map(m => ({
-      role: m.role,
-      content: m.content
-    }));
-    
-    state.setInput('');
+
+    // 🔥 PATCH 3: History limpa (sem HTML). Balões de erro (isError) nunca
+    // entram no histórico enviado ao Gemini (consistência do histórico).
+    const cleanHistory = state.messages
+      .filter(m => !m.isError)
+      .slice(-6)
+      .map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
+    if (appendUser) {
+      state.setInput('');
+      state.setMessages(prev => [...prev, { role: 'user', content: sanitizedMessage }]);
+    }
     state.setIsLoading(true);
-    state.setMessages(prev => [...prev, { role: 'user', content: sanitizedMessage }]);
 
     try {
       const supabase = createClient();
@@ -250,10 +297,12 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
           userId,
           messageLength: sanitizedMessage.length,
           historyLength: cleanHistory.length,
-          hasImage: !!state.selectedImage
+          hasImage: !!image
         });
       }
-      
+
+      state.setStreamingText('');
+
       const res = await fetch('/api/nutri-assistant/patient', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -261,30 +310,83 @@ function useChatPatient(state: ReturnType<typeof useChatState>, isActive: boolea
           userId,
           message: sanitizedMessage,
           history: cleanHistory,
-          image: state.selectedImage
+          image: image
         })
       });
 
-      const data = await res.json();
+      const isStream = res.headers
+        .get('content-type')
+        ?.toLowerCase()
+        .includes('application/x-ndjson');
 
-      if (!res.ok) {
-        throw new Error(data.reply || 'Ops, tive um probleminha técnico.');
-      }
-      
-      if (data.reply) {
-        state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      // Caminho streaming (VZ-013-S): consome NDJSON via ReadableStream.
+      if (isStream) {
+        if (!res.body) throw new Error('Ops, tive um probleminha técnico.');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let receivedDone = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let nl;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            let frame: { t?: string; d?: string; reply?: string } = {};
+            try { frame = JSON.parse(line); } catch { continue; }
+
+            if (frame.t === 'chunk' && typeof frame.d === 'string') {
+              state.setStreamingText(prev => prev + frame.d!);
+            } else if (frame.t === 'done') {
+              receivedDone = true;
+              const finalReply = typeof frame.reply === 'string' && frame.reply.length > 0
+                ? frame.reply
+                : 'Pode repetir?';
+              state.setStreamingText('');
+              state.setMessages(prev => [...prev, { role: 'assistant', content: finalReply }]);
+              state.setRetryCandidate(null);
+              break;
+            } else if (frame.t === 'error') {
+              receivedDone = true;
+              throw new Error(frame.reply || 'Ops, tive um probleminha técnico.');
+            }
+          }
+          if (receivedDone) break;
+        }
+
+        if (!receivedDone) {
+          throw new Error('Ops, tive um probleminha técnico.');
+        }
+      } else {
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.reply || 'Ops, tive um probleminha técnico.');
+        }
+
+        if (data.reply) {
+          state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+        }
       }
     } catch (error) {
       console.error("ERRO NO ENVIO (PACIENTE):", error);
+      state.setStreamingText('');
       const errorMessage = (error as { message?: string }).message || 'Ops, tive um probleminha técnico. Pode repetir?';
-      state.setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
+      state.setMessages(prev => [...prev, { role: 'assistant', content: errorMessage, isError: true }]);
+      state.setRetryCandidate({ question: sanitizedMessage, image });
     } finally {
       state.setIsLoading(false);
-      state.setSelectedImage(null); 
+      state.setStreamingText('');
+      state.setSelectedImage(null);
     }
-  };
+  }
 
-  return { handleSend };
+  return { handleSend, ask, retry };
 }
 
 function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: AdminContext | undefined, isActive: boolean) {
@@ -295,11 +397,9 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
   const handleSend = async () => {
     if ((!state.input.trim() && !state.selectedImage) || state.isLoading) return;
 
-    if (!adminContext) {
-      console.error("adminContext ausente. Requisição abortada para evitar erro 400 do Zod.");
-      state.setMessages(prev => [...prev, { role: 'assistant', content: 'Ops, não consegui carregar o contexto administrativo. Tente recarregar a página.' }]);
-      return;
-    }
+    // 🔒 S1: o contexto administrativo é montado 100% no servidor.
+    // O cliente envia apenas mensagem/histórico/imagem — NENHUM dado de
+    // paciente/lead (PII) é transportado pelo navegador até a rota.
 
     // 🔥 PATCH 1: Normalizar mensagem (Admin)
     const rawMessage = state.input.trim();
@@ -346,11 +446,10 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
       if (process.env.NODE_ENV === 'development') {
         console.log("CHAT PAYLOAD (ADMIN):", {
           role: 'admin',
-          userId,
           messageLength: sanitizedMessage.length,
           historyLength: cleanHistory.length,
           hasImage: !!state.selectedImage,
-          adminDataKeys: adminContext ? Object.keys(adminContext) : []
+          adminContextReceived: !!adminContext
         });
       }
 
@@ -358,11 +457,9 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
           message: sanitizedMessage,
           history: cleanHistory,
-          image: state.selectedImage,
-          adminData: adminContext 
+          image: state.selectedImage
         })
       });
 
@@ -397,16 +494,24 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   
   const state = useChatState();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const patientLogic = useChatPatient(state, !isRoleAdmin);
   const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin);
 
-  // Mantém o scroll do chat no fim da conversa
+  // Mantém o scroll do chat no fim da conversa (inclui geração em streaming)
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [state.messages, state.isLoading]);
+  }, [state.messages, state.isLoading, state.streamingText]);
+
+  // VZ-013 FASE E: ao limpar o input (envio), restaura a altura do textarea.
+  useEffect(() => {
+    if (textareaRef.current && state.input === '') {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [state.input]);
 
   const handleSend = () => {
     if (role === 'admin') {
@@ -414,6 +519,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
     }
     if (role === 'patient') {
       return patientLogic.handleSend();
+    }
+  };
+
+  const handleAsk = async (text: string) => {
+    if (role === 'patient' && patientLogic.ask) {
+      await patientLogic.ask(text);
+    }
+  };
+
+  const handleRetry = () => {
+    if (role === 'patient') {
+      return patientLogic.retry?.();
     }
   };
 
@@ -546,29 +663,65 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                         : 'Sou a Nutri Van, sua assistente virtual. Posso te ajudar com dúvidas sobre seu cardápio, analisar fotos de pratos ou te dar motivação.'}
                     </p>
                   </div>
+
+                  {!isRoleAdmin && (
+                    <div className="w-full flex flex-wrap justify-center gap-2 pt-1" role="group" aria-label="Ações rápidas">
+                      {QUICK_ACTIONS.map((qa) => (
+                        <button
+                          key={qa}
+                          type="button"
+                          onClick={() => handleAsk(qa)}
+                          disabled={state.isLoading}
+                          className="min-h-[44px] px-4 py-2 rounded-full bg-white border border-stone-200 text-stone-600 hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 shadow-sm text-[13px] font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          {qa}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               
               {state.messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                  <div className={`max-w-[85%] px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+                <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}>
+                  <div className={`max-w-[85%] px-4 py-3 text-[15px] leading-relaxed shadow-sm break-words [overflow-wrap:break-word] ${
                     m.role === 'user' 
                       ? 'bg-stone-900 text-white rounded-2xl rounded-tr-sm font-medium' 
                       : 'bg-white border border-stone-200/60 text-stone-700 rounded-2xl rounded-tl-sm font-medium'
-                  }`}>
+                  } ${m.isError ? 'border-rose-200 bg-rose-50/60' : ''}`}>
                     {m.role === 'assistant' ? renderMessage(m.content) : m.content}
                   </div>
+                  {m.isError && !state.isLoading && (
+                    <button
+                      type="button"
+                      onClick={handleRetry}
+                      disabled={state.isLoading}
+                      className="mt-1.5 inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-full text-[13px] font-semibold text-rose-600 hover:text-rose-700 border border-rose-200 hover:bg-rose-50 bg-white shadow-sm transition-all active:scale-95"
+                      aria-label="Tentar novamente"
+                    >
+                      Tentar novamente
+                    </button>
+                  )}
                 </div>
               ))}
               
-              {state.isLoading && (
+              {state.streamingText ? (
                 <div className="flex justify-start animate-in fade-in">
-                  <div className="bg-white border border-stone-200/60 p-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2.5">
+                  <div className="max-w-[85%] px-4 py-3 text-[15px] leading-relaxed shadow-sm break-words [overflow-wrap:break-word] bg-white border border-stone-200/60 text-stone-700 rounded-2xl rounded-tl-sm font-medium">
+                    {renderMessage(state.streamingText)}
+                  </div>
+                </div>
+              ) : state.isLoading && (
+                <div className="flex justify-start animate-in fade-in">
+                  <div className="bg-white border border-stone-200/60 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-3">
                     <div className="flex gap-1">
                       <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
+                    <span className="text-stone-500 text-[13px] font-semibold">
+                      {isRoleAdmin ? 'Consultando dados...' : 'Pensando...'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -601,7 +754,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2.5 text-stone-400 hover:text-stone-800 hover:bg-stone-200 rounded-full transition-all shrink-0 ml-1 active:scale-95"
+                  className="min-w-[44px] h-[44px] flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-stone-200 rounded-full transition-all shrink-0 ml-1 active:scale-95"
                   disabled={state.isLoading}
                   title="Anexar foto"
                   aria-label="Anexar foto"
@@ -617,9 +770,16 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   onChange={state.handleImageSelect}
                 />
 
-                <input 
+                <textarea
                   value={state.input}
-                  onChange={(e) => state.setInput(e.target.value)}
+                  rows={1}
+                  onChange={(e) => {
+                    state.setInput(e.target.value);
+                    if (textareaRef.current) {
+                      textareaRef.current.style.height = 'auto';
+                      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 132) + 'px';
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -628,14 +788,15 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   }}
                   maxLength={MAX_MESSAGE_LENGTH}
                   placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
-                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium"
+                  aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
+                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium resize-none overflow-hidden leading-relaxed min-h-[44px] max-h-[132px]"
                   disabled={state.isLoading}
                 />
 
                 <button 
                   onClick={handleSend} 
                   disabled={state.isLoading || !hasContent} 
-                  className={`p-3 rounded-full transition-all shrink-0 mr-0.5 ${
+                  className={`min-w-[48px] h-[48px] rounded-full transition-all shrink-0 mr-0.5 flex items-center justify-center ${
                     state.isLoading || !hasContent
                       ? 'bg-stone-200 text-stone-400' 
                       : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-md hover:shadow-lg active:scale-95'

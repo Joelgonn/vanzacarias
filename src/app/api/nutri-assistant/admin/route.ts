@@ -23,17 +23,116 @@ const supabaseAdmin = createClient(
 // 🛡️ SCHEMAS DE VALIDAÇÃO
 // ==========================================
 
-// Linhas do Supabase / payload do frontend (adminData)
+// 🔒 S1: NENHUM dado de paciente/lead é aceito do cliente.
+// O contexto do painel é montado 100% no servidor (Supabase) para impedir o
+// transporte desnecessário de PII pelo navegador. O cliente apenas envia a
+// mensagem/histórico/imagem. O payload é STRICT (U2) — sem passthrough/z.any().
+const AdminRequestSchema = z.object({
+  message: z.string().optional(),
+  image: z.string().nullable().optional(),
+  history: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string().max(2000)
+    })
+  ).max(12).optional().default([])
+}).strict();
+
+interface OverviewPatient {
+  id: string;
+  full_name?: string | null;
+  meal_plan?: unknown;
+  meta_peso?: number | string | null;
+  is_late?: boolean | null;
+  water_ml?: number | null;
+  mood?: string | null;
+  activity_kcal?: number | null;
+  messages_today?: number | null;
+  beliscos?: unknown;
+}
+
+interface OverviewLead {
+  nome?: string | null;
+  whatsapp?: string | null;
+  status?: string | null;
+}
+
+interface AdminOverview {
+  patients: OverviewPatient[];
+  leads: OverviewLead[];
+  patientsResumo: string;
+  leadsResumo: string;
+  activePatientsCount: number;
+  todayTotalMessages: number;
+  hasLeads: boolean;
+}
+
+let overviewCache: { data: AdminOverview | null; fetchedAt: number } = { data: null, fetchedAt: 0 };
+const OVERVIEW_TTL_MS = 30_000;
+
+// 🔒 S1: consulta o painel no servidor (service role, nunca exposto ao client).
+// Apenas um resumo textual é enviado ao modelo — PII pesada (telefone, data de
+// nascimento, avaliações completas, medidas) fica de fora. As listas de
+// pacientes/leads são filtradas para os campos mínimos necessários e ficam
+// somente no servidor (usadas para achar o paciente mencionado na mensagem).
+async function fetchAdminOverview(client: typeof supabaseAdmin): Promise<AdminOverview> {
+  if (overviewCache.data && Date.now() - overviewCache.fetchedAt < OVERVIEW_TTL_MS) {
+    return overviewCache.data;
+  }
+
+  const [patientsRes, leadsRes] = await Promise.all([
+    client.from('admin_dashboard').select('id, full_name, meal_plan, meta_peso, is_late, water_ml, mood, activity_kcal, messages_today').limit(500),
+    client.from('leads_avaliacao').select('nome, whatsapp, status').neq('status', 'convertido').limit(200)
+  ]);
+
+  const patients = (patientsRes.data || []) as OverviewPatient[];
+  const leads = (leadsRes.data || []) as OverviewLead[];
+
+  let todayTotalMessages = 0;
+  const patientsResumo = patients.map((p) => {
+    todayTotalMessages += Number(p.messages_today) || 0;
+    const isDietReady = Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
+    const aguaHoje = p.water_ml ? `${p.water_ml}ml` : '0ml';
+    const humorHoje = p.mood || 'Não registrou';
+    const atividade = p.activity_kcal ? `${p.activity_kcal} kcal` : '0 kcal';
+    return `- Nome: ${p.full_name || 'Desconhecido'}\n    Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} \n    Atrasado: ${p.is_late ? 'Sim' : 'Não'} \n    Meta: ${p.meta_peso ? `${p.meta_peso}kg` : 'N/A'} \n    Água: ${aguaHoje} \n    Humor: ${humorHoje} \n    Atividade: ${atividade}`;
+  }).join('\n') || 'Nenhum paciente cadastrado.';
+
+  const leadsResumo = leads.map((l) => `- Nome: ${l?.nome || 'Desconhecido'} | Whats: ${l?.whatsapp || 'Sem número'} | Status: ${l?.status || 'Sem status'}`).join('\n') || 'Nenhum lead pendente.';
+
+  const overview: AdminOverview = {
+    patients,
+    leads,
+    patientsResumo,
+    leadsResumo,
+    activePatientsCount: patients.length,
+    todayTotalMessages,
+    hasLeads: leads.length > 0
+  };
+
+  overviewCache = { data: overview, fetchedAt: Date.now() };
+  return overview;
+}
+
+// ==========================================
+// 🛠️ FUNÇÕES AUXILIARES
+// ==========================================
+
+function normalizeString(str: string): string {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// ==========================================
+// 🔥 FUNÇÃO PARA BUSCAR DADOS COMPLETOS DO PACIENTE
+// ==========================================
 interface PatientRow {
   id?: string;
-  full_name?: string;
-  phone?: string | null;
-  objetivo?: string;
+  full_name?: string | null;
   meta_peso?: number | string | null;
-  is_late?: boolean;
   meal_plan?: unknown;
   food_restrictions?: unknown;
-  todayLog?: DailyLogRow;
+  objetivo?: string;
   [key: string]: unknown;
 }
 
@@ -48,40 +147,6 @@ interface DailyLogRow {
   [key: string]: unknown;
 }
 
-interface LeadRow {
-  nome?: string;
-  whatsapp?: string;
-  status?: string;
-  [key: string]: unknown;
-}
-
-interface AdminDashboardData {
-  patients?: PatientRow[] | Record<string, PatientRow>;
-  leads?: LeadRow[] | Record<string, LeadRow>;
-  usageStats?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-const AdminRequestSchema = z.object({
-  userId: z.string().min(1, "ID obrigatório"),
-  message: z.string().optional(),
-  image: z.string().nullable().optional(),
-  history: z.array(z.object({ role: z.string(), content: z.string() }).passthrough()).optional().default([]),
-  adminData: z.any().optional() 
-});
-
-// ==========================================
-// 🛠️ FUNÇÕES AUXILIARES
-// ==========================================
-
-function normalizeString(str: string): string {
-  if (!str) return '';
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-// ==========================================
-// 🔥 FUNÇÃO PARA BUSCAR DADOS COMPLETOS DO PACIENTE
-// ==========================================
 async function getFullPatientData(patientId: string, todayStr: string) {
   const [profileRes, logsRes, qfaRes, evalRes, antroRes] = await Promise.all([
     supabaseAdmin.from('profiles').select('*').eq('id', patientId).single(),
@@ -200,34 +265,8 @@ async function buildPatientUserData(
 // 🛠️ CONSTRUTOR DE CONTEXTO ADMIN
 // ==========================================
 
-function buildAdminContext(adminData: AdminDashboardData, currentTimeBR: string, deepContext: string, deepContextRaw?: string): string {
-  const patientsRaw = adminData?.patients;
-  const patientsList = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
-
-  const patientsResumo = patientsList.map((p: PatientRow) => {
-    const isDietReady = p?.meal_plan && Array.isArray(p.meal_plan) && p.meal_plan.length > 0;
-    const aguaHoje = p?.todayLog?.water_ml ? `${p.todayLog.water_ml}ml` : '0ml';
-    const humorHoje = p?.todayLog?.mood || 'Não registrou';
-    const kcalHoje = p?.todayLog?.activity_kcal ? `${p.todayLog.activity_kcal} kcal gastas` : '0 kcal';
-    
-    const hasBeliscos = (p?.todayLog?.beliscos?.items?.length ?? 0) > 0;
-    const beliscosInfo = hasBeliscos ? '⚠️ COM BELISCOS' : '✅ SEM BELISCOS';
-    
-    const macros = calcularMacrosDoCardapio(p?.meal_plan);
-    let macrosText = '';
-    if (macros.macrosDiarios) {
-      macrosText = `\n    📊 MACROS: ${macros.macrosDiarios.totalKcal}kcal | P:${macros.macrosDiarios.totalProtein}g | C:${macros.macrosDiarios.totalCarbs}g | G:${macros.macrosDiarios.totalFat}g`;
-    }
-
-    return `- Nome: ${p?.full_name || 'Desconhecido'} ${beliscosInfo}\n    Dieta: ${isDietReady ? 'Pronta' : 'Pendente'} \n    Atrasado: ${p?.isLate ? 'Sim' : 'Não'} \n    Meta: ${p?.meta_peso ? `${p.meta_peso}kg` : 'N/A'} \n    Água: ${aguaHoje} \n    Humor: ${humorHoje} \n    Atividade: ${kcalHoje}${macrosText}`;
-  }).join('\n') || 'Nenhum paciente cadastrado.';
-
-  const leadsRaw = adminData?.leads;
-  const leadsList = Array.isArray(leadsRaw) ? leadsRaw : (leadsRaw ? Object.values(leadsRaw) : []);
-  const leadsResumo = leadsList.map((l: LeadRow) => `- Nome: ${l?.nome || 'Desconhecido'} | Whats: ${l?.whatsapp || 'Sem número'} | Status: ${l?.status || 'Sem status'}`).join('\n') || 'Nenhum lead pendente.';
-
-  const usageStats = adminData?.usageStats || {};
-  const activePatientsCount = Object.keys(usageStats).length;
+function buildAdminContext(overview: AdminOverview, currentTimeBR: string, deepContext: string, deepContextRaw?: string): string {
+  const { patientsResumo, leadsResumo, activePatientsCount, todayTotalMessages } = overview;
 
   return `
 Você é a Assistente de Inteligência Artificial exclusiva da Nutricionista Vanusa.
@@ -235,7 +274,7 @@ Você está operando no PAINEL ADMINISTRATIVO. Data e hora (Brasília): ${curren
 Seu objetivo é agir como uma co-piloto CLÍNICA e administrativa. Você TEM ACESSO COMPLETO aos dados dos pacientes, INCLUSIVE cardápios detalhados.
 
 📊 DADOS DE USO:
-- Mensagens da IA hoje: ${adminData?.todayTotalMessages || 0}
+- Mensagens da IA hoje: ${todayTotalMessages}
 - Pacientes ativos no chat: ${activePatientsCount}
 
 👥 VISÃO GERAL DOS PACIENTES:
@@ -280,7 +319,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ reply: "Dados de requisição inválidos." }, { status: 400 });
     }
 
-    const { message, history, image, adminData } = parsedData.data;
+    const { message, history, image } = parsedData.data;
     const safeMessage = message?.trim() || '';
 
     if (!safeMessage && !image) {
@@ -298,11 +337,13 @@ export async function POST(req: NextRequest) {
     let deepContext = '';
     let deepContextRaw = '';
     const normalizedMsg = normalizeString(safeMessage);
-    
-    const patientsRaw = adminData?.patients;
-    const patientsList: PatientRow[] = Array.isArray(patientsRaw) ? patientsRaw : (patientsRaw ? Object.values(patientsRaw) : []);
-    
-    const mentionedPatient = patientsList.find((p: PatientRow) => {
+
+    // 🔒 S1: contexto do painel montado AQUI no servidor (não aceito do cliente).
+    const overview = await fetchAdminOverview(supabaseAdmin);
+
+    const patientsList: OverviewPatient[] = overview.patients;
+
+    const mentionedPatient = patientsList.find((p) => {
       if (!p?.full_name) return false;
       const fullNameNorm = normalizeString(p.full_name);
       if (normalizedMsg.includes(fullNameNorm)) return true;
@@ -348,7 +389,7 @@ export async function POST(req: NextRequest) {
       `;
     }
 
-    const systemInstruction = buildAdminContext(adminData, currentTimeBR, deepContext, deepContextRaw);
+    const systemInstruction = buildAdminContext(overview, currentTimeBR, deepContext, deepContextRaw);
     
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
     
