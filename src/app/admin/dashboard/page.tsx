@@ -18,10 +18,7 @@ import { useRetentionMetrics } from './hooks/useRetentionMetrics';
 import { StatsBar } from './components/StatsBar';
 import { PatientGrid } from './components/PatientGrid';
 import VZ020RecoveryList from '@/components/admin/VZ020RecoveryList';
-import VZ020CopilotCard from '@/components/admin/VZ020CopilotCard';
 import { getRecoveryV2 } from '@/lib/vz020/recoveryEngine';
-import { buildCopilot } from '@/lib/vz020/copilot';
-import { buildPreConsult } from '@/lib/vz020/preConsultation';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder';
 import ChatAssistant from '@/components/ChatAssistant';
@@ -1047,58 +1044,6 @@ export default function AdminDashboardPage() {
                 >
                   <X size={18} />
                 </button>
-              </div>
-              {/* VZ-022 — Copiloto camada superior de contexto (não substitui abas) */}
-              <div className="px-4 md:px-5 pb-4 bg-stone-50/60 dark:bg-stone-800/20 border-y border-stone-100 dark:border-stone-800">
-                {(() => {
-                  const patient = state.patients.find((p) => p.id === state.evalModalOpen.patientId);
-                  if (!patient) return <p className="text-xs text-stone-400 py-2">Selecione um paciente para ver o contexto.</p>;
-                  const copilot = buildCopilot({
-                    profile: {
-                      full_name: patient.full_name,
-                      created_at: patient.created_at,
-                      account_type: (patient as unknown as { account_type?: string | null }).account_type ?? null,
-                      has_meal_plan_access: null,
-                    },
-                    lastCheckin: patient.days_since_last != null
-                      ? {
-                          created_at:
-                            (patient as unknown as { last_checkin_at?: string | null }).last_checkin_at ??
-                            // eslint-disable-next-line react-hooks/purity
-                            new Date(Date.now() - (patient.days_since_last ?? 0) * 86400000).toISOString(),
-                          peso: patient.peso != null ? String(patient.peso) : patient.weight != null ? String(patient.weight) : null,
-                          altura: patient.altura != null ? String(patient.altura) : patient.height != null ? String(patient.height) : null,
-                          adesao_ao_plano: (patient as unknown as { last_adesao?: number | null }).last_adesao ?? null,
-                          humor_semanal: (patient as unknown as { last_humor?: number | null }).last_humor ?? null,
-                          comentarios: (patient as unknown as { last_comentarios?: string | null }).last_comentarios ?? null,
-                        }
-                      : null,
-                    previousCheckin: null,
-                    dailyLogToday:
-                      patient.water_ml != null || patient.mood
-                        ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null, activity_kcal: null }
-                        : null,
-                    checkinsCount: patient.days_since_last != null ? 1 : 0,
-                    dailyLogsCount7d: 0,
-                    isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
-                  });
-                  const preConsult = buildPreConsult({
-                    lastCheckin: {
-                        created_at:
-                          (patient as unknown as { last_checkin_at?: string | null }).last_checkin_at ??
-                          // eslint-disable-next-line react-hooks/purity
-                          (patient.days_since_last != null ? new Date(Date.now() - patient.days_since_last * 86400000).toISOString() : null),
-                        peso: patient.peso != null ? String(patient.peso) : null,
-                        cintura: null,
-                        adesao_ao_plano: (patient as unknown as { last_adesao?: number | null }).last_adesao ?? null,
-                        humor_semanal: (patient as unknown as { last_humor?: number | null }).last_humor ?? null,
-                      },
-                    previousCheckin: null,
-                    dailyLogToday: { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null },
-                    isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
-                  });
-                  return <VZ020CopilotCard copilot={copilot} preConsult={preConsult} />;
-                })()}
               </div>
               <div className="flex gap-1 px-4 md:px-5 mt-0 pt-3 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Seções do prontuário">
                 <button

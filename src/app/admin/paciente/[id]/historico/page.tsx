@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { cn } from '@/ui/system';
 
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
+import CopilotTab from './components/CopilotTab';
 // 🔥 Sprint Z-001: histórico delega o cálculo metabólico ao modelo único (SSOT)
 import { buildMetabolicSnapshot, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 // Validador de QFA (perfil alimentar) — mantido aqui
@@ -126,7 +127,7 @@ interface Alert {
   waText?: string;
 }
 
-type ClinicalTab = 'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos';
+type ClinicalTab = 'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos' | 'copiloto';
 
 export default function PacienteHistoricoAdmin() {
   // =========================================================================
@@ -149,7 +150,7 @@ export default function PacienteHistoricoAdmin() {
   const [soapNote, setSoapNote] = useState({ s: '', o: '', a: '', p: '' });
   const [savingNote, setSavingNote] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<ClinicalTab>('prontuario');
+  const [activeTab, setActiveTab] = useState<ClinicalTab>('copiloto');
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
   
   const [isRadarExpanded, setIsRadarExpanded] = useState(false);
@@ -1296,6 +1297,7 @@ export default function PacienteHistoricoAdmin() {
           {/* ABAS INFERIORES PREMIUM (Scrollável no mobile) */}
           <div className="flex overflow-x-auto border-b border-stone-100 bg-stone-50/50 p-2 md:p-3 gap-1.5 md:gap-2 scrollbar-hide">
             {[
+              { id: 'copiloto', label: 'Copiloto', icon: <Brain size={14} /> },
               { id: 'prontuario', label: 'S.O.A.P', icon: <BookOpen size={14} /> },
               { id: 'diario', label: 'Diário', icon: <Coffee size={14} /> },
               { id: 'checkins', label: 'Check-ins', icon: <CalendarCheck size={14} /> },
@@ -1750,6 +1752,11 @@ export default function PacienteHistoricoAdmin() {
                   </table>
                 </div>
               </div>
+            )}
+
+            {/* COPILOTO */}
+            {activeTab === 'copiloto' && (
+              <CopilotTab profile={profile} history={history} dailyLogs={dailyLogs} />
             )}
 
             {/* BIOQUÍMICOS */}
