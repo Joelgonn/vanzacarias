@@ -17,6 +17,11 @@ import { useAutoActions } from './hooks/useAutoActions';
 import { useRetentionMetrics } from './hooks/useRetentionMetrics';
 import { StatsBar } from './components/StatsBar';
 import { PatientGrid } from './components/PatientGrid';
+import VZ020RecoveryList from '@/components/admin/VZ020RecoveryList';
+import VZ020CopilotCard from '@/components/admin/VZ020CopilotCard';
+import { getRecoveryV2 } from '@/lib/vz020/recoveryEngine';
+import { buildCopilot } from '@/lib/vz020/copilot';
+import { buildPreConsult } from '@/lib/vz020/preConsultation';
 import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder';
 import ChatAssistant from '@/components/ChatAssistant';
@@ -481,6 +486,25 @@ export default function AdminDashboardPage() {
       return (b.days_since_last ?? 0) - (a.days_since_last ?? 0);
     })[0] ?? null;
   }, [visiblePatients, chargedPatientIds]);
+
+  // VZ-020 — Recuperação (abaixo StatsBar, acima PatientGrid) — sem score/risk
+  const recoveryGroups = useMemo(() => {
+    return visiblePatients
+      .map((p) => {
+        const isCheckinDone = p.days_since_last != null ? p.days_since_last <= 7 : false;
+        const hasDailyLogToday = p.water_ml != null || p.mood != null;
+        const result = getRecoveryV2({
+          isCheckinDoneThisWeek: isCheckinDone,
+          hasDailyLogToday,
+          lastCheckinAdherence: null,
+          hasReturnedRecently: false,
+          totalCheckins: 0,
+        });
+        return { patient: p, result };
+      })
+      .filter((g) => g.result.state === 'OK')
+      .slice(0, 6);
+  }, [visiblePatients]);
   
   // =========================================================================
   // 4. HANDLERS ESPECÍFICOS (EDIT MODAL, ETC)
@@ -677,6 +701,26 @@ export default function AdminDashboardPage() {
           } : null}
         />
       </div>
+
+      {/* VZ-020 — Recuperação: abaixo StatsBar, acima PatientGrid */}
+      {recoveryGroups.length > 0 && (
+        <div className="mb-6 md:mb-8">
+          <h2 className="text-[11px] font-black uppercase tracking-widest text-stone-400 mb-3">Pacientes para acompanhar</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {recoveryGroups.map(({ patient, result }) => (
+              <VZ020RecoveryList
+                key={patient.id}
+                patientName={patient.full_name}
+                result={result}
+                onAction={(type) => {
+                  if (type === 'checkin' && patient.phone) handleAutoReminder(patient.id, patient.phone);
+                  else toast(`Abrir ${patient.full_name} — ${type}`);
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ==================== TABS ==================== */}
       <div className="flex gap-1.5 md:gap-2 overflow-x-auto scrollbar-hide p-1 md:p-1.5 bg-white dark:bg-stone-900 rounded-xl md:rounded-2xl mb-6 md:mb-8 w-max max-w-full shadow-[0_2px_8px_-3px_rgba(0,0,0,0.03)] dark:shadow-stone-900/50 border border-stone-100/80 dark:border-stone-800/80">
@@ -997,7 +1041,7 @@ export default function AdminDashboardPage() {
                   <p className="text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400 mt-0.5">{state.evalModalOpen.name}</p>
                 </div>
                 <button
-                  onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [] })}
+                  onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [], patientId: null })}
                   className="p-1.5 bg-stone-50 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition-colors"
                 >
                   <X size={18} />
@@ -1039,6 +1083,58 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </div>
+            {/* VZ-020.1 — Copiloto (topo do evalModal, antes das abas QFA) */}
+            {(() => {
+              const patient = state.patients.find((p) => p.id === state.evalModalOpen.patientId);
+              if (!patient) return null;
+              const copilot = buildCopilot({
+                profile: {
+                  full_name: patient.full_name,
+                  created_at: patient.created_at,
+                  account_type: (patient as unknown as { account_type?: string | null }).account_type ?? null,
+                  has_meal_plan_access: null,
+                },
+                lastCheckin: patient.days_since_last != null
+                  ? {
+                      // eslint-disable-next-line react-hooks/purity
+                      created_at: new Date(Date.now() - (patient.days_since_last ?? 0) * 86400000).toISOString(),
+                      peso: patient.peso != null ? String(patient.peso) : patient.weight != null ? String(patient.weight) : null,
+                      altura: patient.altura != null ? String(patient.altura) : patient.height != null ? String(patient.height) : null,
+                      adesao_ao_plano: null,
+                      humor_semanal: null,
+                      comentarios: null,
+                    }
+                  : null,
+                previousCheckin: null,
+                dailyLogToday:
+                  patient.water_ml != null || patient.mood
+                    ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null, activity_kcal: null }
+                    : null,
+                checkinsCount: patient.days_since_last != null ? 1 : 0,
+                dailyLogsCount7d: 0,
+                isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
+              });
+              const preConsult = buildPreConsult({
+                lastCheckin: copilot.sections
+                  ? {
+                      // eslint-disable-next-line react-hooks/purity
+                      created_at: patient.days_since_last != null ? new Date(Date.now() - patient.days_since_last * 86400000).toISOString() : null,
+                      peso: patient.peso != null ? String(patient.peso) : null,
+                      cintura: null,
+                      adesao_ao_plano: null,
+                      humor_semanal: null,
+                    }
+                  : null,
+                previousCheckin: null,
+                dailyLogToday: copilot.sections ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null } : null,
+                isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
+              });
+              return (
+                <div className="px-4 md:px-5 py-4 border-b border-stone-100 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/20">
+                  <VZ020CopilotCard copilot={copilot} preConsult={preConsult} />
+                </div>
+              );
+            })()}
             <div className="p-4 md:p-5 overflow-y-auto custom-scrollbar flex-1">
               {/* Aba Avaliação */}
               {evalModalActiveTab === 'avaliacao' && (

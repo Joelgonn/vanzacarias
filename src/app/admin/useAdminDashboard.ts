@@ -141,7 +141,8 @@ export function useAdminDashboard() {
     name: string;
     qfaData: Record<string, string> | null;
     foodRestrictions: FoodRestriction[];
-  }>({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [] });
+    patientId: string | null;
+  }>({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [], patientId: null });
 
   const [evalModalActiveTab, setEvalModalActiveTab] = useState<'avaliacao' | 'qfa' | 'perfil'>('avaliacao');
 
@@ -350,6 +351,7 @@ export function useAdminDashboard() {
       name: patient.full_name,
       qfaData: normalizeQFAAnswers(qfaData?.answers),
       foodRestrictions: patient.food_restrictions || [],
+      patientId: patient.id,
     });
     setEvalModalActiveTab('avaliacao');
   };
