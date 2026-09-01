@@ -50,6 +50,10 @@ interface AdminDashboardRow {
   weight?: number | null;
   altura?: number | null;
   height?: number | null;
+  last_adesao?: number | null;
+  last_humor?: number | null;
+  last_comentarios?: string | null;
+  last_checkin_at?: string | null;
 }
 
 export interface Patient {
@@ -77,6 +81,10 @@ export interface Patient {
   bf?: number | null;
   leanMass?: number | null;      // 👈 PADRONIZADO: só leanMass
   food_restrictions?: FoodRestriction[];
+  last_adesao?: number | null;
+  last_humor?: number | null;
+  last_comentarios?: string | null;
+  last_checkin_at?: string | null;
   // Campos antigos para compatibilidade (DEPRECATED)
   evaluation?: { answers: Record<string, string> };
   isLate?: boolean;
@@ -192,6 +200,10 @@ export function useAdminDashboard() {
       water_ml: rawPatient.water_ml,
       mood: rawPatient.mood,
       messages_today: rawPatient.messages_today,
+      last_adesao: (rawPatient as unknown as { last_adesao?: number | null }).last_adesao ?? null,
+      last_humor: (rawPatient as unknown as { last_humor?: number | null }).last_humor ?? null,
+      last_comentarios: (rawPatient as unknown as { last_comentarios?: string | null }).last_comentarios ?? null,
+      last_checkin_at: (rawPatient as unknown as { last_checkin_at?: string | null }).last_checkin_at ?? null,
       
       // Dados corporais
       peso: rawPatient.peso,

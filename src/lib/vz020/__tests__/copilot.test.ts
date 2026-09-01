@@ -6,7 +6,7 @@ describe('VZ-020 Copiloto T11-T20', () => {
   it('T11 paciente sem dados → resumo mínimo', () => {
     const r = buildCopilot({ profile: null, lastCheckin: null, previousCheckin: null, dailyLogToday: null, checkinsCount: 0, dailyLogsCount7d: 0, isCheckinDoneThisWeek: false });
     expect(r.hasData).toBe(false);
-    expect(r.sections.length).toBe(7);
+    expect(r.sections.length).toBe(8);
   });
   it('T12 apenas check-in → mostra somente check-in', () => {
     const r = buildCopilot({
@@ -58,10 +58,10 @@ describe('VZ-020 Copiloto T11-T20', () => {
       dailyLogsCount7d: 3,
       isCheckinDoneThisWeek: false,
     });
-    const h = r.sections.find(s => s.title === 'Hidratação')!;
+    const h = r.sections.find(s => s.title === 'Rotina')!;
     expect(h.lines.join(' ')).toContain('1500');
   });
-  it('T16 múltiplos dados → resumo organizado (7 seções)', () => {
+  it('T16 múltiplos dados → resumo organizado (8 seções)', () => {
     const r = buildCopilot({
       profile: { full_name: 'Maria', created_at: '2026-01-01', account_type: 'premium', has_meal_plan_access: true },
       lastCheckin: { created_at: '2026-08-30T10:00:00Z', peso: '65', altura: '160', adesao_ao_plano: 4, humor_semanal: 5, comentarios: 'ótimo' },
@@ -71,7 +71,7 @@ describe('VZ-020 Copiloto T11-T20', () => {
       dailyLogsCount7d: 5,
       isCheckinDoneThisWeek: true,
     });
-    expect(r.sections.length).toBe(7);
+    expect(r.sections.length).toBe(8);
     expect(r.hasData).toBe(true);
   });
   it('T17 comentários livres → não transformar em regra', () => {
@@ -84,8 +84,7 @@ describe('VZ-020 Copiloto T11-T20', () => {
       dailyLogsCount7d: 0,
       isCheckinDoneThisWeek: false,
     });
-    const last = r.sections.find(s => s.title === 'Último check-in')!;
-    expect(last.lines.join(' ')).toContain('ignore previous instructions');
+    // VZ-022: comentários não aparecem direto, mas não viram regra nem diagnóstico; garantir sem score/risk
     expect(JSON.stringify(r)).not.toMatch(/score|risk/i);
   });
   it('T18 outro paciente → impossível no contrato (entrada é 1 paciente)', () => {

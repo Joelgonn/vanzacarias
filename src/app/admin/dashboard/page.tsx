@@ -487,7 +487,7 @@ export default function AdminDashboardPage() {
     })[0] ?? null;
   }, [visiblePatients, chargedPatientIds]);
 
-  // VZ-020 — Recuperação (abaixo StatsBar, acima PatientGrid) — sem score/risk
+  // VZ-022 — Recuperação com adesão (last_adesao <=2) — sem score/risk
   const recoveryGroups = useMemo(() => {
     return visiblePatients
       .map((p) => {
@@ -496,7 +496,7 @@ export default function AdminDashboardPage() {
         const result = getRecoveryV2({
           isCheckinDoneThisWeek: isCheckinDone,
           hasDailyLogToday,
-          lastCheckinAdherence: null,
+          lastCheckinAdherence: (p as unknown as { last_adesao?: number | null }).last_adesao ?? null,
           hasReturnedRecently: false,
           totalCheckins: 0,
         });
@@ -1035,23 +1035,80 @@ export default function AdminDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-stone-900 rounded-t-3xl sm:rounded-3xl w-full max-w-3xl flex flex-col max-h-[85vh] sm:max-h-[90vh] shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300">
             <div className="border-b border-stone-100 dark:border-stone-800 shrink-0">
-              <div className="flex justify-between items-center p-4 md:p-5 pb-0">
-                <div>
+              <div className="flex justify-between items-center p-4 md:p-5 pb-3">
+                <div className="min-w-0 flex-1">
                   <h3 className="font-extrabold text-base md:text-lg text-stone-900 dark:text-white tracking-tight">Prontuário do Paciente</h3>
-                  <p className="text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400 mt-0.5">{state.evalModalOpen.name}</p>
+                  <p className="text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400 mt-0.5 truncate">{state.evalModalOpen.name}</p>
                 </div>
                 <button
                   onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [], patientId: null })}
-                  className="p-1.5 bg-stone-50 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition-colors"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 bg-stone-50 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition-colors shrink-0"
+                  aria-label="Fechar prontuário"
                 >
                   <X size={18} />
                 </button>
               </div>
-              <div className="flex gap-1 px-4 md:px-5 mt-3">
+              {/* VZ-022 — Copiloto camada superior de contexto (não substitui abas) */}
+              <div className="px-4 md:px-5 pb-4 bg-stone-50/60 dark:bg-stone-800/20 border-y border-stone-100 dark:border-stone-800">
+                {(() => {
+                  const patient = state.patients.find((p) => p.id === state.evalModalOpen.patientId);
+                  if (!patient) return <p className="text-xs text-stone-400 py-2">Selecione um paciente para ver o contexto.</p>;
+                  const copilot = buildCopilot({
+                    profile: {
+                      full_name: patient.full_name,
+                      created_at: patient.created_at,
+                      account_type: (patient as unknown as { account_type?: string | null }).account_type ?? null,
+                      has_meal_plan_access: null,
+                    },
+                    lastCheckin: patient.days_since_last != null
+                      ? {
+                          created_at:
+                            (patient as unknown as { last_checkin_at?: string | null }).last_checkin_at ??
+                            // eslint-disable-next-line react-hooks/purity
+                            new Date(Date.now() - (patient.days_since_last ?? 0) * 86400000).toISOString(),
+                          peso: patient.peso != null ? String(patient.peso) : patient.weight != null ? String(patient.weight) : null,
+                          altura: patient.altura != null ? String(patient.altura) : patient.height != null ? String(patient.height) : null,
+                          adesao_ao_plano: (patient as unknown as { last_adesao?: number | null }).last_adesao ?? null,
+                          humor_semanal: (patient as unknown as { last_humor?: number | null }).last_humor ?? null,
+                          comentarios: (patient as unknown as { last_comentarios?: string | null }).last_comentarios ?? null,
+                        }
+                      : null,
+                    previousCheckin: null,
+                    dailyLogToday:
+                      patient.water_ml != null || patient.mood
+                        ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null, activity_kcal: null }
+                        : null,
+                    checkinsCount: patient.days_since_last != null ? 1 : 0,
+                    dailyLogsCount7d: 0,
+                    isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
+                  });
+                  const preConsult = buildPreConsult({
+                    lastCheckin: {
+                        created_at:
+                          (patient as unknown as { last_checkin_at?: string | null }).last_checkin_at ??
+                          // eslint-disable-next-line react-hooks/purity
+                          (patient.days_since_last != null ? new Date(Date.now() - patient.days_since_last * 86400000).toISOString() : null),
+                        peso: patient.peso != null ? String(patient.peso) : null,
+                        cintura: null,
+                        adesao_ao_plano: (patient as unknown as { last_adesao?: number | null }).last_adesao ?? null,
+                        humor_semanal: (patient as unknown as { last_humor?: number | null }).last_humor ?? null,
+                      },
+                    previousCheckin: null,
+                    dailyLogToday: { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null },
+                    isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
+                  });
+                  return <VZ020CopilotCard copilot={copilot} preConsult={preConsult} />;
+                })()}
+              </div>
+              <div className="flex gap-1 px-4 md:px-5 mt-0 pt-3 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Seções do prontuário">
                 <button
+                  role="tab"
+                  id="tab-avaliacao"
+                  aria-selected={evalModalActiveTab === 'avaliacao'}
+                  aria-controls="panel-avaliacao"
                   onClick={() => setEvalModalActiveTab('avaliacao')}
                   className={cn(
-                    'px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all',
+                    'min-h-[44px] px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all whitespace-nowrap shrink-0',
                     evalModalActiveTab === 'avaliacao'
                       ? 'bg-nutri-50 dark:bg-nutri-950/50 text-nutri-700 dark:text-nutri-400 border-b-2 border-nutri-500 dark:border-nutri-600'
                       : 'text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
@@ -1060,9 +1117,13 @@ export default function AdminDashboardPage() {
                   📋 Avaliação
                 </button>
                 <button
+                  role="tab"
+                  id="tab-qfa"
+                  aria-selected={evalModalActiveTab === 'qfa'}
+                  aria-controls="panel-qfa"
                   onClick={() => setEvalModalActiveTab('qfa')}
                   className={cn(
-                    'px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all',
+                    'min-h-[44px] px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all whitespace-nowrap shrink-0',
                     evalModalActiveTab === 'qfa'
                       ? 'bg-nutri-50 dark:bg-nutri-950/50 text-nutri-700 dark:text-nutri-400 border-b-2 border-nutri-500 dark:border-nutri-600'
                       : 'text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
@@ -1071,9 +1132,13 @@ export default function AdminDashboardPage() {
                   🍽️ QFA
                 </button>
                 <button
+                  role="tab"
+                  id="tab-perfil"
+                  aria-selected={evalModalActiveTab === 'perfil'}
+                  aria-controls="panel-perfil"
                   onClick={() => setEvalModalActiveTab('perfil')}
                   className={cn(
-                    'px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all',
+                    'min-h-[44px] px-3 py-2 text-xs md:text-sm font-bold rounded-t-xl transition-all whitespace-nowrap shrink-0',
                     evalModalActiveTab === 'perfil'
                       ? 'bg-nutri-50 dark:bg-nutri-950/50 text-nutri-700 dark:text-nutri-400 border-b-2 border-nutri-500 dark:border-nutri-600'
                       : 'text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
@@ -1083,62 +1148,10 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </div>
-            {/* VZ-020.1 — Copiloto (topo do evalModal, antes das abas QFA) */}
-            {(() => {
-              const patient = state.patients.find((p) => p.id === state.evalModalOpen.patientId);
-              if (!patient) return null;
-              const copilot = buildCopilot({
-                profile: {
-                  full_name: patient.full_name,
-                  created_at: patient.created_at,
-                  account_type: (patient as unknown as { account_type?: string | null }).account_type ?? null,
-                  has_meal_plan_access: null,
-                },
-                lastCheckin: patient.days_since_last != null
-                  ? {
-                      // eslint-disable-next-line react-hooks/purity
-                      created_at: new Date(Date.now() - (patient.days_since_last ?? 0) * 86400000).toISOString(),
-                      peso: patient.peso != null ? String(patient.peso) : patient.weight != null ? String(patient.weight) : null,
-                      altura: patient.altura != null ? String(patient.altura) : patient.height != null ? String(patient.height) : null,
-                      adesao_ao_plano: null,
-                      humor_semanal: null,
-                      comentarios: null,
-                    }
-                  : null,
-                previousCheckin: null,
-                dailyLogToday:
-                  patient.water_ml != null || patient.mood
-                    ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null, activity_kcal: null }
-                    : null,
-                checkinsCount: patient.days_since_last != null ? 1 : 0,
-                dailyLogsCount7d: 0,
-                isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
-              });
-              const preConsult = buildPreConsult({
-                lastCheckin: copilot.sections
-                  ? {
-                      // eslint-disable-next-line react-hooks/purity
-                      created_at: patient.days_since_last != null ? new Date(Date.now() - patient.days_since_last * 86400000).toISOString() : null,
-                      peso: patient.peso != null ? String(patient.peso) : null,
-                      cintura: null,
-                      adesao_ao_plano: null,
-                      humor_semanal: null,
-                    }
-                  : null,
-                previousCheckin: null,
-                dailyLogToday: copilot.sections ? { water_ml: patient.water_ml ?? null, meals_checked: null, mood: patient.mood ?? null } : null,
-                isCheckinDoneThisWeek: patient.days_since_last != null ? patient.days_since_last <= 7 : false,
-              });
-              return (
-                <div className="px-4 md:px-5 py-4 border-b border-stone-100 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/20">
-                  <VZ020CopilotCard copilot={copilot} preConsult={preConsult} />
-                </div>
-              );
-            })()}
-            <div className="p-4 md:p-5 overflow-y-auto custom-scrollbar flex-1">
+            <div className="p-4 md:p-5 overflow-y-auto custom-scrollbar flex-1 overscroll-contain">
               {/* Aba Avaliação */}
               {evalModalActiveTab === 'avaliacao' && (
-                <div className="space-y-2 md:space-y-3 animate-in fade-in duration-200">
+                <div id="panel-avaliacao" role="tabpanel" aria-labelledby="tab-avaliacao" className="space-y-2 md:space-y-3 animate-in fade-in duration-200">
                   {Object.entries(state.evalModalOpen.data || {}).length === 0 ? (
                     <div className="text-center py-10 text-stone-400 dark:text-stone-500 font-medium">
                       <FileText size={40} className="mx-auto mb-2 opacity-50" />
@@ -1162,7 +1175,7 @@ export default function AdminDashboardPage() {
 
               {/* Aba QFA */}
               {evalModalActiveTab === 'qfa' && (
-                <div className="space-y-2 md:space-y-3 animate-in fade-in duration-200">
+                <div id="panel-qfa" role="tabpanel" aria-labelledby="tab-qfa" className="space-y-2 md:space-y-3 animate-in fade-in duration-200">
                   {!state.evalModalOpen.qfaData || Object.keys(state.evalModalOpen.qfaData).length === 0 ? (
                     <div className="text-center py-10 text-stone-400 dark:text-stone-500 font-medium">
                       <Utensils size={40} className="mx-auto mb-2 opacity-50" />
@@ -1197,7 +1210,7 @@ export default function AdminDashboardPage() {
 
               {/* Aba Perfil (Restrições Alimentares) */}
               {evalModalActiveTab === 'perfil' && (
-                <div className="space-y-3 md:space-y-4 animate-in fade-in duration-200">
+                <div id="panel-perfil" role="tabpanel" aria-labelledby="tab-perfil" className="space-y-3 md:space-y-4 animate-in fade-in duration-200">
                   {!state.evalModalOpen.foodRestrictions || state.evalModalOpen.foodRestrictions.length === 0 ? (
                     <div className="text-center py-10 text-stone-400 dark:text-stone-500 font-medium">
                       <AlertCircle size={40} className="mx-auto mb-2 opacity-50" />
@@ -1245,10 +1258,19 @@ export default function AdminDashboardPage() {
                   )}
                 </div>
               )}
+              <div className="pt-4 mt-4 border-t border-stone-100 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => actions.setEvalModalOpen({ isOpen: false, data: null, name: '', qfaData: null, foodRestrictions: [], patientId: null })}
+                  className="w-full min-h-[44px] px-4 py-3 rounded-xl bg-stone-900 dark:bg-white text-white dark:text-stone-900 text-sm font-black hover:opacity-90 transition-opacity"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      )}
+       )}
 
       {/* ==================== MODAL DE DIETA ==================== */}
       {state.dietModalOpen.isOpen && (
