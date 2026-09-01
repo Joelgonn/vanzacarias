@@ -13,7 +13,8 @@ import { getSemanticMemories } from '@/lib/semanticSearch'
 import { generateEmbedding } from '@/lib/embeddingService'
 import { expandRestrictions } from '@/lib/nutrition/restrictions'
 import { FOOD_REGISTRY } from '@/lib/foodRegistry'
-import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
+import { startObs, mark, logObs } from '@/lib/chatObservability'
+import { trackCommerceEvent } from '@/lib/commerceEvents'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos } from '@/lib/beliscosProcessor'
@@ -210,10 +211,12 @@ async function persistInteraction(
 // ==========================================
 
 export async function POST(req: NextRequest) {
+  const obs = startObs();
   try {
     // 🔒 AUTENTICAÇÃO NO SERVIDOR: valida a sessão via cookie e NUNCA
     // confia no userId enviado pelo cliente (proteção contra IDOR).
     const auth = await requireUser(req);
+    mark(obs, 'auth_duration');
     if (auth.error) {
       return auth.error;
     }
@@ -316,28 +319,10 @@ export async function POST(req: NextRequest) {
       humor_semanal?: number | null;
       comentarios?: string | null;
     }>;
+    mark(obs, 'data_fetch_duration');
     
-    // PROCESSAR BELISCOS
+    // PROCESSAR BELISCOS (V-016: histórico apenas para behaviorEngine admin, removido do paciente)
     const beliscosProcessed = processBeliscos(dailyLog?.beliscos);
-    
-    // BUSCAR HISTÓRICO
-    const { data: historicoBeliscosRaw } = await supabaseAdmin
-      .from('daily_logs')
-      .select('date, beliscos')
-      .eq('user_id', userId)
-      .order('date', { ascending: false })
-      .limit(4);
-    
-    const historicoBeliscos = (historicoBeliscosRaw || [])
-      .map(log => {
-        const parsed = processBeliscos(log.beliscos);
-        return {
-          data: log.date,
-          totalKcal: parsed.totalKcal,
-          itemsCount: parsed.items.length
-        };
-      })
-      .filter(d => d.data !== todayStr);
     
     const safeMealPlan = MealPlanSchema.parse(profile?.meal_plan);
     
@@ -375,21 +360,6 @@ export async function POST(req: NextRequest) {
       macrosPorRefeicao = macros.macrosPorRefeicao;
       cardapioFormatado = formatMealPlan(safeMealPlan);
     }
-
-    // DETECTAR PADRÃO DE COMPORTAMENTO
-    const behaviorPattern = detectSabotagePattern({
-      beliscos: beliscosProcessed,
-      macrosDiarios: macrosDiarios || undefined,
-      humorHoje: dailyLog?.mood,
-      historicoBeliscos,
-      objetivoPrincipal: evaluation?.answers?.["0"],
-      refeicoesFeitas: dailyLog?.meals_checked?.length || 0,
-      totalRefeicoesPlano: macrosPorRefeicao?.length || 0,
-      aguaHoje: dailyLog?.water_ml || 0,
-      activityKcal: dailyLog?.activity_kcal || 0
-    });
-    
-    const interventionSuggestion = buildIntervention(behaviorPattern, evaluation?.answers?.["0"]);
 
     // 🔒 FASE B (VZ-012): CONTEXTO TEMPORAL — APENAS DADOS OBJETIVOS.
     // NUNCA converte ausência de movimento em diagnóstico/risco/abandono.
@@ -506,8 +476,6 @@ export async function POST(req: NextRequest) {
         items: beliscosProcessed.items,
         hasBeliscos: beliscosProcessed.hasBeliscos
       },
-      behaviorPattern,
-      interventionSuggestion,
       canAccessMealPlan,
       temporal: temporalContext,
       progress: progressContext
@@ -517,9 +485,13 @@ export async function POST(req: NextRequest) {
     const baseContext = buildContext(safeMessage, userDataForContext);
 
     const summary = await getUserSummary(userId);
+    mark(obs, 'memory_duration');
     const msgLower = safeMessage.toLowerCase();
     const shouldUseMemory = !!safeImage || safeMessage.length > 20 || msgLower.includes('trocar');
-    const semanticMemory = (shouldUseMemory && safeMessage) ? await getSemanticMemories(userId, safeMessage) : '';
+    const semanticMemory = (shouldUseMemory && safeMessage) ? await getSemanticMemories(userId, safeMessage, canAccessMealPlan) : '';
+    mark(obs, 'rag_duration');
+    // VZ-018 métrica comercial sem conteúdo clínico
+    void trackCommerceEvent(userId, 'chatbot_message', { hasImage: !!safeImage, historyLength: history.length }, canAccessMealPlan);
 
     // 🔒 I1: systemInstruction contém APENAS contexto estruturado do paciente
     // (dados + instruções de tarefa). Memória (RESUMO) e RAG (semanticMemory)
@@ -587,6 +559,7 @@ ${baseContext}`.trim();
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        let firstChunk = true;
         try {
           const promptParts = safeImage
             ? [safeMessage || "Analise esse prato", { inlineData: { mimeType: "image/jpeg", data: safeImage } }]
@@ -598,12 +571,17 @@ ${baseContext}`.trim();
           for await (const chunk of streamResult.stream) {
             const delta = chunk.text() ?? '';
             if (!delta) continue;
+            if (firstChunk) {
+              firstChunk = false;
+              mark(obs, 'gemini_first_chunk');
+            }
             fullReply += delta;
             // Progressivo apenas quando não há guardrail a aplicar.
             if (canStreamProgressive) {
               emit(controller, { t: 'chunk', d: delta });
             }
           }
+          mark(obs, 'gemini_done');
 
           if (!fullReply) {
             fullReply = 'Pode repetir?';
@@ -612,12 +590,16 @@ ${baseContext}`.trim();
           // Guardrail obrigatório para quem tem restrições (nunca transmitido antes).
           let finalReply = fullReply;
           if (!canStreamProgressive) {
+            const gStart = Date.now();
             finalReply = await ensureSafeResponse(fullReply, safeRestrictions, chat);
+            mark(obs, 'guardrail_duration');
+            void gStart; // suppress unused
           }
 
           // Persistência única da resposta final consolidada (nunca por chunk).
           if (finalReply && finalReply !== 'Pode repetir?') {
             await persistInteraction(userId, qText, finalReply);
+            mark(obs, 'persistence_duration');
           }
 
           // Emite o conteúdo (1 chunk para validado, já progressivo para o outro).
@@ -625,9 +607,13 @@ ${baseContext}`.trim();
             emit(controller, { t: 'chunk', d: finalReply });
           }
           emit(controller, { t: 'done', reply: finalReply, remaining, limit });
+          mark(obs, 'total_duration');
+          logObs(userId, obs, { canAccessMealPlan, hasImage: !!safeImage, remaining, limit, cached: false, streaming: true });
           controller.close();
         } catch (error) {
           console.error('Erro no streaming Patient:', error);
+          mark(obs, 'total_duration');
+          logObs(userId, obs, { canAccessMealPlan, hasImage: !!safeImage, error: true });
           emit(controller, { t: 'error', reply: 'Tive um pequeno soluço técnico. Pode tentar novamente?' });
           try { controller.close(); } catch { /* ignored */ }
         }
@@ -643,6 +629,7 @@ ${baseContext}`.trim();
 
   } catch (error) {
     console.error('Erro na API Patient:', error);
+    try { mark(obs, 'total_duration'); logObs('unknown', obs, { error: true }); } catch {}
     return NextResponse.json({ reply: 'Tive um pequeno soluço técnico. Pode tentar novamente?' }, { status: 500 });
   }
 }

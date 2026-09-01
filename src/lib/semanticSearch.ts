@@ -16,10 +16,12 @@ interface MatchResult {
 }
 
 // ==========================================
-// ⚙️ CONFIGURAÇÕES E THRESHOLD FIXO
+// ⚙️ CONFIGURAÇÕES E THRESHOLD FIXO — VZ-017
 // ==========================================
-const MAX_RESULTS = 3;
-const INITIAL_FETCH = 5; // busca mais pra filtrar depois
+const MAX_RESULTS_FREE = 2;
+const MAX_RESULTS_PREMIUM = 5;
+const INITIAL_FETCH_FREE = 4;
+const INITIAL_FETCH_PREMIUM = 7;
 
 // 🔥 AJUSTE DE PERFORMANCE: Threshold fixo e ideal para o text-embedding-3-small.
 // Isso elimina a necessidade de fazer um "SELECT COUNT" no banco a cada mensagem.
@@ -30,7 +32,8 @@ const SIMILARITY_THRESHOLD = 0.65;
 // ==========================================
 export async function getSemanticMemories(
   userId: string,
-  message: string
+  message: string,
+  canAccessMealPlan?: boolean
 ): Promise<string> {
 
   if (!userId || !message) return '';
@@ -47,12 +50,15 @@ export async function getSemanticMemories(
     }
 
     // ==========================================
-    // 🔍 BUSCA NO BANCO
+    // 🔍 BUSCA NO BANCO — VZ-017: diferencia Free/Premium
     // ==========================================
+    const isPremium = canAccessMealPlan === true;
+    const fetchCount = isPremium ? INITIAL_FETCH_PREMIUM : INITIAL_FETCH_FREE;
+    const maxResults = isPremium ? MAX_RESULTS_PREMIUM : MAX_RESULTS_FREE;
     const { data, error } = await supabase.rpc('match_messages', {
       query_embedding: embedding,
       match_user_id: userId,
-      match_count: INITIAL_FETCH
+      match_count: fetchCount
     });
 
     if (error || !data || data.length === 0) {
@@ -61,10 +67,12 @@ export async function getSemanticMemories(
     }
 
     // ==========================================
-    // 🧪 DEBUG (IMPORTANTE)
+    // 🧪 DEBUG — VZ-016: apenas em desenvolvimento
     // ==========================================
-    console.log('[RAG] Threshold Aplicado:', SIMILARITY_THRESHOLD);
-    console.log('[RAG] Similaridades:', data.map((d: MatchResult) => d.similarity));
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[RAG] Threshold Aplicado:', SIMILARITY_THRESHOLD);
+      console.log('[RAG] Similaridades:', data.map((d: MatchResult) => d.similarity));
+    }
 
     // ==========================================
     // 🔥 FILTRO DE QUALIDADE
@@ -77,10 +85,12 @@ export async function getSemanticMemories(
         item.question?.length > 10 &&
         item.answer?.length > 20
       )
-      .slice(0, MAX_RESULTS);
+      .slice(0, maxResults);
 
     if (filtered.length === 0) {
-      console.log('[RAG] Nenhuma memória relevante após filtro');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[RAG] Nenhuma memória relevante após filtro');
+      }
       return '';
     }
 

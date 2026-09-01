@@ -30,10 +30,23 @@ export async function POST(request: Request) {
 
     if (paymentData.status === 'approved') {
       const userId = paymentData.external_reference;
-      // Recuperamos o tipo de plano que passamos na metadata do checkout
-      const planType = paymentData.metadata?.plan_type; 
+      const planType = paymentData.metadata?.plan_type;
+      const paymentId = String(paymentData.id);
 
       if (userId) {
+        // Idempotência: se já existe upgrade_success para este payment_id, não reprocessa
+        const { data: existing } = await supabaseAdmin
+          .from('commerce_events')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('event', 'upgrade_success')
+          .contains('metadata', { payment_id: paymentId })
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.log(`[WEBHOOK] Pagamento ${paymentId} já processado para ${userId} — idempotente`);
+          return NextResponse.json({ success: true, deduplicated: true }, { status: 200 });
+        }
+
         const updateData: ProfileUpdate = { 
           payment_status: 'approved',
           updated_at: new Date().toISOString() 
@@ -48,8 +61,6 @@ export async function POST(request: Request) {
           updateData.has_meal_plan_access = true;
         }
         else if (planType === 'consultation') {
-          // Aqui você pode criar uma entrada na tabela de agendamentos/pagamentos
-          // se quiser registrar que o paciente tem uma consulta paga pendente
           await supabaseAdmin
             .from('consultation_credits') 
             .insert([{ user_id: userId, status: 'paid', created_at: new Date().toISOString() }]);
@@ -62,7 +73,27 @@ export async function POST(request: Request) {
 
         if (error) throw error;
         
-        console.log(`[SUCESSO] Pagamento aprovado (${planType}) para ${userId}`);
+        // VZ-019: registra upgrade_success sem conteúdo clínico, com payment_id para idempotência
+        const isPremium = planType === 'premium' || planType === 'meal_plan';
+        try {
+          await supabaseAdmin.from('commerce_events').insert({
+            user_id: userId,
+            event: 'upgrade_success',
+            is_premium: !!isPremium,
+            metadata: { plan_type: planType, payment_id: paymentId }
+          });
+          // também checkout_completed para funil
+          await supabaseAdmin.from('commerce_events').insert({
+            user_id: userId,
+            event: 'checkout_completed',
+            is_premium: !!isPremium,
+            metadata: { plan_type: planType, payment_id: paymentId }
+          });
+        } catch (e) {
+          console.warn('[WEBHOOK] falha ao registrar commerce_events (não quebra webhook)', e);
+        }
+        
+        console.log(`[SUCESSO] Pagamento aprovado (${planType}) para ${userId} payment ${paymentId}`);
       }
     }
 

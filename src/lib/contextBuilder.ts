@@ -72,7 +72,8 @@ export type UserData = {
     hasBeliscos: boolean;
   };
 
-  // ANÁLISE COMPORTAMENTAL
+  // ANÁLISE COMPORTAMENTAL — VZ-016: ADMIN-ONLY, não alimentar prompt paciente
+  // Paciente NÃO deve receber score/riskLevel/disciplineScore/sabotage (contrato VZ-012)
   behaviorPattern?: {
     isSabotaging: boolean;
     signals: {
@@ -463,7 +464,9 @@ ${itensLista}
 }
 
 // ============================================================================
-// 🧠 MÓDULO: ANÁLISE COMPORTAMENTAL (INTERPRETAÇÃO + INTERVENÇÃO)
+// 🧠 MÓDULO: ANÁLISE COMPORTAMENTAL (INTERPRETAÇÃO + INTERVENÇÃO) — VZ-016
+// ADMIN-ONLY: paciente NÃO alimenta este módulo (behaviorPattern não é
+// passado em patient/route.ts). Admin continua utilizando via buildContext.
 // ============================================================================
 function buildBehaviorAnalysisContext(data: UserData): string {
   if (!data.behaviorPattern || !data.behaviorPattern.isSabotaging) {

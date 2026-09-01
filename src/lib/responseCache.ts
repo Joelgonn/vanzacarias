@@ -32,9 +32,11 @@ export async function getCachedResponse(
   const normalized = normalizeText(message);
 
   // ===============================
-  // 📅 HOJE
+  // 📅 HOJE — VZ-016: alinhado ao rateLimiter (America/Sao_Paulo)
   // ===============================
-  const startOfDay = new Date();
+  const now = new Date();
+  const tzString = now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+  const startOfDay = new Date(tzString);
   startOfDay.setHours(0, 0, 0, 0);
 
   // ===============================
@@ -54,16 +56,13 @@ export async function getCachedResponse(
   }
 
   // ===============================
-  // 🧠 MATCH SIMPLES
+  // 🧠 MATCH EXATO — VZ-017: corrige falso-positivo do prefixo 20
   // ===============================
   for (const msg of data) {
     const normalizedStored = normalizeText(msg.question);
 
-    // 🔥 comparação simples (prefixo + includes)
-    if (
-      normalizedStored.includes(normalized.slice(0, 20)) ||
-      normalized.includes(normalizedStored.slice(0, 20))
-    ) {
+    // VZ-017: igualdade exata após normalização (sem acento/pontuação/case)
+    if (normalized === normalizedStored) {
       return msg.answer;
     }
   }

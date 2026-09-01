@@ -20,12 +20,11 @@ export async function checkRateLimit(userId: string) {
 
   try {
     // ===============================
-    // 1. CHECAGEM DE PERFIL E PLANO
+    // 1. CHECAGEM DE PERFIL E PLANO — VZ-017
     // ===============================
-    // Buscamos o papel (role) e futuramente você pode adicionar a coluna 'plan' aqui
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('role, status') 
+      .select('role, status, account_type, has_meal_plan_access') 
       .eq('id', userId)
       .limit(1);
 
@@ -33,7 +32,7 @@ export async function checkRateLimit(userId: string) {
       console.error('[Rate Limiter] Erro ao buscar perfil:', profileError);
     }
 
-    const userProfile = profileData?.[0];
+    const userProfile = profileData?.[0] as { role?: string; account_type?: string | null; has_meal_plan_access?: boolean | null; status?: string | null } | undefined;
 
     // ===============================
     // 2. REGRA DO ADMINISTRADOR
@@ -49,10 +48,10 @@ export async function checkRateLimit(userId: string) {
     }
 
     // ===============================
-    // 3. REGRA DO PACIENTE / MONETIZAÇÃO
+    // 3. REGRA DO PACIENTE / MONETIZAÇÃO — VZ-017
     // ===============================
-    // Aqui você altera no futuro: const DAILY_LIMIT = userProfile?.plan === 'premium' ? 200 : 25;
-    const DAILY_LIMIT = 25; 
+    const isPremium = userProfile?.account_type === 'premium' || !!userProfile?.has_meal_plan_access;
+    const DAILY_LIMIT = isPremium ? 80 : 25; 
 
     // ===============================
     // 4. INÍCIO E FIM DO DIA (FUSO HORÁRIO BRASIL)

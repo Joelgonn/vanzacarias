@@ -58,10 +58,10 @@ export interface AdminContext {
   bodyComposition?: BodyComposition | null;
 }
 
-// 🔥 BLINDAGEM MÁXIMA (TypeScript Discriminated Union)
+// 🔥 BLINDAGEM MÁXIMA (TypeScript Discriminated Union) — VZ-017: canAccessMealPlan para quick actions premium
 export type ChatAssistantProps =
   | { role: 'admin'; adminContext: AdminContext }
-  | { role: 'patient'; adminContext?: never };
+  | { role: 'patient'; adminContext?: never; canAccessMealPlan?: boolean };
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -90,12 +90,19 @@ const MAX_MESSAGE_LENGTH = 500;
 // VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
 // chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
 // duplicam regras clínicas e não expõem conteúdo Premium no botão.
-const QUICK_ACTIONS = [
+// VZ-017: diferenciação Free (3) vs Premium (5) — premium contextualizadas
+const QUICK_ACTIONS_FREE = [
+  'Como está minha evolução?',
+  'Como posso melhorar minha alimentação?',
+  'Registrar uma refeição'
+];
+
+const QUICK_ACTIONS_PREMIUM = [
   'Como está minha evolução?',
   'O que devo priorizar hoje?',
-  'Como posso melhorar minha alimentação?',
   'Quero rever meu plano',
-  'Analisar uma refeição'
+  'Analisar uma refeição',
+  'O que mudou na minha jornada?'
 ];
 
 const compressImage = (file: File): Promise<string> => {
@@ -489,7 +496,9 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
 // ===============================
 
 export default function ChatAssistant(props: ChatAssistantProps) {
-  const { role, adminContext } = props;
+  const { role, adminContext } = props as ChatAssistantProps & { canAccessMealPlan?: boolean };
+  const canAccessMealPlan = (props as { canAccessMealPlan?: boolean }).canAccessMealPlan === true;
+  const quickActions = canAccessMealPlan ? QUICK_ACTIONS_PREMIUM : QUICK_ACTIONS_FREE;
   const isRoleAdmin = role === 'admin';
   
   const state = useChatState();
@@ -598,8 +607,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   />
                 </div>
                 <div className="flex flex-col">
-                  <h4 className="font-bold text-[15px] leading-tight text-white tracking-tight">
+                  <h4 className="font-bold text-[15px] leading-tight text-white tracking-tight flex items-center gap-2">
                     Nutri <span className="text-emerald-400">Van</span>
+                    {!isRoleAdmin && canAccessMealPlan && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">
+                        Premium
+                      </span>
+                    )}
+                    {!isRoleAdmin && !canAccessMealPlan && (
+                      <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-stone-300">
+                        Gratuito
+                      </span>
+                    )}
                   </h4>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="relative flex h-2 w-2">
@@ -666,7 +685,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
 
                   {!isRoleAdmin && (
                     <div className="w-full flex flex-wrap justify-center gap-2 pt-1" role="group" aria-label="Ações rápidas">
-                      {QUICK_ACTIONS.map((qa) => (
+                      {quickActions.map((qa) => (
                         <button
                           key={qa}
                           type="button"

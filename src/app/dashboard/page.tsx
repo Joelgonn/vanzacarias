@@ -14,11 +14,17 @@ import ChatAssistant from '@/components/ChatAssistant';
 import AddActivityModal from '@/components/AddActivityModal';
 import DashboardHero from '@/components/dashboard/DashboardHero';
 import DailyJourney from '@/components/dashboard/DailyJourney';
+import FocusTodayCard from '@/components/dashboard/FocusTodayCard';
+import RecoveryTodayCard from '@/components/dashboard/RecoveryTodayCard';
+import PremiumAccessCard from '@/components/dashboard/PremiumAccessCard';
 import ProgressChart from '@/components/dashboard/ProgressChart';
 import NextBestAction from '@/components/dashboard/NextBestAction';
 import { getTotalActivityKcal } from '@/lib/activities';
 import type { Activity } from '@/lib/activities';
 import * as checkinLib from '@/lib/checkin';
+import { getFocus } from '@/lib/vz015/focusEngine';
+import { getRecovery } from '@/lib/vz015/recoveryEngine';
+import type { FocusInput } from '@/lib/vz015/types';
 import { toast } from 'sonner';
 
 // =========================================================================
@@ -46,6 +52,14 @@ const getLocalTodayString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+const getDaysSince = (dateString?: string | null) => {
+  if (!dateString) return null;
+  const diff = Date.now() - new Date(dateString).getTime();
+  return Math.max(0, Math.floor(diff / DAY_MS));
+};
+
 // =========================================================================
 // TIPOS DAS LINHAS DO SUPABASE USADAS NO DASHBOARD
 // =========================================================================
@@ -71,6 +85,7 @@ interface CheckinRow {
   altura: string;
   cintura: string;
   adesao_ao_plano: number;
+  humor_semanal?: number | null;
 }
 
 interface AntroRow {
@@ -116,6 +131,7 @@ export default function Dashboard() {
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
+  const [hasDailyLogToday, setHasDailyLogToday] = useState(false);
 
   const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(true); 
   const [isSubscribingPush, setIsSubscribingPush] = useState(false);
@@ -210,6 +226,7 @@ export default function Dashboard() {
           activities: dailyData.activities || [],
           activity_kcal: dailyData.activity_kcal || 0
         });
+        setHasDailyLogToday(true);
       } else {
         setDailyLog({
           water_ml: 0,
@@ -218,6 +235,7 @@ export default function Dashboard() {
           activities: [],
           activity_kcal: 0
         });
+        setHasDailyLogToday(false);
       }
 
       setProfile(profileData);
@@ -323,22 +341,6 @@ export default function Dashboard() {
   const completedMeals = dailyLog.meals_checked.length;
   const mealProgress = totalMeals > 0 ? Math.round((completedMeals / totalMeals) * 100) : 0;
   const isMealGoalMet = mealProgress >= 100;
-
-  const dailyScore = useMemo(() => {
-    let moodScore = 0;
-    if (dailyLog.mood === 'feliz') moodScore = 100;
-    else if (dailyLog.mood === 'neutro') moodScore = 60;
-    else if (dailyLog.mood === 'dificil') moodScore = 20;
-
-    const actScore = (dailyLog.activities?.length > 0) ? 100 : 0;
-
-    return Math.round(
-      (waterProgress * 0.25) +
-      (mealProgress * 0.35) +
-      (actScore * 0.20) +
-      (moodScore * 0.20)
-    );
-  }, [waterProgress, mealProgress, dailyLog.mood, dailyLog.activities]);
 
   const handleUpdateDailyLog = async (updates: Partial<typeof dailyLog>) => {
     const newLog = { ...dailyLog, ...updates };
@@ -477,6 +479,75 @@ export default function Dashboard() {
 
   const isPremium = profile?.account_type === 'premium';
   const canAccessMealPlan = isPremium || profile?.has_meal_plan_access;
+  const hasActualWeightSource = checkins.length > 0 || antroData.length > 0;
+
+  const focusInput = useMemo<FocusInput>(() => {
+    const lastCheckin = checkins.length > 0 ? checkins[checkins.length - 1] : null;
+    const currentWeight = checkins.length > 0
+      ? parseFloat(checkins[checkins.length - 1].peso)
+      : antroData.length > 0
+        ? parseFloat(antroData[0].weight)
+        : null;
+
+    return {
+      dailyLog: {
+        date: getLocalTodayString(),
+        water_ml: dailyLog.water_ml,
+        meals_checked: dailyLog.meals_checked,
+        mood: dailyLog.mood as 'feliz' | 'neutro' | 'dificil' | null,
+        activities: dailyLog.activities?.map((activity) => ({
+          id: activity.id,
+          name: `${activity.type} (${activity.intensity})`,
+        })) || [],
+        activity_kcal: dailyLog.activity_kcal,
+      },
+      checkin: lastCheckin ? {
+        lastCheckinAt: lastCheckin.created_at,
+        daysSinceLastCheckin: getDaysSince(lastCheckin.created_at),
+        adesao_ao_plano: lastCheckin.adesao_ao_plano ?? null,
+        humor_semanal: lastCheckin.humor_semanal ?? null,
+      } : null,
+      jornada: {
+        isCheckinDoneThisWeek,
+        hasMealPlan: isMealPlanReady,
+        canAccessMealPlan: !!canAccessMealPlan,
+      },
+      meta: {
+        meta_peso: profile?.meta_peso ? parseFloat(profile.meta_peso) : null,
+        currentWeight,
+        totalRecords: checkins.length,
+      },
+      access: {
+        canAccessMealPlan: !!canAccessMealPlan,
+      },
+      totalMeals: totalMeals > 0 ? totalMeals : null,
+      waterGoal: hasActualWeightSource ? waterGoal : null,
+      latestWeightForWater: hasActualWeightSource ? latestWeightForWater : null,
+    };
+  }, [
+    canAccessMealPlan,
+    checkins,
+    antroData,
+    dailyLog.activities,
+    dailyLog.activity_kcal,
+    dailyLog.meals_checked,
+    dailyLog.mood,
+    dailyLog.water_ml,
+    hasActualWeightSource,
+    isCheckinDoneThisWeek,
+    isMealPlanReady,
+    latestWeightForWater,
+    profile?.meta_peso,
+    totalMeals,
+    waterGoal,
+  ]);
+
+  const focusResult = useMemo(() => getFocus(focusInput), [focusInput]);
+  const recoveryInput = useMemo<FocusInput>(() => ({
+    ...focusInput,
+    dailyLog: hasDailyLogToday ? focusInput.dailyLog : null,
+  }), [focusInput, hasDailyLogToday]);
+  const recoveryResult = useMemo(() => getRecovery(recoveryInput), [recoveryInput]);
 
   const trialData = useMemo(() => {
     if (!profile) return { isActive: false, daysLeft: 0 };
@@ -657,18 +728,19 @@ export default function Dashboard() {
     };
   }, [timelineData, profile?.meta_peso]);
 
+  // VZ-017: insight sem score agregado — usa dados objetivos
   const smartInsight = useMemo(() => {
     if (!deltas.currentWeight || !deltas.initialWeight) return "Faça seu primeiro relato para destravar insights automáticos do seu corpo.";
     
     if (deltas.currentWeight < deltas.initialWeight) {
       if (dailyLog.mood === 'dificil') return "Seu humor caiu — isso pode impactar sua consistência logo mais. Ajuste leve recomendado.";
-      if (dailyScore > 80) return "Você está evoluindo de forma incrivelmente consistente — excelente trabalho!";
+      if (waterProgress >= 80 && mealProgress >= 80) return "Você está evoluindo de forma consistente — excelente trabalho!";
       return "Sua evolução está em andamento. Consistência é o segredo agora.";
     }
 
-    if (dailyScore < 50) return "Seu progresso deu uma pausada e a adesão diária está baixa. Retome o foco hoje com hidratação e metas simples.";
+    if (waterProgress < 50 && mealProgress < 50) return "Seu progresso deu uma pausada e a adesão diária está baixa. Retome o foco hoje com hidratação e metas simples.";
     return "Seu progresso está estável. Pequenos ajustes podem acelerar seus resultados.";
-  }, [deltas, dailyLog.mood, dailyScore]);
+  }, [deltas, dailyLog.mood, waterProgress, mealProgress]);
 
   const foodRestrictions = profile?.food_restrictions || [];
   const hasFoodRestrictions = foodRestrictions.length > 0;
@@ -678,6 +750,47 @@ export default function Dashboard() {
 
   const validWeightsCount = timelineData.filter(d => d.peso !== null).length;
   const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;
+
+  // VZ-019: revalidação determinística pós-checkout — sem confiar em ?payment=success
+  useEffect(() => {
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    if (search.includes('payment=success')) {
+      toast.success('Pagamento recebido! Seu acesso Premium será liberado em breve.');
+      window.history.replaceState({}, '', '/dashboard');
+      // Polling curto e limitado: verifica profiles a cada 2s, max 5 tentativas (10s)
+      let attempts = 0;
+      const maxAttempts = 5;
+      const poll = async () => {
+        attempts++;
+        try {
+          const supabasePoll = createClient();
+          const { data: { session } } = await supabasePoll.auth.getSession();
+          const uid = session?.user?.id;
+          if (!uid) return;
+          const { data: prof } = await supabasePoll
+            .from('profiles')
+            .select('account_type, has_meal_plan_access')
+            .eq('id', uid)
+            .single();
+          const isPrem = prof?.account_type === 'premium' || !!prof?.has_meal_plan_access;
+          if (isPrem) {
+            toast.success('Premium ativado!');
+            await loadData();
+            return;
+          }
+        } catch {}
+        if (attempts < maxAttempts) setTimeout(poll, 2000);
+      };
+      setTimeout(poll, 1500);
+    } else if (search.includes('payment=failure')) {
+      toast.error('Pagamento não concluído.');
+      window.history.replaceState({}, '', '/dashboard');
+    } else if (search.includes('payment=pending')) {
+      toast('Pagamento pendente — avisaremos quando confirmar.');
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
@@ -764,11 +877,10 @@ export default function Dashboard() {
           smartFeedback={smartFeedback}
         />
 
-        {/* 4. DIÁRIO GAMIFICADO (MEU DIA) */}
+        {/* 4. DIÁRIO (MEU DIA) — VZ-017: ScoreRing removido, dados objetivos */}
         {canAccessMealPlan && (
           <DailyJourney
             dailyLog={dailyLog}
-            dailyScore={dailyScore}
             waterGoal={waterGoal}
             waterProgress={waterProgress}
             isWaterGoalMet={isWaterGoalMet}
@@ -789,6 +901,24 @@ export default function Dashboard() {
             subscribeToPush={subscribeToPush}
           />
         )}
+
+        <FocusTodayCard
+          result={focusResult}
+          onCheckin={() => setIsCheckinModalOpen(true)}
+          onMeals={() => router.push('/dashboard/meu-plano')}
+          onHydration={handleAddWater}
+          onAdherence={() => setIsCheckinModalOpen(true)}
+        />
+
+        <RecoveryTodayCard
+          result={recoveryResult}
+          onCheckin={() => setIsCheckinModalOpen(true)}
+          onDailyLog={() => router.push('/dashboard/meu-plano')}
+          onAdherence={() => setIsCheckinModalOpen(true)}
+        />
+
+        {/* VZ-018: Acesso comercial */}
+        <PremiumAccessCard isPremium={!!isPremium} dailyLimit={isPremium ? 80 : 25} />
 
         {/* 5. GRÁFICO E EVOLUÇÃO (Medidas livre; Dobras/Metabolismo premium) */}
         <ProgressChart
@@ -842,8 +972,8 @@ export default function Dashboard() {
         onSave={handleAddActivity}
       />
 
-      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE */}
-      <ChatAssistant role="patient" />
+      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE — VZ-017 premium quick actions */}
+      <ChatAssistant role="patient" canAccessMealPlan={!!canAccessMealPlan} />
     </div>
   );
 }

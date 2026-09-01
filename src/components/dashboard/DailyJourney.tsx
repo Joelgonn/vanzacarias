@@ -22,7 +22,8 @@ export interface DailyJourneyProps {
     activities: Activity[];
     activity_kcal: number;
   };
-  dailyScore: number;
+  /** @deprecated VZ-017: removido ScoreRing — mantido opcional para compatibilidade, não renderizado */
+  dailyScore?: number;
   waterGoal: number;
   waterProgress: number;
   isWaterGoalMet: boolean;
@@ -41,68 +42,6 @@ export interface DailyJourneyProps {
   handleRemoveActivity: (id: string) => void;
   onOpenActivityModal: () => void;
   subscribeToPush: () => void;
-}
-
-// Cor semântica do score (mesmos thresholds existentes)
-function getScoreColor(score: number): string {
-  if (score > 80) return '#10b981';   // emerald — excelente
-  if (score > 50) return '#f59e0b';   // amber — em progresso
-  return '#a8a29e';                   // stone — precisa de atenção
-}
-
-// =========================================================================
-// ANEL DO SCORE (assinatura visual do Meu Dia)
-// =========================================================================
-interface ScoreRingProps {
-  score: number;
-}
-
-function ScoreRing({ score }: ScoreRingProps) {
-  const reduceMotion = useReducedMotion();
-  const size = 176;
-  const stroke = 13;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(100, score));
-  const offset = circumference - (clamped / 100) * circumference;
-  const color = getScoreColor(clamped);
-
-  return (
-    <div
-      className="relative shrink-0"
-      role="progressbar"
-      aria-label="Score do dia"
-      aria-valuenow={clamped}
-      aria-valuemin={0}
-      aria-valuemax={100}
-    >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-stone-100" />
-        <motion.circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          initial={reduceMotion ? false : { strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-5xl font-black tracking-tight text-stone-900 tabular-nums">
-          {Math.round(clamped)}
-          <span className="text-2xl text-stone-400 font-bold">/100</span>
-        </span>
-        <span className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-stone-400">
-          Score do dia
-        </span>
-      </div>
-    </div>
-  );
 }
 
 // =========================================================================
@@ -157,7 +96,6 @@ function ThinBar({ value, color }: { value: number; color: string }) {
 
 export default function DailyJourney({
   dailyLog,
-  dailyScore,
   waterGoal,
   waterProgress,
   isWaterGoalMet,
@@ -182,13 +120,6 @@ export default function DailyJourney({
 
   // Data de hoje (apresentação pura)
   const todayLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).toUpperCase();
-
-  // Contexto operacional do score (derivado dos mesmos dados — sem IA)
-  const scoreContext = dailyScore > 80
-    ? 'Dia excelente — mantenha o ritmo!'
-    : dailyScore > 50
-    ? 'Você está no caminho certo.'
-    : 'Pequenos passos contam. Comece pela hidratação.';
 
   // Contextos operacionais por etapa (apresentação derivada dos estados)
   const waterRemaining = Math.max(0, waterGoal - dailyLog.water_ml);
@@ -237,39 +168,7 @@ export default function DailyJourney({
           </div>
         </motion.div>
 
-        {/* Bloco do score — protagonista */}
-        <motion.div
-          {...fadeUp}
-          transition={{ delay: reduceMotion ? 0 : 0.1 }}
-          className="mt-7 flex flex-col items-center gap-5 rounded-[2rem] bg-gradient-to-br from-stone-50/80 to-white px-6 py-8 sm:py-9"
-        >
-          <ScoreRing score={dailyScore} />
-          <p className="max-w-sm text-center text-sm font-semibold text-stone-600">{scoreContext}</p>
-
-          {/* Representação discreta da conclusão geral (complementa, não compete) */}
-          <div className="mt-1 w-full max-w-md">
-            <div className="mb-2 hidden items-center justify-between text-[9px] font-bold uppercase tracking-widest text-stone-400 sm:flex">
-              <span className="flex items-center gap-1"><Droplets size={11} className="text-blue-500" aria-hidden="true" /> Água</span>
-              <span className="flex items-center gap-1"><Utensils size={11} className="text-nutri-600" aria-hidden="true" /> Refeições</span>
-              <span className="flex items-center gap-1"><Smile size={11} className="text-amber-500" aria-hidden="true" /> Humor</span>
-              <span className="flex items-center gap-1"><Footprints size={11} className="text-rose-500" aria-hidden="true" /> Movimento</span>
-            </div>
-            <div className="flex items-center gap-1.5" aria-hidden="true">
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-stone-100">
-                <div className="h-full rounded-full bg-blue-500 transition-all duration-700" style={{ width: `${waterProgress}%` }} />
-              </div>
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-stone-100">
-                <div className="h-full rounded-full bg-nutri-600 transition-all duration-700" style={{ width: `${mealProgress}%` }} />
-              </div>
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-stone-100">
-                <div className="h-full rounded-full bg-amber-500 transition-all duration-700" style={{ width: `${dailyLog.mood ? (dailyLog.mood === 'feliz' ? 100 : dailyLog.mood === 'neutro' ? 60 : 30) : 0}%` }} />
-              </div>
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-stone-100">
-                <div className="h-full rounded-full bg-rose-500 transition-all duration-700" style={{ width: `${dailyLog.activities?.length ? 100 : 0}%` }} />
-              </div>
-            </div>
-          </div>
-        </motion.div>
+        {/* VZ-017: ScoreRing removido — dados objetivos preservados nas etapas abaixo */}
 
         {/* ============ JORNADA DIÁRIA (etapas contínuas) ============ */}
         <motion.div {...fadeUp} transition={{ delay: reduceMotion ? 0 : 0.16 }} className="mt-6">

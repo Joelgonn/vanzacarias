@@ -78,6 +78,21 @@ export async function POST(request: NextRequest) {
       console.error("Erro ao buscar preços dinâmicos, usando valores padrão.", e);
     }
 
+    // VZ-019: registra checkout_started sem conteúdo clínico (antes de criar preference)
+    try {
+      const supabaseForEvent = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+      );
+      await supabaseForEvent.from('commerce_events').insert({
+        user_id: userId,
+        event: 'checkout_started',
+        is_premium: false,
+        metadata: { plan_type: planType }
+      });
+    } catch {}
+
+
     // 3. VALIDAR TOKEN MERCADO PAGO
     const mpToken = process.env.MP_ACCESS_TOKEN;
     if (!mpToken) {
