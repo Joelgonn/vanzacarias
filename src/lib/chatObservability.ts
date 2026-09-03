@@ -10,6 +10,7 @@ export type ChatObsTimings = {
   gemini_first_chunk?: number;
   gemini_done?: number;
   guardrail_duration?: number;
+  factual_guardrail_duration?: number;
   persistence_duration?: number;
   total_duration?: number;
 };

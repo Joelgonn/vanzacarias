@@ -11,7 +11,8 @@ export type MacroProfile = {
 export type FoodTag = 
   | 'lactose' | 'laticinio' | 'gluten' | 'trigo' | 'amendoim' 
   | 'nuts' | 'ovo' | 'carne_branca' | 'carne_vermelha' | 'peixe' 
-  | 'frutos_do_mar' | 'vegano' | 'vegetariano' | 'soja';
+  | 'frutos_do_mar' | 'vegano' | 'vegetariano' | 'soja'
+  | 'sugar' | 'ultraprocessado';
 
 // ============================================================================
 // 🔥 FUNÇÃO DE NORMALIZAÇÃO DE BASE (INTELIGENTE E BASEADA EM REGEX)
@@ -2292,7 +2293,7 @@ export const FOOD_REGISTRY: FoodEntity[] = [
     name: "Mel (1 col. sopa)",
     baseUnit: "15g",
     aliases: ["mel"],
-    tags: ["vegetariano"],
+    tags: ["vegetariano", "sugar"],
     category: "Carboidratos",
     kcal: 46,
     macros: { c: 12, p: 0, g: 0 }
@@ -2303,7 +2304,7 @@ export const FOOD_REGISTRY: FoodEntity[] = [
     name: "Açúcar demerara (1 col. sopa)",
     baseUnit: "15g",
     aliases: ["acucar", "demerara"],
-    tags: ["vegano", "vegetariano"],
+    tags: ["vegano", "vegetariano", "sugar"],
     category: "Carboidratos",
     kcal: 60,
     macros: { c: 15, p: 0, g: 0 }
@@ -2314,7 +2315,7 @@ export const FOOD_REGISTRY: FoodEntity[] = [
     name: "Açúcar de coco (1 col. sopa)",
     baseUnit: "15g",
     aliases: ["acucar de coco"],
-    tags: ["vegano", "vegetariano"],
+    tags: ["vegano", "vegetariano", "sugar"],
     category: "Carboidratos",
     kcal: 55,
     macros: { c: 14, p: 0, g: 0 }

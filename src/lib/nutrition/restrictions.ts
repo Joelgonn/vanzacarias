@@ -43,6 +43,13 @@ export function normalizeRestriction(r: FoodRestriction): NormalizedRestriction 
     }
   } else if (r.tag) {
     // 2. Tag: Categoria inteira bloqueada -> mapeia para todos os IDs que possuem a tag
+    // JG-001.2: tag 'sugar' agora possui cobertura (3 itens com tag sugar: demerara_sugar, coconut_sugar, honey)
+    // JG-001.3: tag 'ultraprocessado' NÃO possui cobertura determinística no FOOD_REGISTRY.
+    //          Não inventamos classificação arbitrária para ultraprocessados.
+    //          Quando r.tag === 'ultraprocessado' e foodIds.length===0, o resultado vazio é intencional
+    //          e representa limitação documentada: o guardrail determinístico não bloqueia por ID,
+    //          restando apenas a camada de prompt (CATEGORIAS BLOQUEADAS) como instrução ao LLM.
+    //          Isso evita falso negativo silencioso disfarçado de cobertura.
     foodIds = FOOD_REGISTRY.filter(f => f.tags.includes(r.tag as RegistryFoodTag)).map(f => f.id);
     
     if (foodIds.length === 0) {

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { requireAdmin } from '@/lib/supabase/serverAuth'
 import { buildContext } from '@/lib/contextBuilder'
 import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
+import { findAdminPatient } from '@/lib/adminMatching'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos, fetchHistoricoBeliscos } from '@/lib/beliscosProcessor'
@@ -343,14 +344,16 @@ export async function POST(req: NextRequest) {
 
     const patientsList: OverviewPatient[] = overview.patients;
 
-    const mentionedPatient = patientsList.find((p) => {
-      if (!p?.full_name) return false;
-      const fullNameNorm = normalizeString(p.full_name);
-      if (normalizedMsg.includes(fullNameNorm)) return true;
-      const parts = fullNameNorm.split(' ');
-      if (parts.length > 1 && normalizedMsg.includes(`${parts[0]} ${parts[1]}`)) return true;
-      return parts.length > 0 && parts[0].length > 2 && normalizedMsg.includes(parts[0]);
-    });
+    const { patient: mentionedPatient, ambiguous, candidates } = findAdminPatient(patientsList, normalizedMsg);
+
+    if (ambiguous) {
+      const names = candidates.map(c => c.full_name || 'Desconhecido').join(', ');
+      return NextResponse.json({
+        reply: `Encontrei múltiplos pacientes correspondendo a "${safeMessage.trim()}": ${names}. Por favor, informe o nome completo (ex: "Ana Silva") para que eu possa trazer os dados corretos.`,
+        ambiguous: true,
+        candidates: candidates.map(c => ({ id: c.id, full_name: c.full_name })),
+      }, { status: 200 });
+    }
 
     if (mentionedPatient && mentionedPatient.id) {
       const fullData = await getFullPatientData(mentionedPatient.id, todayStr);

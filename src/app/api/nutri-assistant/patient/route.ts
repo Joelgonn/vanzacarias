@@ -15,6 +15,9 @@ import { expandRestrictions } from '@/lib/nutrition/restrictions'
 import { FOOD_REGISTRY } from '@/lib/foodRegistry'
 import { startObs, mark, logObs } from '@/lib/chatObservability'
 import { trackCommerceEvent } from '@/lib/commerceEvents'
+import { PatientRequestSchema } from '@/lib/patientValidation'
+import { extractFoodIdsFromText } from '@/lib/guardrailHelpers'
+import { detectFactualHallucinations, type FactualContext } from '@/lib/factualValidator'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos } from '@/lib/beliscosProcessor'
@@ -22,21 +25,7 @@ import { calcularMacrosDoCardapio } from '@/lib/macroCalculator'
 import { formatMealPlan } from '@/lib/mealPlanFormatter'
 import { normalizeRestrictions } from '@/lib/normalizeRestrictions'
 
-// ==========================================
-// 🛡️ SCHEMAS DE VALIDAÇÃO (ZOD)
-// ==========================================
-
-const PatientRequestSchema = z.object({
-  userId: z.string().min(1),
-  message: z.string().optional(),
-  history: z.array(
-    z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.string().max(20000)
-    })
-  ).max(12).optional().default([]),
-  image: z.string().optional().nullable()
-}).strict();
+// PatientRequestSchema movido para @/lib/patientValidation (JG-001.1)
 
 const FoodItemSchema = z.object({
   id: z.string(),
@@ -88,54 +77,7 @@ function isComplexRequest(message: string, hasImage: boolean): boolean {
   return false;
 }
 
-function normalizeString(str: string): string {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-// ==========================================
-// 🛡️ GUARDRAIL: AUTO-SYNC & SEMÂNTICA
-// ==========================================
-
-const SEMANTIC_DICT = new Map<string, Set<string>>();
-
-FOOD_REGISTRY.forEach(food => {
-  const keys = [food.name, ...food.aliases].map(normalizeString);
-  keys.forEach(key => {
-    if (!SEMANTIC_DICT.has(key)) SEMANTIC_DICT.set(key, new Set());
-    SEMANTIC_DICT.get(key)!.add(food.id);
-  });
-});
-
-const SORTED_ALIASES = Array.from(SEMANTIC_DICT.keys()).sort((a, b) => b.length - a.length);
-
-const SAFE_PHRASES = [
-  'leite vegetal', 'leite de amendoa', 'leite de amendoas', 'leite de coco', 'leite de soja', 'leite de aveia',
-  'zero lactose', 'sem lactose', 'isento de lactose', 'nolac', 'pasta de amendoim', 'manteiga de amendoim'
-];
-
-function extractFoodIdsFromText(text: string): { ids: Set<string>, names: string[] } {
-  let normalizedText = normalizeString(text);
-
-  for (const safe of SAFE_PHRASES) {
-    const safeRegex = new RegExp(normalizeString(safe), 'g');
-    normalizedText = normalizedText.replace(safeRegex, '[safe_phrase]');
-  }
-
-  const foundIds = new Set<string>();
-  const foundNames = new Set<string>();
-
-  for (const alias of SORTED_ALIASES) {
-    const regex = new RegExp(`\\b${alias}\\b`, 'i');
-    if (regex.test(normalizedText)) {
-      const ids = SEMANTIC_DICT.get(alias)!;
-      ids.forEach(id => foundIds.add(id));
-      foundNames.add(alias);
-      normalizedText = normalizedText.replace(regex, '[found]');
-    }
-  }
-
-  return { ids: foundIds, names: Array.from(foundNames) };
-}
+// Guardrail helpers movidos para @/lib/guardrailHelpers (JG-001.4/5)
 
 async function ensureSafeResponse(
   initialReply: string,
@@ -168,6 +110,31 @@ async function ensureSafeResponse(
     return correctionResult.response.text();
   } catch {
     return `Pensei em algumas opções, mas notei que elas incluem derivados que esbarram nas suas restrições (${violatedNames.join(', ')}). Para sua segurança, que tal olharmos outras opções do seu plano ou conversarmos com a Nutri Vanusa? 😊`;
+  }
+}
+
+async function ensureFactualResponse(
+  initialReply: string,
+  violations: ReturnType<typeof detectFactualHallucinations>,
+  chatSession: ChatSession
+): Promise<string> {
+  if (violations.length === 0) return initialReply;
+  const details = violations.map(v => `${v.field} (afirmou ${v.claimed}, esperado ${v.actual ?? 'sem dado'})`).join('; ');
+  console.warn(`[🚨 FACTUAL GUARDRAIL ATIVADO] Alucinação detectada:`, details);
+  try {
+    const correctionResult = await chatSession.sendMessage(
+      `[ALERTA DE SEGURANÇA INTERNO - NÃO EXIBA ESTE AVISO]
+      Você afirmou dados clínicos do paciente que não constam nos dados fornecidos ou estão incorretos: ${details}.
+      DADOS REAIS DISPONÍVEIS: ${violations.map(v => `${v.field}=${v.actual ?? 'ausente'}`).join(', ')}.
+      TAREFA: Reescreva sua resposta anterior REMOVENDO qualquer afirmação de fato do paciente não presente nos dados.
+      Se o dado estiver ausente, diga "não tenho essa informação registrada" em vez de inventar.
+      Se o valor estiver incorreto, corrija para o valor real.
+      Não invente exames, pesos ou macros. Mantenha tom acolhedor e não peça desculpas pelo erro.`
+    );
+    return correctionResult.response.text();
+  } catch {
+    // Fallback seguro: remove números sensíveis e substitui por mensagem genérica
+    return `Notei que tentei informar um dado que não está registrado no seu histórico. Pode me dizer qual informação você gostaria de atualizar? Assim posso te ajudar com base no que realmente temos registrado. 😊`;
   }
 }
 
@@ -276,11 +243,14 @@ export async function POST(req: NextRequest) {
     const todayStr = dataAtual.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const currentTimeBR = dataAtual.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
 
-    // CACHE & RATE LIMIT
+    // CACHE & RATE LIMIT — JG-002.1 fail-close distinguível
     if (!image && safeMessage) {
       const cached = await getCachedResponse(userId, safeMessage);
       if (cached) {
         const currentRate = await checkRateLimit(userId);
+        if ((currentRate as { error?: string }).error) {
+          return NextResponse.json({ reply: 'Tive um problema temporário ao verificar seu limite. Tente novamente em instantes.', error: 'rate_limit_error', remaining: 0 }, { status: 503 });
+        }
         if (!currentRate.allowed) {
           return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
         }
@@ -294,6 +264,9 @@ export async function POST(req: NextRequest) {
     }
 
     const rate = await checkRateLimit(userId);
+    if ((rate as { error?: string }).error) {
+      return NextResponse.json({ reply: 'Tive um problema temporário ao verificar seu limite. Tente novamente em instantes.', error: 'rate_limit_error', remaining: 0 }, { status: 503 });
+    }
     if (!rate.allowed) {
       return NextResponse.json({ reply: `Limite atingido.`, limitReached: true, remaining: 0 }, { status: 200 });
     }
@@ -448,6 +421,17 @@ export async function POST(req: NextRequest) {
       metaPeso
     };
 
+    // JG-002.2 — contexto factual para validação pós-LLM (peso, altura, IMC, macros, exames)
+    const factualContext: FactualContext = {
+      pesoMaisRecente,
+      alturaMetros: typeof alturaMetros === 'number' ? alturaMetros : null,
+      imc,
+      metaPeso,
+      macrosDiarios,
+      macrosPorRefeicao: macrosPorRefeicao.length > 0 ? macrosPorRefeicao : undefined,
+      hasExams: false,
+    };
+
     // PREPARAR UserData
     const userDataForContext = {
       nomePaciente: profile?.full_name?.split(' ')[0] || 'Paciente',
@@ -594,6 +578,19 @@ ${baseContext}`.trim();
             finalReply = await ensureSafeResponse(fullReply, safeRestrictions, chat);
             mark(obs, 'guardrail_duration');
             void gStart; // suppress unused
+          }
+
+          // JG-002.2 — validação factual pós-LLM (peso, altura, IMC, exames, macros)
+          // Distingue fato do paciente (possessivo) vs número genérico; não bloqueia genéricos.
+          // Se progressive já emitiu chunks, a correção afeta apenas o 'done' e persistência (limitação documentada).
+          {
+            const violations = detectFactualHallucinations(finalReply, factualContext);
+            if (violations.length > 0) {
+              const fStart = Date.now();
+              finalReply = await ensureFactualResponse(finalReply, violations, chat);
+              mark(obs, 'factual_guardrail_duration');
+              void fStart;
+            }
           }
 
           // Persistência única da resposta final consolidada (nunca por chunk).

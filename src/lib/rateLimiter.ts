@@ -30,6 +30,7 @@ export async function checkRateLimit(userId: string) {
 
     if (profileError) {
       console.error('[Rate Limiter] Erro ao buscar perfil:', profileError);
+      throw profileError;
     }
 
     const userProfile = profileData?.[0] as { role?: string; account_type?: string | null; has_meal_plan_access?: boolean | null; status?: string | null } | undefined;
@@ -95,15 +96,17 @@ export async function checkRateLimit(userId: string) {
     console.error('[Rate Limiter] Erro de processamento:', error);
 
     // ===============================
-    // 6. FALLBACK SEGURO
+    // 6. FALLBACK SEGURO — JG-002.1 fail-close
     // ===============================
-    // Se o banco de dados cair ou der timeout, não bloqueamos o usuário injustamente.
-    // Deixamos passar com o limite padrão.
+    // Antes: fail-open (allowed:true) permitia bypass silencioso se Supabase falhasse.
+    // Agora: fail-close para novas mensagens — retorna erro distinguível para o chamador.
+    // O chamador deve responder com erro seguro (não expor detalhes internos) e não liberar a mensagem.
     return {
-      allowed: true,
-      remaining: 25,
+      allowed: false,
+      remaining: 0,
       limit: 25,
-      used: 0
+      used: 0,
+      error: 'rate_limit_check_failed' as const,
     };
   }
 }
