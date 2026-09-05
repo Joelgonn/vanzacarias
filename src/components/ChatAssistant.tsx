@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, ImagePlus, MessageCircle, Mic, Square } from 'lucide-react';
 import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
-import { useVoiceInput } from '@/lib/voice/useVoiceInput';
+import { useVoiceInput, formatElapsedMs } from '@/lib/voice/useVoiceInput';
 import { isVoiceDebugEnabled, voiceDebugLog } from '@/lib/voice/debug';
 
 // ===============================
@@ -901,11 +901,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                       </span>
-                      Gravando — toque no microfone para parar
+                      Gravando {formatElapsedMs(voice.recordingElapsedMs)}
+                      <span className="text-rose-500/80 font-medium">— toque no microfone para parar</span>
                     </span>
                   )}
-                  {!voice.isRecording && voice.isBusy && (
+                  {!voice.isRecording && voice.status === 'processing' && (
+                    <span className="text-stone-500 font-medium">Processando...</span>
+                  )}
+                  {!voice.isRecording && voice.status === 'transcribing' && (
                     <span className="text-stone-500 font-medium">Transcrevendo...</span>
+                  )}
+                  {!voice.isRecording && voice.status === 'loading' && (
+                    <span className="text-stone-500 font-medium">Preparando...</span>
                   )}
                   {voice.error && (
                     <span className="text-rose-600 font-medium">{voice.error.userMessage}</span>

@@ -15,6 +15,15 @@ import {
   type VoiceControllerOptions,
 } from './voiceController';
 
+// VOZ-012.2 — Formatação do cronômetro de gravação (MM:SS, tempo de gravação real).
+export function formatElapsedMs(ms: number): string {
+  const safe = Number.isFinite(ms) && ms > 0 ? ms : 0;
+  const totalSeconds = Math.floor(safe / 1000);
+  const ss = String(totalSeconds % 60).padStart(2, '0');
+  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
 export type UseVoiceInputOptions = {
   onTranscript?: (text: string) => void;
   controllerOptions?: Omit<VoiceControllerOptions, 'onTranscript' | 'onError' | 'onStatusChange'>;
@@ -25,10 +34,37 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<VoiceInputError | null>(null);
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const [isSupported, setIsSupported] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.isSecureContext === true && !!navigator.mediaDevices?.getUserMedia;
   });
+
+  // VOZ-012.2 — cronômetro de gravação (parede, não tempo estimado de áudio).
+  // Roda APENAS enquanto status === 'recording'; zera em qualquer outra transição,
+  // garantindo que não continue durante PROCESSANDO/TRANSCRIBENDO e reinicia em 00:00
+  // a cada nova gravação.
+  const startedAtRef = useRef<number | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (status === 'recording') {
+      startedAtRef.current = Date.now();
+      setRecordingElapsedMs(0);
+      tickRef.current = setInterval(() => {
+        if (startedAtRef.current != null) setRecordingElapsedMs(Date.now() - startedAtRef.current);
+      }, 250);
+    } else {
+      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
+      startedAtRef.current = null;
+      setRecordingElapsedMs(0);
+    }
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
+      startedAtRef.current = null;
+    };
+  }, [status]);
 
   useEffect(() => {
     const controller = new VoiceInputController({
@@ -69,12 +105,13 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
     controllerRef.current?.reset();
   }, []);
 
-  const isBusy = status === 'loading' || status === 'recording' || status === 'transcribing';
+  const isBusy = status === 'loading' || status === 'recording' || status === 'processing' || status === 'transcribing';
 
   return {
     status,
     transcript,
     error,
+    recordingElapsedMs,
     isSupported,
     isBusy,
     isRecording: status === 'recording',

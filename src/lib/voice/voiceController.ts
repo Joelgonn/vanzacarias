@@ -19,7 +19,9 @@ import { engineStateReducer, INITIAL_ENGINE_STATE, isEngineReady } from './stt/e
 import type { EngineState } from './stt/engineState';
 import { isVoiceDebugEnabled, voiceDebugLog, computePcmStats, computeWindowDistribution } from './debug';
 
-export type VoiceStatus = 'idle' | 'loading' | 'ready' | 'recording' | 'transcribing' | 'result' | 'error';
+// VOZ-012.2 — 'processing' separa o PROCESSANDO (pós-PARAR: resample/preparo do PCM)
+// do TRANSCRIBENDO (inferência do Vosk). Mensagens curtas por estado na UI.
+export type VoiceStatus = 'idle' | 'loading' | 'ready' | 'recording' | 'processing' | 'transcribing' | 'result' | 'error';
 
 export type VoiceErrorCode =
   | 'unsupported'
@@ -31,6 +33,7 @@ export type VoiceErrorCode =
   | 'transcribe_failed'
   | 'empty'
   | 'busy'
+  | 'limit_reached'
   | 'unknown';
 
 export type VoiceInputError = {
@@ -38,6 +41,10 @@ export type VoiceInputError = {
   userMessage: string;
   detail?: string;
 };
+
+// VOZ-012.2 — Limite máximo de gravação (60s). Não é política de produto:
+// apenas proteção de UX — ao atingir, o áudio já capturado segue o fluxo normal.
+const RECORDING_LIMIT_MS = 60_000;
 
 export type VoiceControllerOptions = {
   engineId?: string;
@@ -59,7 +66,10 @@ export class VoiceInputController {
   private engineState: EngineState = INITIAL_ENGINE_STATE;
   private recording = false;
   private loading = false;
+  private processing = false;
   private transcribing = false;
+  // VOZ-012.2 — timer do limite de 60s de gravação (só tempo de gravação).
+  private recordingLimitTimer: ReturnType<typeof setTimeout> | null = null;
   // Token de geração: cancel()/dispose() invalidam conclusões assíncronas obsoletas.
   private gen = 0;
   private capture: CaptureResult | null = null;
@@ -88,6 +98,7 @@ export class VoiceInputController {
   getStatus(): VoiceStatus {
     if (this.loading) return 'loading';
     if (this.recording) return 'recording';
+    if (this.processing) return 'processing';
     if (this.transcribing) return 'transcribing';
     if (this.engineState === 'IDLE') return 'idle';
     if (this.engineState === 'READY') return 'ready';
@@ -138,8 +149,8 @@ export class VoiceInputController {
   }
 
   async start(): Promise<void> {
-    // Execução concorrente: uma única gravação/load/transcrição por vez.
-    if (this.loading || this.recording || this.transcribing) return;
+    // Execução concorrente: uma única gravação/load/processamento/transcrição por vez.
+    if (this.loading || this.recording || this.processing || this.transcribing) return;
 
     if (this.opts.checkSupport !== false) {
       const support = this.isSupported();
@@ -236,6 +247,9 @@ export class VoiceInputController {
     this.recording = true;
     this.setStatus('recording');
     if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_RECORDING_STARTED', { gen, duration: Date.now() - voiceStartTime });
+    // VOZ-012.2 — limite de gravação: inicia junto com o RECORDING (não antes).
+    // Ao atingir 60s, o áudio capturado é processado normalmente (stop()) e o usuário é informado.
+    this.recordingLimitTimer = setTimeout(() => this.handleRecordingLimit(gen), RECORDING_LIMIT_MS);
 
     // 4. Engine: carrega apenas se ainda não estiver READY/RESULT (pode ocorrer em paralelo com gravação já iniciada)
     if (!isEngineReady(this.engineState) && this.engine) {
@@ -259,6 +273,7 @@ export class VoiceInputController {
         try { cap.cleanup(); } catch {}
         this.capture = null;
         this.recordingStartMs = null;
+        if (this.recordingLimitTimer) { clearTimeout(this.recordingLimitTimer); this.recordingLimitTimer = null; }
         this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_ERROR' });
         if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_ENGINE_LOAD_ERROR', { gen, duration: Date.now() - engineLoadStart, error: e?.message || String(e) });
         this.fail({
@@ -308,6 +323,9 @@ export class VoiceInputController {
     const gen = this.gen;
     const voiceStopTime = Date.now();
     if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_STOP', { gen, ts: voiceStopTime });
+    // VOZ-012.2 — cronômetro para IMEDIATAMENTE ao pressionar PARAR (o tempo contado
+    // é somente o de gravação; disparado para valer no momento do PARAR).
+    if (this.recordingLimitTimer) { clearTimeout(this.recordingLimitTimer); this.recordingLimitTimer = null; }
     const stopWallMs = Date.now();
     const recordingWallTimeMs = this.recordingStartMs != null ? stopWallMs - this.recordingStartMs : 0;
     // Capturar estados antes de cleanup para diagnóstico
@@ -331,6 +349,10 @@ export class VoiceInputController {
         this.capture = null;
       }
     }
+    // VOZ-012.2 — saída imediata de 'recording': PROCESSANDO antes de qualquer await
+    // (resample/preparo do PCM). Cronômetro não conta durante PROCESSANDO/TRANSCRIBENDO.
+    this.processing = true;
+    this.setStatus('processing');
     if (isVoiceDebugEnabled()) {
       const expectedSamples = Math.round((recordingWallTimeMs * recordedRate) / 1000);
       const actualSamples = pcm.length;
@@ -374,6 +396,7 @@ export class VoiceInputController {
           engineState: this.engineState,
         });
       }
+      this.processing = false;
       return;
     }
     // VOZ-012 — se o engine ainda está carregando (start() carregou em background após iniciar a
@@ -410,6 +433,7 @@ export class VoiceInputController {
 
     // Transcrição vazia (usuário parou sem falar) — não envia nada, mantém engine pronta.
     if (pcm16k.length === 0) {
+      this.processing = false;
       if (isVoiceDebugEnabled()) {
         voiceDebugLog('LIFECYCLE_EMPTY', { gen, engineState: this.engineState, pcm16kLength: pcm16k.length });
       }
@@ -419,6 +443,8 @@ export class VoiceInputController {
       return;
     }
 
+    // VOZ-012.2 — PROCESSANDO concluído → TRANSCRIBENDO (inferência do Vosk)
+    this.processing = false;
     this.transcribing = true;
     this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_START' });
     this.setStatus('transcribing');
@@ -526,8 +552,10 @@ export class VoiceInputController {
     }
     this.recording = false;
     this.loading = false;
+    this.processing = false;
     this.transcribing = false;
     this.recordingStartMs = null;
+    if (this.recordingLimitTimer) { clearTimeout(this.recordingLimitTimer); this.recordingLimitTimer = null; }
     if (this.engineState === 'LOADING') {
       // Load interrompido: encerra para um estado reiniciável.
       this.engineState = 'IDLE';
@@ -541,6 +569,18 @@ export class VoiceInputController {
   reset(): void {
     // Força a re-emissão do estado atual (útil para limpar mensagens na UI).
     this.setStatus(this.getStatus());
+  }
+
+  private handleRecordingLimit(gen: number): void {
+    this.recordingLimitTimer = null;
+    if (gen !== this.gen || !this.recording) return;
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_LIMIT_REACHED', { gen, limitSeconds: RECORDING_LIMIT_MS / 1000 });
+    // Informa o usuário ANTES de processar: o áudio não é descartado.
+    this.fail({
+      code: 'limit_reached',
+      userMessage: 'Limite de gravação de 60 segundos atingido. O áudio já capturado será convertido em texto.',
+    });
+    void this.stop();
   }
 
   async dispose(): Promise<void> {
@@ -566,8 +606,10 @@ export class VoiceInputController {
     }
     this.recording = false;
     this.loading = false;
+    this.processing = false;
     this.transcribing = false;
     this.recordingStartMs = null;
+    if (this.recordingLimitTimer) { clearTimeout(this.recordingLimitTimer); this.recordingLimitTimer = null; }
     try { await this.engine?.dispose?.(); } catch {}
     this.engineState = INITIAL_ENGINE_STATE;
     this.setStatus('idle');
