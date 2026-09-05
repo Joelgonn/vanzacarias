@@ -38,7 +38,8 @@ describe('VOZ-008.8 — Vosk chunked feeding', () => {
   });
 
   it('timeout máximo de 30s continua protegido', () => {
-    expect(voskContent).toMatch(/const guard = setTimeout\(\(\) => finish\(finalText\), 30000\)/);
+    // VOZ-012.1 — finish() sem argumento; os segmentos acumulados são concatenados internamente.
+    expect(voskContent).toMatch(/const guard = setTimeout\(\(\) => finish\(\), 30000\)/);
   });
 
   it('todos os samples são enviados (chunking cobre 0..length)', () => {
@@ -55,17 +56,16 @@ describe('VOZ-008.8 — Vosk chunked runtime', () => {
   it('PCM vazio é tratado sem erro (0 chunks)', async () => {
     const { transcribeWithVosk } = await import('../stt/vosk');
     const mockRemove = vi.fn();
+    let resultCb: ((msg: any) => void) | null = null;
+    let partialCb: ((msg: any) => void) | null = null;
     const mockOn = vi.fn((event: string, cb: any) => {
-      if (event === 'result') {
-        // Simular result final após retrieve
-        setTimeout(() => cb({ result: { text: '' } }), 10);
-      }
+      if (event === 'result') resultCb = cb;
+      if (event === 'partialresult') partialCb = cb;
     });
     const mockAccept = vi.fn();
     const mockRetrieve = vi.fn(() => {
-      // Trigger result
-      const cb = mockOn.mock.calls.find(c => c[0] === 'result')?.[1];
-      if (cb) cb({ result: { text: '' } });
+      // retrieveFinalResult emite exatamente 1 evento 'result' (FinalResult)
+      if (resultCb) resultCb({ result: { text: '' } });
     });
     const mockRecognizer = {
       on: mockOn,
@@ -80,21 +80,26 @@ describe('VOZ-008.8 — Vosk chunked runtime', () => {
     const pcm = new Float32Array(0);
     const result = await transcribeWithVosk(pcm, 16000, mockModel);
     expect(result).toBe('');
-    expect(mockAccept).not.toHaveBeenCalled(); // 0 chunks for empty
+    expect(mockAccept).not.toHaveBeenCalled();
     expect(mockRetrieve).toHaveBeenCalledTimes(1);
   });
 
   it('PCM 110592 samples é dividido em 27 chunks e todos enviados', async () => {
     const { transcribeWithVosk } = await import('../stt/vosk');
+    let resultCb: ((msg: any) => void) | null = null;
+    let partialCb: ((msg: any) => void) | null = null;
     const mockOn = vi.fn((event: string, cb: any) => {
-      if (event === 'result') {
-        setTimeout(() => cb({ result: { text: 'olá teste' } }), 10);
-      }
+      if (event === 'result') resultCb = cb;
+      if (event === 'partialresult') partialCb = cb;
     });
-    const mockAccept = vi.fn();
+    const mockAccept = vi.fn(() => {
+      // Cada acceptWaveformFloat → 1 evento (partialresult ou result)
+      // Simulamos sem endpoint: acceptWaveform retorna false → partialresult
+      if (partialCb) partialCb({ event: 'partialresult', result: { partial: 'olá teste' } });
+    });
     const mockRetrieve = vi.fn(() => {
-      const cb = mockOn.mock.calls.find(c => c[0] === 'result')?.[1];
-      if (cb) cb({ result: { text: 'olá teste' } });
+      // retrieveFinalResult → exatamente 1 result (FinalResult)
+      if (resultCb) resultCb({ event: 'result', result: { text: 'olá teste' } });
     });
     const mockRecognizer = {
       on: mockOn,
@@ -109,15 +114,13 @@ describe('VOZ-008.8 — Vosk chunked runtime', () => {
     const pcm = new Float32Array(110592);
     const result = await transcribeWithVosk(pcm, 16000, mockModel);
     expect(result).toBe('olá teste');
-    expect(mockAccept).toHaveBeenCalledTimes(27); // ceil(110592/4096)=27
-    // Verificar que todos os samples foram enviados (soma dos chunks = 110592)
+    expect(mockAccept).toHaveBeenCalledTimes(27);
     const totalSent = mockAccept.mock.calls.reduce((sum: number, call: any[]) => sum + (call[0] as Float32Array).length, 0);
     expect(totalSent).toBe(110592);
-    // Último chunk deve ser menor que 4096 (110592 % 4096 = 0? 4096*27=110592 exatamente, então último é 4096)
-    // Testar com 110593 para garantir menor
-    expect(mockAccept.mock.calls[26][0].length).toBe(4096);
+    const acceptCalls = mockAccept.mock.calls as Float32Array[][];
+    const lastChunk = acceptCalls[acceptCalls.length - 1]?.[0];
+    expect(lastChunk?.length).toBe(4096);
     expect(mockRetrieve).toHaveBeenCalledTimes(1);
-    // retrieve deve ocorrer após todos os accepts (chamado depois do loop)
     const acceptOrder = mockAccept.mock.invocationCallOrder[0];
     const retrieveOrder = (mockRetrieve as any).mock.invocationCallOrder[0];
     expect(retrieveOrder).toBeGreaterThan(acceptOrder);

@@ -135,18 +135,34 @@ export async function transcribeWithVosk(
       // KaldiRecognizer aceita sampleRate; acceptWaveformFloat é o caminho oficial
       // para Float32Array (o worker recebe o PCM via audioChunk + sampleRate).
       const recognizer = new model.KaldiRecognizer(sampleRate);
-      let finalText = '';
-      let afterRetrieve = false;
+      // VOZ-012.1 — F01: o worker (vosk.js) emite UM evento `result` ou `partialresult`
+      // para CADA acceptWaveformFloat (exatamente 1 resposta por chunk — ver vosk-worker.js
+      // processAudioChunk) e EXATAMENTE UM evento `result` final ao processar retrieveFinalResult
+      // (ver retrieveFinalResult no worker). Antes, `finalText = msg.result.text` sobrescrevia
+      // resultados anteriores — perda de palavras em frases com pausas internas.
+      //
+      // Correção: acumulamos segmentos finais em ordem. Sabemos quando parar porque o worker
+      // emite exatamente `totalChunks + 1` respostas (1 por audioChunk + 1 do retrieveFinalResult).
+      // Quando todas as respostas foram recebidas, finalizamos. `partialresult` é contabilizado
+      // mas o texto não é usado como definitivo (Teste B — parcial não contamina resultado).
+      const chunkSize = 4096;
+      const totalChunks = processedPcm.length > 0 ? Math.ceil(processedPcm.length / chunkSize) : 0;
+      const expectedResponses = totalChunks + 1; // 1 resultado por chunk + 1 retrieveFinalResult
+      const segments: string[] = [];
+      let responsesReceived = 0;
       let done = false;
       let acceptEnd = 0;
       let retrieveStart = 0;
       let resultReceivedAt = 0;
 
-      const finish = (text: string) => {
+      const joinSegments = (): string => segments.filter(Boolean).join(' ');
+
+      const finish = () => {
         if (done) return;
         done = true;
         clearTimeout(guard);
         const inferenceEnd = Date.now();
+        const text = joinSegments();
         if (voskDebug) {
           const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
           voiceDebugLog('VOSK_RESULT', {
@@ -173,9 +189,18 @@ export async function transcribeWithVosk(
 
       recognizer.on('result', (msg: any) => {
         if (voskDebug && resultReceivedAt === 0) resultReceivedAt = Date.now();
-        if (msg?.result?.text) finalText = msg.result.text;
-        // Resultado final chega após retrieveFinalResult.
-        if (afterRetrieve) finish(finalText);
+        const seg = msg?.result?.text;
+        if (typeof seg === 'string') {
+          const trimmed = seg.trim();
+          if (trimmed && trimmed !== segments[segments.length - 1]) segments.push(trimmed);
+        }
+        responsesReceived++;
+        if (responsesReceived >= expectedResponses) finish();
+      });
+
+      recognizer.on('partialresult', () => {
+        responsesReceived++;
+        if (responsesReceived >= expectedResponses) finish();
       });
 
       recognizer.on('error', (msg: any) => {
@@ -195,15 +220,13 @@ export async function transcribeWithVosk(
       });
 
       // Segurança: nunca pendura por mais de 30s.
-      const guard = setTimeout(() => finish(finalText), 30000);
+      const guard = setTimeout(() => finish(), 30000);
 
-      const chunkSize = 4096;
       for (let i = 0; i < processedPcm.length; i += chunkSize) {
         const chunk = processedPcm.subarray(i, Math.min(i + chunkSize, processedPcm.length));
         recognizer.acceptWaveformFloat(chunk, sampleRate);
       }
       acceptEnd = Date.now();
-      afterRetrieve = true;
       retrieveStart = Date.now();
       if (voskDebug) {
         voiceDebugLog('VOSK_RETRIEVE', {
