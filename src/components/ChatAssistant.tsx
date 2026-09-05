@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, ImagePlus, MessageCircle } from 'lucide-react';
+import { X, Send, Loader2, ImagePlus, MessageCircle, Mic, Square } from 'lucide-react';
 import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
+import { useVoiceInput } from '@/lib/voice/useVoiceInput';
 
 // ===============================
 // 1. TIPAGEM E INTERFACES APRIMORADAS
@@ -508,6 +509,17 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   const patientLogic = useChatPatient(state, !isRoleAdmin);
   const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin);
 
+  // VOZ-006 — Entrada por voz: Vosk PT-BR → texto → input normal.
+  // A voz NÃO envia automaticamente: a transcrição aparece no campo de texto
+  // para revisão e o envio usa o fluxo textual existente.
+  const voice = useVoiceInput({
+    onTranscript: (text) => {
+      if (text?.trim()) state.setInput(text);
+    },
+  });
+
+  const micDisabled = state.isLoading || (voice.isBusy && !voice.isRecording);
+
   // Mantém o scroll do chat no fim da conversa (inclui geração em streaming)
   useEffect(() => {
     if (scrollRef.current) {
@@ -789,6 +801,39 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   onChange={state.handleImageSelect}
                 />
 
+                <button
+                  type="button"
+                  onClick={() => { if (voice.isRecording) { void voice.stop(); } else { void voice.start(); } }}
+                  disabled={micDisabled}
+                  title={!voice.isSupported
+                    ? 'Transcrição de voz não suportada neste navegador (exige HTTPS e microfone).'
+                    : voice.isRecording
+                      ? 'Parar e transcrever'
+                      : 'Falar mensagem'}
+                  aria-label={voice.isRecording ? 'Parar e transcrever' : 'Falar mensagem'}
+                  className={`min-w-[44px] h-[44px] flex items-center justify-center rounded-full transition-all shrink-0 active:scale-95 ${voice.isRecording
+                    ? 'bg-rose-600 text-white hover:bg-rose-700'
+                    : 'text-stone-400 hover:text-stone-800 hover:bg-stone-200 disabled:opacity-40 disabled:cursor-not-allowed'}`}
+                >
+                  {voice.isRecording
+                    ? <Square size={18} strokeWidth={2.5} fill="currentColor" />
+                    : voice.isBusy
+                      ? <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
+                      : <Mic size={22} strokeWidth={2.5} />}
+                </button>
+
+                {voice.isRecording && (
+                  <button
+                    type="button"
+                    onClick={voice.cancel}
+                    aria-label="Cancelar gravação"
+                    title="Cancelar gravação"
+                    className="min-w-[44px] h-[44px] flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
+                  >
+                    <X size={16} strokeWidth={2.5} />
+                  </button>
+                )}
+
                 <textarea
                   value={state.input}
                   rows={1}
@@ -829,6 +874,26 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   )}
                 </button>
               </div>
+
+              {voice.isRecording || voice.isBusy || voice.error ? (
+                <div className="mt-2 -mb-1 px-2 flex items-center gap-2 text-xs" role="status" aria-live="polite">
+                  {voice.isRecording && (
+                    <span className="inline-flex items-center gap-1.5 text-rose-600 font-semibold">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                      </span>
+                      Gravando — toque no microfone para parar
+                    </span>
+                  )}
+                  {!voice.isRecording && voice.isBusy && (
+                    <span className="text-stone-500 font-medium">Transcrevendo...</span>
+                  )}
+                  {voice.error && (
+                    <span className="text-rose-600 font-medium">{voice.error.userMessage}</span>
+                  )}
+                </div>
+              ) : null}
             </div>
 
           </div>

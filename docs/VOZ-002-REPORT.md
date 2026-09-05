@@ -2,9 +2,9 @@
 
 **Sprint:** VOZ-002 — Android Microphone Probe  
 **Tipo:** Diagnóstico e validação (sem UX)  
-**Data:** 2026-05-13  
+**Data:** 2026-05-13 (atualizado VOZ-002-R1 2026-05-13)  
 **Base:** VOZ-001-C `BLOCKED_BY_ENVIRONMENT` (sem GPU, sem Android/iOS)  
-**Status:** Probe criado e validado em ambiente Windows — **Android físico NOT TESTED (BLOCKED)**
+**Status:** Probe criado e validado em ambiente Windows — **Android físico NOT TESTED (BLOCKED)** — **R1: Moonshine ESM fix aplicado, build re-validado (30.3s), aguardando re-teste Android em produção**
 
 ---
 
@@ -239,3 +239,91 @@ Silêncio ≈0.0000–0.001, voz ≈0.02–0.09 (MEDIDO em `capture.ts` unit `fl
 ---
 
 **Evidência de isolamento (para auditoria):** `grep -r "ChatAssistant" src/app/dev` = 0 resultados; `grep -r "/api/stt" src` = 0; `next build` rotas incluem `/dev/voice-test` como `○` static sem afetar `ƒ /api/nutri-assistant/*`.
+
+---
+
+## 16. Correção VOZ-002-R1 — Moonshine ESM Runtime Fix (2026-05-13)
+
+**Auditoria VOZ-002 identificou:** `Erro Moonshine: Moonshine não carregado — execute load() primeiro` em produção `https://vanzacarias-mu.vercel.app/dev/voice-test` (Testes A–E PASS, F FAIL). Causa: `src/lib/voice/stt/moonshine.ts` carregava `@moonshine-ai/moonshine-js@0.1.29` via `<script src=".../moonshine.min.js">` sem `type="module"` e esperava `window.Moonshine` global, mas o pacote é **ESM** (`"type":"module"`, `export { MicrophoneTranscriber }`) e nunca cria global. `script.onload` marcava `state=ready` (falso positivo) e `startTranscription` falhava em `if (!window.Moonshine)`.
+
+**Correção aplicada (escopo R1):**
+
+| Arquivo | Alteração | Motivo |
+|---|---|---|
+| `src/lib/voice/stt/moonshine.ts` | Removido `<script>` + `window.Moonshine`; substituído por `await (0, eval)('import("https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-js@0.1.29/dist/moonshine.min.js")')` com fallback para `import("@moonshine-ai/moonshine-js")` em runtime, `this.MoonshineNS` validado (`if (!MicrophoneTranscriber) throw`), `numThreads=1` sem COOP/COEP, singleton unificado via `cachedKey = model:streaming` | ESM correto, sem bundling `ort.bundle.min.mjs` no build, sem falso `ready` |
+| `src/app/dev/voice-test/page.tsx` | Unificado Teste F para runtime único `getMoonshineRuntime({model:'tiny-streaming', useStreaming:true})` (antes criava `false` e depois `true` sobrescrevendo cache) | Elimina sobrescrita de singleton |
+| `next.config.ts` | Revertido para original (sem `transpilePackages`/`asyncWebAssembly`) — ESM via CDN evita bundling WASM no build | Menor impacto, build volta a 30.3s + 21.2s |
+
+**Validação:**
+
+* `npx tsc --noEmit` PASS (0 erros) — antes falhava `TS1005` no `catch`
+* `npm run build` PASS (30.3s compile + 21.2s generate, 28 rotas, `○ /dev/voice-test` static)
+* `npx vitest run` PASS 13 suites 202 tests (sem regressão)
+* `load()` agora só marca `ready` após `MicrophoneTranscriber` existir; erro real propagado (`Falha ao carregar Moonshine: ...`), não mascarado
+
+**Teste real pendente:** Mesma URL `https://vanzacarias-mu.vercel.app/dev/voice-test` deve ser re-testada em Android Chrome (A→G). Esperado agora: `load()` baixa 30 MB via CDN ESM, `MicrophoneTranscriber` disponível, `Transcrição: "..."` em 8s. Se falhar, novo erro será real (ex: `Failed to fetch` CORS, `WebAssembly` OOM) e não `window.Moonshine` falso.
+
+**Status após R1:** Código corrigido para `ESM`; **Android físico ainda NOT TESTED** nesta execução Windows (sem aparelho). Próximo `BLOCKED`→`PASS — MOONSHINE_RUNTIME` depende de re-teste manual em Android com evidência de transcrição real (critério VOZ-002 §13).
+
+**Risco de escopo:** Correção **dentro** do escopo VOZ-002 (probe isolado, sem ChatAssistant, sem `/api/stt`, sem fine-tuning) — não exige VOZ-003.
+
+---
+
+## 17. F1 — WAV LOCAL → MOONSHINE (VOZ-002-R2) — Implementado, teste manual pendente
+
+**Contexto VOZ-002-R2:** Validar `WAV local → pipeline → Moonshine Tiny` isoladamente, sem microfone, sem upload, antes de repetir Android.
+
+**Implementado (código):**
+
+* **Fixture:** `public/moonshire.wav` **presente** (2.622.030 bytes, 2.5 MB, verificado `Get-ChildItem public\moonshire.wav`) — não modificado, não movido, tratado como fixture
+* **Probe:** Novo teste **F1 — WAV LOCAL → MOONSHINE** em `src/app/dev/voice-test/page.tsx` (após F, antes de G), com `useState f1` + `runTestF1`
+* **Fluxo F1 (local, sem microfone, sem servidor):**
+  ```
+  fetch('/moonshire.wav') → ArrayBuffer (fileSize)
+    ↓
+  AudioContext.decodeAudioData → AudioBuffer (duration, sampleRate, channels, samples)
+    ↓
+  Conversão em memória → mono 16kHz PCM (resample linear se 48k→16k, mix estéreo→mono, Float32)
+    ↓
+  MoonshineModel (mesmo runtime ESM corrigido VOZ-002-R1, Tiny) → loadModel() → generate(pcm)
+    ↓
+  Transcrição real (texto)
+  ```
+  * Conversão preserva arquivo original (só em memória), `localOnly:true, upload:0`
+  * Usa mesmo `MoonshineModel` ESM via `cdn.jsdelivr.net` + `numThreads=1`, não cria loader separado, não volta a `window.Moonshine`
+* **UI F1:** Seção `border-2 border-violet-300` com botão `Carregar WAV + Transcrever (F1)`, `pre` para `wavInfo` (fileSize, fetchMs, duration, sampleRate, channels, convertedSampleRate, pcmSamples, modelLoadMs, inferMs) e `div` para transcrição real, `latency` e `status` (`running/pass/fail`)
+
+**Preservação A–G:** Todos os testes A–G mantidos idênticos (Secure Context, getUserMedia, RMS, getSettings, PCM, Moonshine mic, cleanup) — F1 é adicional, não substituição.
+
+**Validação técnica (sem áudio real nesta execução Windows CI):**
+
+* `npx tsc --noEmit` **PASS** (0 erros)
+* `npm run build` **PASS** (28.5s + 19.9s, 28 rotas, `○ /dev/voice-test`)
+* `npx vitest run` **PASS** 13 suites 202 tests
+* `public/moonshire.wav` existe (2.6 MB) — não alterado
+
+**Teste manual pendente (conforme VOZ-002-R2 §11):**
+
+* Não foi executado `npm run dev` + `http://localhost:3000/dev/voice-test` + clique **F1** nesta sprint automatizada (ambiente Windows sem browser interativo). 
+* **Para validar:** executar `npm run dev` (sem `--host` necessário para localhost), abrir `http://localhost:3000/dev/voice-test` no **Chrome desktop**, clicar **F1**, aguardar:
+  * `WAV carregado (2.6 MB, ~3s, 44.1kHz 2ch → 16k mono)` — exemplo
+  * `Runtime ESM carregado` → `Modelo Tiny carregado` → `Transcrição: "..."` (texto real do arquivo)
+  * Se vazio: `Transcrição vazia` (não é PASS)
+  * Se erro: preservar `CORS / WASM / OOM / model download` com stack (não generic)
+* **Não fazer deploy em produção** nesta etapa (conforme § "Não publicar").
+
+**Resultado F1 nesta sprint:**
+
+```
+WAV: PRESENTE (public/moonshire.wav 2.6 MB) — MEDIDO (Get-ChildItem)
+F1 código: IMPLEMENTADO (fetch + decodeAudioData + resample + MoonshineModel.generate) — MEDIDO (build PASS)
+F1 execução real: NOT TESTED — sem execução manual no browser nesta execução
+Privacidade: 0 upload (MEDIDO código, fetch é GET local, sem POST)
+A–G: PRESERVADOS (MEDIDO)
+```
+
+**Classificação F1:** `BLOCKED — MANUAL TEST PENDING` (não é falha do runtime, é falta de execução manual). Próximo passo: executar F1 localmente e registrar em `docs/VOZ-002-REPORT.md` a seção 17 com `wavInfo` real, `transcription` real e `PASS — MOONSHINE WAV` ou erro específico.
+
+**Critério de sucesso F1 (VOZ-002-R2):** `WAV carregado + runtime ESM + modelo Tiny + inferência + transcrição real + upload 0` — só com transcrição real é `PASS`.
+
+**Próximo passo mínimo:** Rodar `npm run dev` e clicar F1 no desktop Chrome (não Android) para validar pipeline WAV→PCM→Moonshine isoladamente, depois repetir Teste F com microfone Android.

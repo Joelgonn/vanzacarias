@@ -125,6 +125,69 @@ export function floatTo16BitPCM(float32: Float32Array): Int16Array {
   return out;
 }
 
+// VOZ-006 — Gravação contínua de PCM a partir de um stream já capturado.
+// Reutiliza AudioContext/stream existentes (captureAudio) e acumula Float32
+// enquanto ativo; stop() devolve o PCM concatenado na taxa do AudioContext.
+// Mesmo padrão do lab (ScriptProcessorNode), extraído para uso na integração.
+export type PcmRecorder = {
+  start: () => void;
+  stop: () => Float32Array;
+  cancel: () => void;
+  cleanup: () => void;
+};
+
+export function createPcmRecorder(
+  stream: MediaStream,
+  audioContext: AudioContext,
+  chunkSize = 4096
+): PcmRecorder {
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(chunkSize, 1, 1);
+  const chunks: Float32Array[] = [];
+  let active = false;
+  let finished = false;
+
+  processor.onaudioprocess = (e) => {
+    if (!active || finished) return;
+    if (e.inputBuffer.numberOfChannels === 0) return;
+    // Monocanal: recebe apenas o canal 0 (constraints pedem channelCount=1).
+    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+
+  const teardown = () => {
+    try { source.disconnect(); } catch {}
+    try { processor.disconnect(); } catch {}
+  };
+
+  return {
+    start() {
+      active = true;
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+    },
+    stop() {
+      finished = true;
+      const total = chunks.reduce((s, c) => s + c.length, 0);
+      const out = new Float32Array(total);
+      let offset = 0;
+      for (const c of chunks) { out.set(c, offset); offset += c.length; }
+      chunks.length = 0;
+      teardown();
+      return out;
+    },
+    cancel() {
+      finished = true;
+      chunks.length = 0;
+      teardown();
+    },
+    cleanup() {
+      finished = true;
+      chunks.length = 0;
+      teardown();
+    },
+  };
+}
+
 export function resampleTo16k(input: Float32Array, inputRate: number, targetRate = 16000): Float32Array {
   if (inputRate === targetRate) return input;
   const ratio = inputRate / targetRate;
