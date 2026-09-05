@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   loadVoskModel: vi.fn<(id: string) => Promise<unknown>>(),
   transcribeWithVosk: vi.fn<(pcm: Float32Array, rate: number, model: unknown) => Promise<string>>(),
   disposeVoskModel: vi.fn(),
-  getVoskModelStats: vi.fn(() => ({ loadCount: 0, warmHitCount: 0, inFlightSharedCount: 0 })),
+  getVoskModelStats: vi.fn(() => ({ loadCount: 0, warmHitCount: 0, inFlightSharedCount: 0, staleAbortedLoadCount: 0 })),
+  // VOZ-012.5 (F07): dependências novas da engine — generation e loading-in-flight.
+  getVoskModelGeneration: vi.fn(() => 0),
+  isVoskModelLoading: vi.fn(() => false),
 }));
 
 vi.mock('../stt/vosk', () => ({
@@ -21,6 +24,8 @@ vi.mock('../stt/vosk', () => ({
   transcribeWithVosk: mocks.transcribeWithVosk,
   disposeVoskModel: mocks.disposeVoskModel,
   getVoskModelStats: mocks.getVoskModelStats,
+  getVoskModelGeneration: mocks.getVoskModelGeneration,
+  isVoskModelLoading: mocks.isVoskModelLoading,
 }));
 
 import { getVoskEngine, VOSK_ENGINE_KEEP_WARM_MS } from '../stt/engines/vosk';

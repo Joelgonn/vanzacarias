@@ -89,6 +89,12 @@ const sanitizeInput = (text: string): string => {
 
 const MAX_MESSAGE_LENGTH = 500;
 
+// COMPOSER-001 — crescimento vertical controlado do Composer: o textarea cresce
+// com o texto (linhas reais via scrollHeight) até este limite; além dele passa
+// a usar scroll interno e o Composer pára de crescer (mesmo acorde do
+// max-h-[200px] aplicado no <textarea>).
+const COMPOSER_MAX_HEIGHT = 200;
+
 // VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
 // chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
 // duplicam regras clínicas e não expõem conteúdo Premium no botão.
@@ -540,15 +546,37 @@ export default function ChatAssistant(props: ChatAssistantProps) {
     }
   }, [state.messages, state.isLoading, state.streamingText]);
 
-  // VOZ-012 — textarea auto-expansão para transcrições longas (texto curto→normal, médio→cresce, longo→até 200px + scroll)
-  useEffect(() => {
+  // VOZ-012 + COMPOSER-001 — auto-grow do textarea dentro do Composer:
+  // mede as linhas reais renderizadas (scrollHeight), cresce até o limite e só
+  // então ativa scroll interno (overflow-y:auto). Recalcula a cada mudança de
+  // texto — digitar, apagar, colar e transcrição de voz ([state.input]) — e em
+  // resize/orientação/visualViewport (teclado, redimensionar janela).
+  const resizeComposer = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      const maxH = 200;
+      const maxH = COMPOSER_MAX_HEIGHT;
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, maxH) + 'px';
       textareaRef.current.style.overflowY = textareaRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
     }
+  };
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      resizeComposer();
+    }
   }, [state.input]);
+
+  useEffect(() => {
+    const recompute = () => resizeComposer();
+    window.addEventListener('resize', recompute);
+    window.addEventListener('orientationchange', recompute);
+    window.visualViewport?.addEventListener('resize', recompute);
+    return () => {
+      window.removeEventListener('resize', recompute);
+      window.removeEventListener('orientationchange', recompute);
+      window.visualViewport?.removeEventListener('resize', recompute);
+    };
+  }, []);
 
   const handleSend = () => {
     if (role === 'admin') {
@@ -774,7 +802,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               )}
             </div>
 
-            <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
+            <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
               
               {state.selectedImage && (
                 <div className="relative mb-3 inline-block animate-in fade-in slide-in-from-bottom-2">
@@ -797,7 +825,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 </div>
               )}
 
-              <div className="flex gap-2 bg-stone-50 p-1.5 rounded-[2rem] border border-stone-200 focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-500/10 focus-within:bg-white transition-all items-center">
+              <div className="flex w-full gap-2 bg-stone-50 p-1.5 rounded-[2rem] border border-stone-200 focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-500/10 focus-within:bg-white transition-all items-end">
                 
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -855,12 +883,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   rows={1}
                   onChange={(e) => {
                     state.setInput(e.target.value);
-                    if (textareaRef.current) {
-                      textareaRef.current.style.height = 'auto';
-                      const maxH = 200;
-                      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, maxH) + 'px';
-                      textareaRef.current.style.overflowY = textareaRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
-                    }
+                    resizeComposer();
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -871,7 +894,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   maxLength={MAX_MESSAGE_LENGTH}
                   placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                   aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-relaxed min-h-[44px] max-h-[200px]"
+                  className="flex-1 min-w-0 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-relaxed min-h-[44px] max-h-[200px]"
                   disabled={state.isLoading}
                 />
 

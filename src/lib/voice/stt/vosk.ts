@@ -68,25 +68,36 @@ let cachedModelId: string | null = null;
 // - loadCount: construções reais de `new Vosk.Model` (download+worker únicos).
 // - warmHitCount: vezes em que loadVoskModel reutilizou o modelo já em memória.
 // - inFlightSharedCount: vezes em que uma chamada concorrente reutilizou o load em voo.
+// - staleAbortedLoadCount: carregamentos cuja geração foi invalidada por um
+//   dispose HARD ocorrido durante a carga (F07) — descartados e terminados sem
+//   instalar instância obsoleta.
 // Contadores monotônicos por sessão de página (sem áudio/PII).
 let voskModelLoadCount = 0;
 let voskWarmHitCount = 0;
 let voskInFlightSharedCount = 0;
+let voskStaleAbortedLoadCount = 0;
 
 export function getVoskModelStats(): {
   loadCount: number;
   warmHitCount: number;
   inFlightSharedCount: number;
+  staleAbortedLoadCount: number;
 } {
   return {
     loadCount: voskModelLoadCount,
     warmHitCount: voskWarmHitCount,
     inFlightSharedCount: voskInFlightSharedCount,
+    staleAbortedLoadCount: voskStaleAbortedLoadCount,
   };
 }
 
 // Cache em voo: deduplica loadVoskModel concorrentes (duas chamadas simultâneas
 // não criam 2 workers/modelos). A mesma promise é compartilhada entre chamadores.
+// VOZ-012.5 (F07): o despacho é atômico (check-and-set totalmente síncrono, sem
+// await entre as instruções), então qualquer número de chamadas concorrentes
+// cai na MESMA promise. O `finally` limpa por IDENTIDADE (não por id) para que
+// um chamador de uma geração anterior nunca apague o pendingModelLoad de uma
+// geração nova (limpeza concorrente).
 let pendingModelLoad: Promise<any> | null = null;
 let pendingModelLoadId: string | null = null;
 
@@ -104,52 +115,84 @@ export async function loadVoskModel(modelId: VoskModelId = 'small-pt-0.3', onPro
     voskInFlightSharedCount++;
     return pendingModelLoad;
   }
-  pendingModelLoad = doLoadVoskModel(modelId, onProgress);
+  const loadPromise = doLoadVoskModel(modelId, onProgress);
+  pendingModelLoad = loadPromise;
   pendingModelLoadId = modelId;
   try {
-    return await pendingModelLoad;
+    return await loadPromise;
   } finally {
-    if (pendingModelLoadId === modelId) {
+    if (pendingModelLoad === loadPromise) {
       pendingModelLoad = null;
       pendingModelLoadId = null;
     }
   }
 }
 
+// VOZ-012.5 (F07) — geração do modelo em memória. `modelGeneration` só aumenta em
+// dispose HARD. Uma carga iniciada antes do dispose (gen antiga) que terminar depois:
+// (a) não instala a instância (não substitui uma geração nova) — §5;
+// (b) é terminada para não virar worker órfão — §4;
+// (c) os chamadores da geração antiga recebem erro controlado (MODEL_LOAD_STALE).
+let modelGeneration = 0;
+
+export function getVoskModelGeneration(): number {
+  return modelGeneration;
+}
+
+// F07 (§6) — o keep-warm e demais decisões de hard dispose consultam esta função:
+// enquanto houver carregamento válido em andamento, o hard dispose NÃO deve
+// executar (o load que está em voo instalará/armará seu próprio keep-warm).
+export function isVoskModelLoading(): boolean {
+  return pendingModelLoad !== null;
+}
+
 async function doLoadVoskModel(modelId: VoskModelId, onProgress?: (p: number) => void): Promise<any> {
   const loadStart = Date.now();
+  const genAtStart = modelGeneration;
   const Vosk = await loadVoskBrowser();
   const modelInfo = VOSK_MODELS[modelId];
   const isModelRequest = isVoskModelRequest(new URL(modelInfo.url, typeof location !== 'undefined' ? location.href : 'https://app.local/'));
   // Modelo local exclusivamente (privacy/local-only R4): GET /vosk-model-small-pt-0.3.tar.gz
   // é fetado pelo Worker (mesma origem). Nenhum fallback remoto.
   const model = new Vosk.Model(modelInfo.url);
-  const modelRef = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Vosk MODEL_LOAD_TIMEOUT')), 120000);
-    model.on('load', (msg: any) => {
-      clearTimeout(timer);
-      if (msg?.result) resolve(model);
-      else reject(new Error(`Vosk MODEL_LOAD_FAILED: ${modelInfo.url}`));
+  try {
+    const modelRef = await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Vosk MODEL_LOAD_TIMEOUT')), 120000);
+      model.on('load', (msg: any) => {
+        clearTimeout(timer);
+        if (msg?.result) resolve(model);
+        else reject(new Error(`Vosk MODEL_LOAD_FAILED: ${modelInfo.url}`));
+      });
+      model.on('error', (msg: any) => {
+        clearTimeout(timer);
+        reject(new Error(`Vosk MODEL_LOAD_ERROR: ${msg?.error || 'unknown'}`));
+      });
     });
-    model.on('error', (msg: any) => {
-      clearTimeout(timer);
-      reject(new Error(`Vosk MODEL_LOAD_ERROR: ${msg?.error || 'unknown'}`));
-    });
-  });
-  voskModelLoadCount++;
-  if (isVoiceDebugEnabled()) {
-    voiceDebugLog('VOSK_MODEL_LOAD', {
-      modelId,
-      durationMs: Date.now() - loadStart,
-      version: modelInfo.version,
-      loadedUrl: modelInfo.url,
-      isModelRequest,
-      sha256: modelInfo.convertedSha256,
-    });
+    // F07 (§5/§6) — se um dispose HARD ocorreu durante a carga, esta instância
+    // pertence à geração anterior: não instala e termina o worker (sem órfão).
+    if (genAtStart !== modelGeneration) {
+      voskStaleAbortedLoadCount++;
+      throw new Error('Vosk MODEL_LOAD_STALE: instância obsoleta descartada (dispose durante carregamento)');
+    }
+    voskModelLoadCount++;
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('VOSK_MODEL_LOAD', {
+        modelId,
+        durationMs: Date.now() - loadStart,
+        version: modelInfo.version,
+        loadedUrl: modelInfo.url,
+        isModelRequest,
+        sha256: modelInfo.convertedSha256,
+      });
+    }
+    cachedModel = modelRef;
+    cachedModelId = modelId;
+    return modelRef;
+  } catch (err) {
+    // F07 (§4) — nenhum worker órfão: falha/timeout/stale termina o worker recém-criado.
+    try { (model as any).terminate?.(); } catch {}
+    throw err;
   }
-  cachedModel = modelRef;
-  cachedModelId = modelId;
-  return modelRef;
 }
 
 // VOZ-012.3 — F02: guard de inferência PROPORCIONAL à duração real do áudio.
@@ -383,7 +426,7 @@ export async function transcribeWithVosk(
   });
 }
 
-// VOZ-006 / VOZ-012.4 — Dispose HARD (término definitivo) do modelo Vosk.
+// VOZ-006 / VOZ-012.4 / VOZ-012.5 — Dispose HARD (término definitivo) do modelo Vosk.
 // API pública real do vosk-browser (model.d.ts:17 / vosk.js:705):
 // Model.terminate() envia {action:"terminate"} ao Worker, encerrando Worker/WASM.
 // Só é seguro chamar quando nenhum KaldiRecognizer está em uso.
@@ -391,7 +434,16 @@ export async function transcribeWithVosk(
 // VOZ-012.4 (F05): quem invoca este dispose é o keep-warm do engine (TTL de
 // inatividade) — NÃO o dispose() do controller no unmount (que é soft/park).
 // Assim o modelo não fica retido indefinidamente e o terminate() é preservado.
+//
+// VOZ-012.5 (F07): o dispose abre uma NOVA geração e invalida o cache em voo.
+// - `modelGeneration++`: cargas iniciadas antes do dispose (em voo) tornam-se
+//   obsoletas e não instalaram instância após este dispose (§5).
+// - `pendingModelLoad = null`: um load que venha DEPOIS do dispose começa uma
+//   carga nova/limpa (não reaviva a promise da geração anterior).
+// A coordenação com o keep-warm fica no engine (isVoskModelLoading): o timer
+// não executa este dispose enquanto houver carregamento em andamento (§6).
 export function disposeVoskModel(): void {
+  modelGeneration++;
   if (cachedModel) {
     try {
       (cachedModel as any).terminate?.();
@@ -399,6 +451,8 @@ export function disposeVoskModel(): void {
   }
   cachedModel = null;
   cachedModelId = null;
+  pendingModelLoad = null;
+  pendingModelLoadId = null;
 }
 
 export function isVoskSupported(): { wasm: boolean; worker: boolean } {

@@ -19,7 +19,7 @@
 //   permanentemente).
 // - Proteção durante inferência: TTL (10min) >> guard máximo do F02 (~270s), e o timer
 //   é rearmado a cada load/transcrição, então nunca dispara sobre uma transcrição em voo.
-import { loadVoskModel, transcribeWithVosk, disposeVoskModel, getVoskModelStats } from '../vosk';
+import { loadVoskModel, transcribeWithVosk, disposeVoskModel, getVoskModelStats, getVoskModelGeneration, isVoskModelLoading } from '../vosk';
 import { isVoiceDebugEnabled, voiceDebugLog } from '../../debug';
 
 // VOZ-012.4 — F05: janela de reutilização do modelo após a última atividade.
@@ -30,15 +30,24 @@ export const VOSK_ENGINE_KEEP_WARM_MS = 10 * 60_000;
 
 export function getVoskEngine() {
   let cachedModel: any = null;
+  // VOZ-012.5 (F07) — geração do modelo que esta instância de engine carregou.
+  // Se um dispose HARD (keep-warm) aconteceu, `getVoskModelGeneration()` aumenta;
+  // a engine NÃO usa mais a instância antiga (terminada) e recarrega na próxima
+  // transcrição (T-F07-7) — nenhuma referência à instância antiga sobrevive.
+  let loadedGeneration = -1;
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Rearma o keep-warm a cada atividade de carga/transcrição. Quando expira, faz o
   // dispose HARD do modelo (terminate do worker) mesmo com a UI desmontada — memória
   // é liberada, o worker nunca fica órfão indefinidamente.
+  // VOZ-012.5 (F07 §6): se houver um carregamento VÁLIDO em andamento, o timer NÃO
+  // executa o hard dispose — o load que está em voo instalará/armará seu próprio
+  // keep-warm. No caso contrário (idle real) o hard dispose ocorre normalmente.
   const armWarm = (): void => {
     if (warmTimer) clearTimeout(warmTimer);
     warmTimer = setTimeout(() => {
       warmTimer = null;
+      if (isVoskModelLoading()) return;
       try { disposeVoskModel(); } catch {}
     }, VOSK_ENGINE_KEEP_WARM_MS);
   };
@@ -54,6 +63,7 @@ export function getVoskEngine() {
       // O cache module-level de vosk.ts reutiliza o modelo (warm) OU a promise em voo
       // (in-flight dedupe) — nunca cria worker/modelo duplicado.
       cachedModel = await loadVoskModel('small-pt-0.3');
+      loadedGeneration = getVoskModelGeneration();
       const after = getVoskModelStats();
       armWarm();
       if (isVoiceDebugEnabled()) {
@@ -67,9 +77,11 @@ export function getVoskEngine() {
       }
     },
     async transcribe(pcm: Float32Array, sampleRate: number) {
-      if (!cachedModel) {
-        // Tenta carregar se ainda não carregado (para lab que chama transcribe direto)
+      if (!cachedModel || loadedGeneration !== getVoskModelGeneration()) {
+        // Voz-012.5 (F07): recarrega se nunca carregou OU se a instância em mãos foi
+        // descartada por um hard dispose (geraÇão antiga — worker terminado).
         cachedModel = await loadVoskModel('small-pt-0.3');
+        loadedGeneration = getVoskModelGeneration();
       }
       // Atividade recente rearma o keep-warm antes de uma inferência potencialmente
       // longa (guarda máxima ~270s no F02 é << KEEP_WARM 600s).
