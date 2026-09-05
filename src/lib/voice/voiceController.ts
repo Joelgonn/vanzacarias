@@ -64,6 +64,9 @@ export class VoiceInputController {
   private gen = 0;
   private capture: CaptureResult | null = null;
   private recorder: PcmRecorder | null = null;
+  // VOZ-012 — load assíncrono do engine em background (gravação já iniciada).
+  // stop() aguarda esta promise antes de transcrever, evitando corrida com o load.
+  private pendingEngineLoad: Promise<void> | null = null;
   // VOZ-008 — instrumentação wall time (sem áudio)
   private recordingStartMs: number | null = null;
 
@@ -159,9 +162,18 @@ export class VoiceInputController {
       }
     }
 
+    if (!this.engine) {
+      this.engineState = 'ERROR';
+      this.fail({ code: 'load_failed', userMessage: 'Engine de voz não encontrada no registro.' });
+      return;
+    }
+
     const gen = ++this.gen;
+    const voiceStartTime = Date.now();
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_CLICK', { gen, engineState: this.engineState });
     this.loading = true;
     this.setStatus('loading');
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_CAPTURE_START', { gen, ts: voiceStartTime });
 
     // 1. Microfone imediato (permissão no toque, conforme VOZ-006 §6).
     let cap: CaptureResult | null = null;
@@ -170,44 +182,15 @@ export class VoiceInputController {
     } catch (e: any) {
       this.loading = false;
       if (gen !== this.gen) return;
+      if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_CAPTURE_ERROR', { gen, error: e?.message || String(e), duration: Date.now() - voiceStartTime });
       this.failCapture(e);
       return;
     }
     if (gen !== this.gen) { try { cap.cleanup(); } catch {} return; }
     this.capture = cap;
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_CAPTURE_READY', { gen, duration: Date.now() - voiceStartTime, sampleRate: cap.sampleRate, state: cap.audioContext.state });
 
-    // 2. Engine: carrega apenas se ainda não estiver READY/RESULT.
-    if (!isEngineReady(this.engineState) && this.engine) {
-      this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_START' });
-      this.setStatus('loading');
-      try {
-        await this.engine.load();
-      } catch (e: any) {
-        this.loading = false;
-        try { cap.cleanup(); } catch {}
-        this.capture = null;
-        if (gen !== this.gen) return;
-        this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_ERROR' });
-        this.fail({
-          code: 'load_failed',
-          userMessage: 'Não foi possível carregar o modelo de voz. Tente novamente.',
-          detail: e instanceof Error ? e.message : String(e),
-        });
-        return;
-      }
-      if (gen !== this.gen) { try { cap.cleanup(); } catch {} this.capture = null; return; }
-      this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_SUCCESS' });
-    }
-    if (!this.engine) {
-      this.loading = false;
-      try { cap.cleanup(); } catch {} this.capture = null;
-      this.engineState = 'ERROR';
-      this.fail({ code: 'load_failed', userMessage: 'Engine de voz não encontrada no registro.' });
-      return;
-    }
-
-    // 3. Gravação — VOZ-008.5: garantir AudioContext running antes do PCM
-    // Ordem exigida: AudioContext → resume() → running → criação PCM
+    // 2. Garantir AudioContext running antes de iniciar captura (VOZ-008.5)
     const stateBeforeCtrl: string = (cap.audioContext.state as string) ?? 'unknown';
     let resumeAttemptedCtrl = false;
     const needsResumeCtrl = typeof cap.audioContext.state === 'string' && (cap.audioContext.state as string) !== 'running' && (cap.audioContext.state as string) !== 'closed';
@@ -242,6 +225,8 @@ export class VoiceInputController {
       return;
     }
 
+    // 3. Iniciar gravação IMEDIATAMENTE para feedback UX (evita congelamento)
+    // Não esperar engine load para mostrar "gravando"
     this.loading = false;
     this.recorder = this.opts.recorderFactory
       ? this.opts.recorderFactory(cap.stream, cap.audioContext)
@@ -250,6 +235,46 @@ export class VoiceInputController {
     this.recorder.start();
     this.recording = true;
     this.setStatus('recording');
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_RECORDING_STARTED', { gen, duration: Date.now() - voiceStartTime });
+
+    // 4. Engine: carrega apenas se ainda não estiver READY/RESULT (pode ocorrer em paralelo com gravação já iniciada)
+    if (!isEngineReady(this.engineState) && this.engine) {
+      const engineLoadStart = Date.now();
+      this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_START' });
+      // Manter status gravando durante load para não congelar UI; load é em background
+      if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_ENGINE_LOAD_START', { gen });
+      const loadPromise = this.engine.load();
+      this.pendingEngineLoad = loadPromise;
+      try {
+        await loadPromise;
+      } catch (e: any) {
+        if (gen !== this.gen) {
+          if (this.pendingEngineLoad === loadPromise) this.pendingEngineLoad = null;
+          return;
+        }
+        // Se load falhar, encerrar gravação e limpar
+        this.recording = false;
+        try { this.recorder?.cancel(); } catch {}
+        this.recorder = null;
+        try { cap.cleanup(); } catch {}
+        this.capture = null;
+        this.recordingStartMs = null;
+        this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_ERROR' });
+        if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_ENGINE_LOAD_ERROR', { gen, duration: Date.now() - engineLoadStart, error: e?.message || String(e) });
+        this.fail({
+          code: 'load_failed',
+          userMessage: 'Não foi possível carregar o modelo de voz. Tente novamente.',
+          detail: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      } finally {
+        if (this.pendingEngineLoad === loadPromise) this.pendingEngineLoad = null;
+      }
+      if (gen !== this.gen) return;
+      this.engineState = engineStateReducer(this.engineState, { type: 'LOAD_SUCCESS' });
+      if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_ENGINE_LOAD_SUCCESS', { gen, duration: Date.now() - engineLoadStart });
+    }
+
     if (isVoiceDebugEnabled()) {
       const s: any = cap.actualSettings as any;
       voiceDebugLog('CAPTURE_START', {
@@ -281,6 +306,8 @@ export class VoiceInputController {
     if (!this.recording || !this.recorder || !this.capture) return;
 
     const gen = this.gen;
+    const voiceStopTime = Date.now();
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_STOP', { gen, ts: voiceStopTime });
     const stopWallMs = Date.now();
     const recordingWallTimeMs = this.recordingStartMs != null ? stopWallMs - this.recordingStartMs : 0;
     // Capturar estados antes de cleanup para diagnóstico
@@ -341,7 +368,7 @@ export class VoiceInputController {
     if (gen !== this.gen || !this.engine) {
       if (isVoiceDebugEnabled()) {
         voiceDebugLog('LIFECYCLE_ABORT', {
-          reason: !this.engine ? 'no-engine' : 'gen-changed',
+          reason: this.engine ? 'gen-changed' : 'no-engine',
           genBefore: gen,
           genAfter: this.gen,
           engineState: this.engineState,
@@ -349,6 +376,21 @@ export class VoiceInputController {
       }
       return;
     }
+    // VOZ-012 — se o engine ainda está carregando (start() carregou em background após iniciar a
+    // gravação), aguardar a conclusão antes de transcrever. Evita corrida com o load e o
+    // carregamento concorrente do modelo (loadVoskModel não deduplica chamadas em voo).
+    // A continuação do start() (registrada antes) aplica LOAD_SUCCESS e limpa pendingEngineLoad.
+    if (!isEngineReady(this.engineState) && this.pendingEngineLoad) {
+      if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_WAIT_ENGINE_LOAD', { gen, engineState: this.engineState });
+      try {
+        await this.pendingEngineLoad;
+      } catch {
+        // start() já reportou load_failed e fez cleanup; nada a transcrever.
+        return;
+      }
+      if (gen !== this.gen) return;
+    }
+    if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_PROCESS_START', { gen, ts: Date.now() });
 
     const sampleRate = 16000;
     const pcm16k = recordedRate === sampleRate ? pcm : resampleTo16k(pcm, recordedRate, sampleRate);
@@ -389,6 +431,7 @@ export class VoiceInputController {
         pcm16kDurationMs: Math.round((pcm16k.length / sampleRate) * 1000),
         sampleRate,
       });
+      voiceDebugLog('VOICE_VOSK_START', { gen, ts: Date.now() });
     }
     const transcribeStartMs = Date.now();
     try {
@@ -419,6 +462,8 @@ export class VoiceInputController {
           // texto só em debug local, nunca enviado
           textPreview: text.slice(0, 80),
         });
+        voiceDebugLog('VOICE_VOSK_END', { gen, duration: transcribeEndMs - transcribeStartMs, wordCount });
+        voiceDebugLog('VOICE_TRANSCRIPT', { gen, wordCount, transcriptionLength: text.length });
       }
       this.transcribing = false;
       this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_SUCCESS' });
@@ -481,10 +526,14 @@ export class VoiceInputController {
     }
     this.recording = false;
     this.loading = false;
+    this.transcribing = false;
     this.recordingStartMs = null;
     if (this.engineState === 'LOADING') {
       // Load interrompido: encerra para um estado reiniciável.
       this.engineState = 'IDLE';
+    } else if (this.engineState === 'TRANSCRIBING') {
+      // Transcrição cancelada: modelo já está carregado, volta para READY (reiniciável).
+      this.engineState = 'READY';
     }
     this.setStatus(this.getStatus());
   }

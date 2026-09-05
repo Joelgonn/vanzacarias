@@ -5,6 +5,7 @@ import { X, Send, Loader2, ImagePlus, MessageCircle, Mic, Square } from 'lucide-
 import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useVoiceInput } from '@/lib/voice/useVoiceInput';
+import { isVoiceDebugEnabled, voiceDebugLog } from '@/lib/voice/debug';
 
 // ===============================
 // 1. TIPAGEM E INTERFACES APRIMORADAS
@@ -516,12 +517,17 @@ export default function ChatAssistant(props: ChatAssistantProps) {
     onTranscript: (text) => {
       const trimmed = text?.trim();
       if (!trimmed) return;
+      if (isVoiceDebugEnabled()) voiceDebugLog('VOICE_TRANSCRIPT', { transcriptionLength: trimmed.length, wordCount: trimmed.split(/\s+/).filter(Boolean).length });
       // VOZ-009 — preservar texto existente: adiciona transcrição com espaço, não sobrescreve
       state.setInput((prev: string) => {
         const prevTrimmed = prev.trim();
         if (!prevTrimmed) return trimmed;
         return `${prevTrimmed} ${trimmed}`;
       });
+      if (isVoiceDebugEnabled()) {
+        // VOICE_UI_UPDATED após atualização do estado React (próximo tick)
+        setTimeout(() => voiceDebugLog('VOICE_UI_UPDATED', { ts: Date.now() }), 0);
+      }
     },
   });
 
@@ -534,10 +540,13 @@ export default function ChatAssistant(props: ChatAssistantProps) {
     }
   }, [state.messages, state.isLoading, state.streamingText]);
 
-  // VZ-013 FASE E: ao limpar o input (envio), restaura a altura do textarea.
+  // VOZ-012 — textarea auto-expansão para transcrições longas (texto curto→normal, médio→cresce, longo→até 200px + scroll)
   useEffect(() => {
-    if (textareaRef.current && state.input === '') {
+    if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      const maxH = 200;
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, maxH) + 'px';
+      textareaRef.current.style.overflowY = textareaRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
     }
   }, [state.input]);
 
@@ -848,7 +857,9 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     state.setInput(e.target.value);
                     if (textareaRef.current) {
                       textareaRef.current.style.height = 'auto';
-                      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 132) + 'px';
+                      const maxH = 200;
+                      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, maxH) + 'px';
+                      textareaRef.current.style.overflowY = textareaRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
                     }
                   }}
                   onKeyDown={(e) => {
@@ -860,7 +871,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   maxLength={MAX_MESSAGE_LENGTH}
                   placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                   aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium resize-none overflow-hidden leading-relaxed min-h-[44px] max-h-[132px]"
+                  className="flex-1 bg-transparent py-2.5 px-1 text-[15px] outline-none text-stone-800 w-full placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-relaxed min-h-[44px] max-h-[200px]"
                   disabled={state.isLoading}
                 />
 
