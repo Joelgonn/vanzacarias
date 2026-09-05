@@ -9,8 +9,8 @@ const voskContent = fs.readFileSync(voskPath, 'utf8');
 describe('VOZ-008.8 — Vosk chunked feeding', () => {
   it('PCM é dividido em chunks de no máximo 4096 samples', () => {
     expect(voskContent).toMatch(/const chunkSize = 4096/);
-    expect(voskContent).toMatch(/for\s*\(let i = 0; i < pcm\.length; i \+= chunkSize\)/);
-    expect(voskContent).toMatch(/pcm\.subarray\(i, Math\.min\(i \+ chunkSize/);
+    expect(voskContent).toMatch(/for\s*\(let i = 0; i < processedPcm\.length; i \+= chunkSize\)/);
+    expect(voskContent).toMatch(/processedPcm\.subarray\(i, Math\.min\(i \+ chunkSize/);
   });
 
   it('não existe acceptWaveformFloat(pcm) único para todo o áudio', () => {
@@ -42,12 +42,12 @@ describe('VOZ-008.8 — Vosk chunked feeding', () => {
   });
 
   it('todos os samples são enviados (chunking cobre 0..length)', () => {
-    // Verifica loop cobre todo pcm.length
-    expect(voskContent).toMatch(/for\s*\(let i = 0; i < pcm\.length; i \+= chunkSize\)/);
+    // Verifica loop cobre todo processedPcm.length
+    expect(voskContent).toMatch(/for\s*\(let i = 0; i < processedPcm\.length; i \+= chunkSize\)/);
   });
 
   it('último chunk pode ter tamanho menor que 4096 (via Math.min)', () => {
-    expect(voskContent).toMatch(/Math\.min\(i \+ chunkSize, pcm\.length\)/);
+    expect(voskContent).toMatch(/Math\.min\(i \+ chunkSize, processedPcm\.length\)/);
   });
 });
 

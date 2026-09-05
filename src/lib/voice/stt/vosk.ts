@@ -3,6 +3,7 @@
 //
 
 import { isVoiceDebugEnabled, voiceDebugLog, computePcmStats } from '../debug';
+import { normalizePcm, trimSilence } from '../audio/normalize';
 // VOZ-004-R4 — Runtime/Bundling Fix:
 // - Causa do erro "Failed to resolve module specifier 'vosk-browser'": o import
 //   dinâmico era executado via `eval`, escondendo o specifier "vosk-browser" do
@@ -107,6 +108,30 @@ export async function transcribeWithVosk(
         });
       }
 
+      // VOZ-010 — pré-processamento: trim silêncio excessivo + normalização por pico
+      let processedPcm: Float32Array = pcm;
+      const trimmed = trimSilence(processedPcm, sampleRate);
+      if (trimmed.length !== processedPcm.length && voskDebug) {
+        voiceDebugLog('VOSK_TRIM', {
+          originalSamples: pcm.length,
+          trimmedSamples: trimmed.length,
+          trimmedMs: Math.round(((pcm.length - trimmed.length) / sampleRate) * 1000),
+        });
+      }
+      processedPcm = trimmed;
+      const normalized = normalizePcm(processedPcm);
+      if (normalized !== processedPcm && voskDebug) {
+        const normStats = computePcmStats(normalized, sampleRate);
+        voiceDebugLog('VOSK_NORMALIZE', {
+          originalPeak: preStats?.peak ?? 0,
+          normalizedPeak: normStats.peak,
+          originalRms: preStats?.rms ?? 0,
+          normalizedRms: normStats.rms,
+          silenceRatio: normStats.silenceRatio,
+        });
+      }
+      processedPcm = normalized;
+
       // KaldiRecognizer aceita sampleRate; acceptWaveformFloat é o caminho oficial
       // para Float32Array (o worker recebe o PCM via audioChunk + sampleRate).
       const recognizer = new model.KaldiRecognizer(sampleRate);
@@ -125,7 +150,8 @@ export async function transcribeWithVosk(
         if (voskDebug) {
           const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
           voiceDebugLog('VOSK_RESULT', {
-            samples: pcm.length,
+            samples: processedPcm.length,
+            originalSamples: pcm.length,
             sampleRate,
             acceptStart,
             acceptEnd,
@@ -172,8 +198,8 @@ export async function transcribeWithVosk(
       const guard = setTimeout(() => finish(finalText), 30000);
 
       const chunkSize = 4096;
-      for (let i = 0; i < pcm.length; i += chunkSize) {
-        const chunk = pcm.subarray(i, Math.min(i + chunkSize, pcm.length));
+      for (let i = 0; i < processedPcm.length; i += chunkSize) {
+        const chunk = processedPcm.subarray(i, Math.min(i + chunkSize, processedPcm.length));
         recognizer.acceptWaveformFloat(chunk, sampleRate);
       }
       acceptEnd = Date.now();
@@ -181,12 +207,13 @@ export async function transcribeWithVosk(
       retrieveStart = Date.now();
       if (voskDebug) {
         voiceDebugLog('VOSK_RETRIEVE', {
-          samples: pcm.length,
+          samples: processedPcm.length,
           sampleRate,
           acceptEnd,
           retrieveStart,
           acceptToRetrieveMs: retrieveStart - acceptEnd,
-          chunks: pcm.length > 0 ? Math.ceil(pcm.length / chunkSize) : 0,
+          chunks: processedPcm.length > 0 ? Math.ceil(processedPcm.length / chunkSize) : 0,
+          originalSamples: pcm.length,
         });
       }
       try { recognizer.retrieveFinalResult(); } catch {}
