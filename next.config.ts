@@ -22,6 +22,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // VOZ-012.4 — F06: cache do modelo Vosk no browser (same-origin).
+  // Reforço do CacheFirst do service worker: a primeira fetch do worker (antes de o
+  // SW assumir controle) também fica no HTTP cache local e reutilizável offline.
+  // Restrito EXCLUSIVAMENTE ao tar.gz do modelo; versionado por URL (?v=...).
+  async headers() {
+    return [
+      {
+        source: '/vosk-model-small-pt-0.3.tar.gz',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+    ];
+  },
 };
 
 export default withSerwist(nextConfig);

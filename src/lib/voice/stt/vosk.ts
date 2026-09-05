@@ -4,6 +4,7 @@
 
 import { isVoiceDebugEnabled, voiceDebugLog, computePcmStats } from '../debug';
 import { normalizePcm, trimSilence } from '../audio/normalize';
+import { buildVoskModelRequestUrl, isVoskModelRequest } from '../pwa/modelCache';
 // VOZ-004-R4 — Runtime/Bundling Fix:
 // - Causa do erro "Failed to resolve module specifier 'vosk-browser'": o import
 //   dinâmico era executado via `eval`, escondendo o specifier "vosk-browser" do
@@ -19,7 +20,10 @@ export const VOSK_MODELS = {
     name: 'vosk-model-small-pt-0.3',
     version: '0.3',
     language: 'pt-BR',
-    url: '/vosk-model-small-pt-0.3.tar.gz',
+    // VOZ-012.4 — F06: URL versionada (?v=0.3) para o cache PWA/HTTP. A versão
+    // faz parte do cache key do service worker (ver pwa/modelCache.ts). NUNCA
+    // editar o tar.gz no mesmo pathname mantendo a mesma versão.
+    url: buildVoskModelRequestUrl('0.3'),
     // Remoto NUNCA usado em runtime (R4: privacidade local-only). Mantido apenas
     // como referência da conversão original (zip -> tar.gz local na etapa VOZ-004).
     altUrl: 'https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip',
@@ -57,10 +61,66 @@ async function loadVoskBrowser(): Promise<VoskNamespace> {
   return ns;
 }
 
+let cachedModel: any = null;
+let cachedModelId: string | null = null;
+
+// VOZ-012.4 — F05/F06: instrumentação do ciclo de carga do modelo.
+// - loadCount: construções reais de `new Vosk.Model` (download+worker únicos).
+// - warmHitCount: vezes em que loadVoskModel reutilizou o modelo já em memória.
+// - inFlightSharedCount: vezes em que uma chamada concorrente reutilizou o load em voo.
+// Contadores monotônicos por sessão de página (sem áudio/PII).
+let voskModelLoadCount = 0;
+let voskWarmHitCount = 0;
+let voskInFlightSharedCount = 0;
+
+export function getVoskModelStats(): {
+  loadCount: number;
+  warmHitCount: number;
+  inFlightSharedCount: number;
+} {
+  return {
+    loadCount: voskModelLoadCount,
+    warmHitCount: voskWarmHitCount,
+    inFlightSharedCount: voskInFlightSharedCount,
+  };
+}
+
+// Cache em voo: deduplica loadVoskModel concorrentes (duas chamadas simultâneas
+// não criam 2 workers/modelos). A mesma promise é compartilhada entre chamadores.
+let pendingModelLoad: Promise<any> | null = null;
+let pendingModelLoadId: string | null = null;
+
 export async function loadVoskModel(modelId: VoskModelId = 'small-pt-0.3', onProgress?: (p: number) => void): Promise<any> {
-  if (cachedModel && cachedModelId === modelId) return cachedModel;
+  if (cachedModel && cachedModelId === modelId) {
+    // F05 — reutilização: modelo ainda em memória (sessão ou keep-warm do VOZ-012.4).
+    voskWarmHitCount++;
+    if (isVoiceDebugEnabled()) {
+      const stats = getVoskModelStats();
+      voiceDebugLog('VOSK_WARM_HIT', { modelId, loadCount: stats.loadCount, warmHitCount: stats.warmHitCount, inFlightSharedCount: stats.inFlightSharedCount, reuse: true });
+    }
+    return cachedModel;
+  }
+  if (pendingModelLoad && pendingModelLoadId === modelId) {
+    voskInFlightSharedCount++;
+    return pendingModelLoad;
+  }
+  pendingModelLoad = doLoadVoskModel(modelId, onProgress);
+  pendingModelLoadId = modelId;
+  try {
+    return await pendingModelLoad;
+  } finally {
+    if (pendingModelLoadId === modelId) {
+      pendingModelLoad = null;
+      pendingModelLoadId = null;
+    }
+  }
+}
+
+async function doLoadVoskModel(modelId: VoskModelId, onProgress?: (p: number) => void): Promise<any> {
+  const loadStart = Date.now();
   const Vosk = await loadVoskBrowser();
   const modelInfo = VOSK_MODELS[modelId];
+  const isModelRequest = isVoskModelRequest(new URL(modelInfo.url, typeof location !== 'undefined' ? location.href : 'https://app.local/'));
   // Modelo local exclusivamente (privacy/local-only R4): GET /vosk-model-small-pt-0.3.tar.gz
   // é fetado pelo Worker (mesma origem). Nenhum fallback remoto.
   const model = new Vosk.Model(modelInfo.url);
@@ -76,13 +136,21 @@ export async function loadVoskModel(modelId: VoskModelId = 'small-pt-0.3', onPro
       reject(new Error(`Vosk MODEL_LOAD_ERROR: ${msg?.error || 'unknown'}`));
     });
   });
+  voskModelLoadCount++;
+  if (isVoiceDebugEnabled()) {
+    voiceDebugLog('VOSK_MODEL_LOAD', {
+      modelId,
+      durationMs: Date.now() - loadStart,
+      version: modelInfo.version,
+      loadedUrl: modelInfo.url,
+      isModelRequest,
+      sha256: modelInfo.convertedSha256,
+    });
+  }
   cachedModel = modelRef;
   cachedModelId = modelId;
   return modelRef;
 }
-
-let cachedModel: any = null;
-let cachedModelId: string | null = null;
 
 // VOZ-012.3 — F02: guard de inferência PROPORCIONAL à duração real do áudio.
 // Antes: o guard era `setTimeout(guardFn, 30000)` — 30s fixos para qualquer áudio.
@@ -315,10 +383,14 @@ export async function transcribeWithVosk(
   });
 }
 
-// VOZ-006 — Dispose completo do modelo Vosk.
+// VOZ-006 / VOZ-012.4 — Dispose HARD (término definitivo) do modelo Vosk.
 // API pública real do vosk-browser (model.d.ts:17 / vosk.js:705):
 // Model.terminate() envia {action:"terminate"} ao Worker, encerrando Worker/WASM.
 // Só é seguro chamar quando nenhum KaldiRecognizer está em uso.
+//
+// VOZ-012.4 (F05): quem invoca este dispose é o keep-warm do engine (TTL de
+// inatividade) — NÃO o dispose() do controller no unmount (que é soft/park).
+// Assim o modelo não fica retido indefinidamente e o terminate() é preservado.
 export function disposeVoskModel(): void {
   if (cachedModel) {
     try {
