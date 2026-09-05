@@ -37,9 +37,12 @@ describe('VOZ-008.8 — Vosk chunked feeding', () => {
     expect(voskContent).not.toMatch(/\}, 100\)/);
   });
 
-  it('timeout máximo de 30s continua protegido', () => {
-    // VOZ-012.1 — finish() sem argumento; os segmentos acumulados são concatenados internamente.
-    expect(voskContent).toMatch(/const guard = setTimeout\(\(\) => finish\(\), 30000\)/);
+  it('F02 — guard proporcional (30s base + k×duração) substitui o timeout fixo de 30s', () => {
+    // VOZ-012.3 — o guard agora é rede de segurança proporcional à duração do áudio,
+    // nunca um corte arbitrário de uma inferência válida longa.
+    expect(voskContent).toMatch(/const timeoutMs = computeInferenceGuardMs\(audioDurationMs\)/);
+    expect(voskContent).toMatch(/setTimeout\(\(\) => finish\((true)?\), timeoutMs\)/);
+    expect(voskContent).not.toMatch(/setTimeout\(\(\) => finish\(\), 30000\)/);
   });
 
   it('todos os samples são enviados (chunking cobre 0..length)', () => {

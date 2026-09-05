@@ -84,6 +84,38 @@ export async function loadVoskModel(modelId: VoskModelId = 'small-pt-0.3', onPro
 let cachedModel: any = null;
 let cachedModelId: string | null = null;
 
+// VOZ-012.3 — F02: guard de inferência PROPORCIONAL à duração real do áudio.
+// Antes: o guard era `setTimeout(guardFn, 30000)` — 30s fixos para qualquer áudio.
+// Para áudio longo (RTF > 1 do WASM worker em Android), o worker pode legitimamente
+// levar >30s para processar; o guard fixo disparava o término com texto
+// parcial/vazio — CORTANDO uma inferência válida, e não apenas protegendo contra
+// worker travado.
+//
+// Fórmula (recomendada pela auditoria externa):
+//   timeoutMs = base + k × audioDurationMs
+//
+// Parâmetros:
+// - base 30s (mesma margem do guard anterior): absorve latência por-chunk, setup
+//   do wasm/worker e a janela até o primeiro resultado — independente do tamanho.
+// - k = 4 (dentro da faixa recomendada 3–5): para RTF típico 1–3× em dispositivo
+//   mid-range, garante folga ~1–3× sobre o processamento esperado. k<3 arriscava
+//   timeout falso em gravação longa; k>5 alongava espera em caso de trava real.
+// - sem teto explícito: a duração máxima é limitada pelos 60s de gravação
+//   (VOZ-012.2) → timeout max ≈ 30s + 4×60s = 270s. O guard NUNCA corta uma
+//   inferência válida; só resolve quando o worker realmente não responde.
+const INFERENCE_GUARD_BASE_MS = 30_000;
+const INFERENCE_GUARD_FACTOR = 4;
+
+export function computeInferenceGuardMs(
+  audioDurationMs: number,
+  baseMs: number = INFERENCE_GUARD_BASE_MS,
+  factor: number = INFERENCE_GUARD_FACTOR
+): number {
+  // Durações inválidas/negativas/NaN têm comportamento seguro e determinístico.
+  const safeMs = Number.isFinite(audioDurationMs) && audioDurationMs > 0 ? audioDurationMs : 0;
+  return baseMs + factor * safeMs;
+}
+
 export async function transcribeWithVosk(
   pcm: Float32Array,
   sampleRate: number,
@@ -157,10 +189,36 @@ export async function transcribeWithVosk(
 
       const joinSegments = (): string => segments.filter(Boolean).join(' ');
 
-      const finish = () => {
+      const cleanup = (): void => {
+        try { recognizer.remove(); } catch {}
+      };
+
+      // F02 — o guard só decide se o worker travou; aceita o flag `isTimeout`.
+      // Em resultado normal (finish() sem argumento) resolve com o texto acumulado.
+      // Em timeout (guard) REJEITA com erro controlado e libera recursos — nunca
+      // resolve com texto parcial/truncado como se fosse uma inferência válida.
+      const finish = (isTimeout = false) => {
         if (done) return;
         done = true;
         clearTimeout(guard);
+        if (isTimeout) {
+          if (voskDebug) {
+            voiceDebugLog('VOSK_TIMEOUT', {
+              samples: processedPcm.length,
+              originalSamples: pcm.length,
+              sampleRate,
+              audioDurationMs: Math.round((processedPcm.length / sampleRate) * 1000),
+              acceptStart,
+              resultReceivedAt,
+              inferenceMs: Date.now() - acceptStart,
+              timeoutMs,
+              segmentsReceived: segments.length,
+            });
+          }
+          cleanup();
+          reject(new Error(`Vosk INFERENCE_TIMEOUT (guard ${timeoutMs}ms para ${Math.round((processedPcm.length / sampleRate) * 1000)}ms de áudio)`));
+          return;
+        }
         const inferenceEnd = Date.now();
         const text = joinSegments();
         if (voskDebug) {
@@ -169,21 +227,23 @@ export async function transcribeWithVosk(
             samples: processedPcm.length,
             originalSamples: pcm.length,
             sampleRate,
+            audioDurationMs: Math.round((processedPcm.length / sampleRate) * 1000),
             acceptStart,
             acceptEnd,
             retrieveStart,
             resultReceivedAt,
             inferenceEnd,
             acceptWaveformMs: acceptEnd > 0 ? acceptEnd - acceptStart : 0,
-            acceptToRetrieveMs: retrieveStart > 0 && acceptEnd > 0 ? retrieveStart - acceptEnd : 0,
+            acceptToRetrieveMs: resultReceivedAt > 0 && acceptEnd > 0 ? resultReceivedAt - acceptEnd : 0,
             inferenceMs: inferenceEnd - acceptStart,
+            timeoutMs,
             transcriptionLength: text.length,
             wordCount,
             empty: text.trim().length === 0,
             textPreview: text.slice(0, 80),
           });
         }
-        try { recognizer.remove(); } catch {}
+        cleanup();
         resolve(text);
       };
 
@@ -219,8 +279,12 @@ export async function transcribeWithVosk(
         reject(new Error(`Vosk INFERENCE_ERROR: ${msg?.error || 'unknown'}`));
       });
 
-      // Segurança: nunca pendura por mais de 30s.
-      const guard = setTimeout(() => finish(), 30000);
+      // VOZ-012.3 — F02: guard proporcional ao áudio efetivamente enviado
+      // (pós trim/normalize). `timeoutMs` é rede de segurança: só dispara quando
+      // o worker realmente trava; nunca controla o fluxo normal da transcrição.
+      const audioDurationMs = (processedPcm.length / sampleRate) * 1000;
+      const timeoutMs = computeInferenceGuardMs(audioDurationMs);
+      const guard = setTimeout(() => finish(true), timeoutMs);
 
       for (let i = 0; i < processedPcm.length; i += chunkSize) {
         const chunk = processedPcm.subarray(i, Math.min(i + chunkSize, processedPcm.length));
@@ -232,9 +296,11 @@ export async function transcribeWithVosk(
         voiceDebugLog('VOSK_RETRIEVE', {
           samples: processedPcm.length,
           sampleRate,
+          audioDurationMs: Math.round((processedPcm.length / sampleRate) * 1000),
           acceptEnd,
           retrieveStart,
           acceptToRetrieveMs: retrieveStart - acceptEnd,
+          timeoutMs,
           chunks: processedPcm.length > 0 ? Math.ceil(processedPcm.length / chunkSize) : 0,
           originalSamples: pcm.length,
         });
