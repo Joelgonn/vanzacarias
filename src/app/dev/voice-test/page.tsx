@@ -35,6 +35,12 @@ export default function VoiceTestPage() {
   const [pcmInfo, setPcmInfo] = useState<any>(null);
   const [privacy, setPrivacy] = useState<string>('Não verificado');
 
+  // ----- VOZ-008.6 — UX Simplificada MICROFONE REAL (FALAR → PARAR → PROCESSAR → TRANSCREVER → RESULTADO) -----
+  const [simpleStatus, setSimpleStatus] = useState<'idle' | 'gravando' | 'processando' | 'transcrevendo' | 'resultado' | 'erro'>('idle');
+  const [simpleResult, setSimpleResult] = useState<string | null>(null);
+  const [simpleError, setSimpleError] = useState<string | null>(null);
+  const simpleCaptureRef = useRef<{ audioCtx: AudioContext; source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode; chunks: Float32Array[]; capturing: boolean } | null>(null);
+
   // ----- ENGINE TEST (F–G) -----
   const engines = listEngines();
   const [selectedEngineId, setSelectedEngineId] = useState<string>('vosk-pt-br');
@@ -50,6 +56,7 @@ export default function VoiceTestPage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const fixtureRef = useRef<{ pcm: Float32Array; sampleRate: number; info: any } | null>(null);
+  const micPcmRef = useRef<{ pcm: Float32Array; sampleRate: number; info: any } | null>(null);
   const engineRef = useRef<STTEngine>(selectedEngine);
   // Locks síncronos contra chamadas duplicadas (não dependem do re-render).
   const loadingRef = useRef(false);
@@ -192,8 +199,9 @@ export default function VoiceTestPage() {
         pcm = resampled;
         conversion += ` + resample ${inputSampleRate}→16000`;
       }
-      fixtureRef.current = { pcm, sampleRate: 16000, info: { sourceSampleRate, decodedSampleRate: 'n/a', inputSampleRate: 16000, convertedSampleRate: 16000, convertedChannels: 1, pcmSamples: pcm.length, pcmDuration: Number((pcm.length / 16000).toFixed(2)), conversion } };
+      micPcmRef.current = { pcm, sampleRate: 16000, info: { sourceSampleRate, decodedSampleRate: 'n/a', inputSampleRate: 16000, convertedSampleRate: 16000, convertedChannels: 1, pcmSamples: pcm.length, pcmDuration: Number((pcm.length / 16000).toFixed(2)), conversion } };
       setPcmInfo({
+        source: 'MICROFONE REAL',
         sourceSampleRate,
         decodedSampleRate: '(n/a — microfone)',
         inputSampleRate: 16000,
@@ -203,7 +211,7 @@ export default function VoiceTestPage() {
         conversion,
         pcmSamples: pcm.length,
         pcmDuration: Number((pcm.length / 16000).toFixed(2)),
-        status: 'PCM 16k mono pronto em memória (não persistido)',
+        status: 'PCM 16k mono pronto em memória (não persistido) — Fonte: MICROFONE REAL (getUserMedia → PCM)',
         localOnly: true,
         upload: 0,
       });
@@ -320,13 +328,11 @@ export default function VoiceTestPage() {
     }
   }, [selectedEngineId, engineState]);
 
-  // ----- G — Transcribe (via registry) -----
-  const runTranscribe = useCallback(async () => {
-    // Proteção lógica (além do disabled): transcrever requer engine READY (ou RESULT para nova execução).
+  // ----- G — Transcribe (via registry) — SEPARAÇÃO EXPLÍCITA MIC vs FIXTURE -----
+  // MICROPHONE TEST: getUserMedia → MediaStream → AudioContext → PCM → Vosk (NUNCA fetch WAV)
+  const runTranscribeMic = useCallback(async () => {
     if (!isEngineReady(engineState)) return;
-    // Proteção: nenhuma segunda transcrição durante TRANSCRIBING.
     if (transcribingRef.current) return;
-
     const engine = getEngine(selectedEngineId);
     if (!engine) {
       setTranscribeState({ status: 'fail', stage: 'transcribe', detail: 'Engine não encontrada', error: `Nenhuma engine registrada com id "${selectedEngineId}"` });
@@ -335,39 +341,20 @@ export default function VoiceTestPage() {
     engineRef.current = engine;
     transcribingRef.current = true;
     dispatchEngine({ type: 'TRANSCRIBE_START' });
-    // Resultado antigo não contamina a nova execução.
     setResult(null);
-    setTranscribeState({ status: 'running', stage: 'transcribe', detail: `Inferência iniciada — ${engine.name} (${engine.model})` });
+    setTranscribeState({ status: 'running', stage: 'transcribe', detail: `Inferência iniciada — ${engine.name} (${engine.model}) — Fonte: MICROFONE REAL` });
 
-    // Precisamos de PCM 16k mono. Usa PCM de E (microfone) ou fixture WAV.
-    let pcm: Float32Array | null = fixtureRef.current?.pcm || null;
-    let sampleRate = 16000;
-    let sourceDesc = fixtureRef.current ? 'fixture (E/microfone)' : null;
-    if (!pcm) {
-      setTranscribeState({ status: 'running', stage: 'transcribe', detail: `Sem PCM em memória — carregando fixture /moonshire.wav para ${engine.name}...` });
-      try {
-        const info = await loadFixture();
-        pcm = fixtureRef.current?.pcm || null;
-        sampleRate = 16000;
-        sourceDesc = `fixture /moonshire.wav (${info.duration}s, ${info.sourceSampleRate}Hz→${info.inputSampleRate}Hz)`;
-      } catch (e: any) {
-        if (selectedEngineIdRef.current !== selectedEngineId) { transcribingRef.current = false; return; }
-        const msg = e?.message || String(e);
-        dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
-        setTranscribeState({ status: 'fail', stage: 'transcribe', detail: msg, error: msg });
-        transcribingRef.current = false;
-        return;
-      }
-    }
-    if (!pcm) {
-      if (selectedEngineIdRef.current !== selectedEngineId) { transcribingRef.current = false; return; }
-      const msg = 'Sem PCM para transcrever — execute E (PCM Preparation) primeiro';
+    const pcmEntry = micPcmRef.current;
+    if (!pcmEntry?.pcm) {
       dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
-      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: msg, error: 'Sem PCM' });
+      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: 'Sem PCM de MICROFONE — execute E (PCM Preparation) primeiro. Nenhum WAV será carregado. Fonte: MICROFONE REAL', error: 'Sem PCM de microfone' });
       transcribingRef.current = false;
       return;
     }
-
+    const pcm: Float32Array = pcmEntry.pcm;
+    const sampleRate = 16000;
+    const sourceDesc = 'MICROFONE REAL (getUserMedia → MediaStream → AudioContext → PCM 16k)';
+    // segue para bloco comum de inferência abaixo (duplicado para manter separação estática)
     const start = Date.now();
     try {
       const res = await engine.transcribe(pcm, sampleRate);
@@ -390,16 +377,101 @@ export default function VoiceTestPage() {
         pcmSamples: pcm.length,
         sourceDesc,
       });
-      setTranscribeState({ status: 'pass', stage: 'transcribe', detail: `Inferência concluída — Stage: transcribe` });
+      setTranscribeState({ status: 'pass', stage: 'transcribe', detail: `Inferência concluída — Fonte: MICROFONE REAL` });
     } catch (e: any) {
       if (selectedEngineIdRef.current !== selectedEngineId) return;
       const msg = e?.message || String(e);
       dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
-      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: `Erro de inferência — Stage: transcribe — ${msg}`, error: msg });
+      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: `Erro de inferência — Fonte: MICROFONE REAL — ${msg}`, error: msg });
+    } finally {
+      transcribingRef.current = false;
+    }
+  }, [selectedEngineId, engineState, loadState.status]);
+
+  // FIXTURE TEST: WAV → PCM → Vosk (nunca getUserMedia)
+  const runTranscribeFixture = useCallback(async () => {
+    // Proteção lógica (além do disabled): transcrever requer engine READY (ou RESULT para nova execução).
+    if (!isEngineReady(engineState)) return;
+    // Proteção: nenhuma segunda transcrição durante TRANSCRIBING.
+    if (transcribingRef.current) return;
+
+    const engine = getEngine(selectedEngineId);
+    if (!engine) {
+      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: 'Engine não encontrada', error: `Nenhuma engine registrada com id "${selectedEngineId}"` });
+      return;
+    }
+    engineRef.current = engine;
+    transcribingRef.current = true;
+    dispatchEngine({ type: 'TRANSCRIBE_START' });
+    // Resultado antigo não contamina a nova execução.
+    setResult(null);
+    setTranscribeState({ status: 'running', stage: 'transcribe', detail: `Inferência iniciada — ${engine.name} (${engine.model}) — Fonte: FIXTURE WAV` });
+
+    // Precisamos de PCM 16k mono. Usa SOMENTE fixture WAV.
+    let pcm: Float32Array | null = fixtureRef.current?.pcm || null;
+    let sampleRate = 16000;
+    let sourceDesc = fixtureRef.current ? 'FIXTURE WAV (/moonshire.wav → PCM 16k)' : null;
+    if (!pcm) {
+      setTranscribeState({ status: 'running', stage: 'transcribe', detail: `Sem PCM de FIXTURE — carregando /moonshire.wav para ${engine.name}... Fonte: FIXTURE WAV` });
+      try {
+        const info = await loadFixture();
+        pcm = fixtureRef.current?.pcm || null;
+        sampleRate = 16000;
+        sourceDesc = `FIXTURE WAV (/moonshire.wav ${info.duration}s, ${info.sourceSampleRate}Hz→${info.inputSampleRate}Hz)`;
+      } catch (e: any) {
+        if (selectedEngineIdRef.current !== selectedEngineId) { transcribingRef.current = false; return; }
+        const msg = e?.message || String(e);
+        dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
+        setTranscribeState({ status: 'fail', stage: 'transcribe', detail: msg, error: msg });
+        transcribingRef.current = false;
+        return;
+      }
+    }
+    if (!pcm) {
+      if (selectedEngineIdRef.current !== selectedEngineId) { transcribingRef.current = false; return; }
+      const msg = 'Sem PCM para transcrever — fixture não carregado';
+      dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
+      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: msg, error: 'Sem PCM' });
+      transcribingRef.current = false;
+      return;
+    }
+    // wrapper para manter compatibilidade com bloco comum abaixo — será substituído por lógica própria
+    // Reutiliza bloco de inferência específico para fixture (duplicado para separação estática)
+    const start = Date.now();
+    try {
+      const res = await engine.transcribe(pcm, sampleRate);
+      const inferMs = Date.now() - start;
+      const pcmDurationSec = pcm.length / sampleRate;
+      const rtf = inferMs / 1000 / (pcmDurationSec || 1);
+      if (selectedEngineIdRef.current !== selectedEngineId) return;
+      dispatchEngine({ type: 'TRANSCRIBE_SUCCESS' });
+      setResult({
+        status: res.text && res.text.trim() ? 'PASS' : 'EMPTY',
+        engine: engine.name,
+        engineId: engine.id,
+        model: engine.model,
+        language: engine.language,
+        loadMs: loadState.status === 'pass' ? loadState.detail.match(/em (\d+)ms/)?.slice(1)[0] : undefined,
+        inferenceMs: res.inferenceMs ?? inferMs,
+        rtf: Number(rtf.toFixed(3)),
+        transcriptionLength: res.text?.length || 0,
+        transcription: res.text || '',
+        pcmSamples: pcm.length,
+        sourceDesc,
+      });
+      setTranscribeState({ status: 'pass', stage: 'transcribe', detail: `Inferência concluída — Fonte: FIXTURE WAV` });
+    } catch (e: any) {
+      if (selectedEngineIdRef.current !== selectedEngineId) return;
+      const msg = e?.message || String(e);
+      dispatchEngine({ type: 'TRANSCRIBE_ERROR' });
+      setTranscribeState({ status: 'fail', stage: 'transcribe', detail: `Erro de inferência — Fonte: FIXTURE WAV — ${msg}`, error: msg });
     } finally {
       transcribingRef.current = false;
     }
   }, [selectedEngineId, engineState, loadState.status, loadFixture]);
+
+  // Compatibilidade: runTranscribe legado aponta para fixture (não usado pelo microfone)
+  const runTranscribe = runTranscribeFixture;
 
   // ----- Cleanup -----
   const runCleanup = useCallback(async () => {
@@ -409,6 +481,9 @@ export default function VoiceTestPage() {
     audioCtxRef.current = null;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+    micPcmRef.current = null;
+    fixtureRef.current = null;
+    setPcmInfo(null);
     // Libera recursos da engine quando suportado
     if (engineRef.current?.dispose) {
       try { await engineRef.current.dispose(); } catch {}
@@ -418,6 +493,169 @@ export default function VoiceTestPage() {
     setResult(null);
     setTranscribeState(emptyEngineRun);
     setPrivacy('Stream e AudioContext encerrados — engine liberada, nenhum Blob persistido, nenhum upload (MEDIDO)');
+  }, []);
+
+  // ----- VOZ-008.6 — Handlers UX Simplificada (FALAR → PARAR → PROCESSAR → TRANSCREVER → RESULTADO) -----
+  const handleFalar = useCallback(async () => {
+    setSimpleError(null);
+    setSimpleResult(null);
+    // Garantir stream
+    if (!streamRef.current) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+      } catch (e: any) {
+        setSimpleStatus('erro');
+        setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+        return;
+      }
+    }
+    // Garantir engine READY (carregar se necessário) — Vosk já validado, load é rápido se já READY
+    if (!isEngineReady(engineState)) {
+      await runLoadEngine();
+      await new Promise(r => setTimeout(r, 100));
+    }
+    // Iniciar captura contínua (getUserMedia → MediaStream → AudioContext → PCM → micPcmRef) — nunca fixture
+    try {
+      const stream = streamRef.current!;
+      const trackSettings = stream.getAudioTracks()[0]?.getSettings() as any;
+      const inputSampleRate = (trackSettings?.sampleRate as number) || 48000;
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: inputSampleRate });
+      // Garantir running (Android)
+      if ((audioCtx.state as string) !== 'running' && typeof audioCtx.resume === 'function') {
+        try { await audioCtx.resume(); } catch {}
+      }
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      let capturing = true;
+      processor.onaudioprocess = (e: any) => {
+        if (!capturing) return;
+        if (e.inputBuffer.numberOfChannels === 0) return;
+        chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      };
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      simpleCaptureRef.current = { audioCtx, source, processor, chunks, capturing: true } as any;
+      // Marcador interno para capturar flag
+      (simpleCaptureRef.current as any).capturing = true;
+      (simpleCaptureRef.current as any)._chunks = chunks;
+      (simpleCaptureRef.current as any)._source = source;
+      (simpleCaptureRef.current as any)._processor = processor;
+      setSimpleStatus('gravando');
+    } catch (e: any) {
+      setSimpleStatus('erro');
+      setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+    }
+  }, [engineState, loadState.status, runLoadEngine]);
+
+  const handleParar = useCallback(async () => {
+    const cap = simpleCaptureRef.current as any;
+    if (!cap || !cap.capturing) {
+      setSimpleStatus('erro');
+      setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+      return;
+    }
+    setSimpleStatus('processando');
+    cap.capturing = false;
+    try { cap.source.disconnect(); } catch {}
+    try { cap.processor.disconnect(); } catch {}
+    const chunks: Float32Array[] = cap._chunks || cap.chunks || [];
+    const audioCtx: AudioContext = cap.audioCtx;
+    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+    const combined = new Float32Array(totalLen);
+    let off = 0;
+    for (const c of chunks) { combined.set(c, off); off += c.length; }
+    try { await audioCtx.close(); } catch {}
+    simpleCaptureRef.current = null;
+
+    if (totalLen === 0) {
+      setSimpleStatus('erro');
+      setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+      return;
+    }
+    // Resample e salvar em micPcmRef (exclusivo MICROFONE REAL, nunca fixture)
+    const trackSettings = streamRef.current?.getAudioTracks()[0]?.getSettings() as any;
+    const inputSampleRate = (trackSettings?.sampleRate as number) || audioCtx.sampleRate || 48000;
+    let pcm: Float32Array = combined;
+    let conversion = 'sem mix';
+    if (inputSampleRate !== 16000) {
+      const ratio = inputSampleRate / 16000;
+      const newLen = Math.round(combined.length / ratio);
+      const resampled = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        const p = i * ratio;
+        const i0 = Math.floor(p);
+        const i1 = Math.min(i0 + 1, combined.length - 1);
+        const frac = p - i0;
+        resampled[i] = combined[i0] * (1 - frac) + combined[i1] * frac;
+      }
+      pcm = resampled;
+      conversion = `resample ${inputSampleRate}→16000`;
+    }
+    micPcmRef.current = { pcm, sampleRate: 16000, info: { conversion, pcmSamples: pcm.length } };
+    setPcmInfo({
+      source: 'MICROFONE REAL',
+      conversion,
+      pcmSamples: pcm.length,
+      pcmDuration: Number((pcm.length / 16000).toFixed(2)),
+      status: 'PCM 16k mono pronto — Fonte: MICROFONE REAL',
+      localOnly: true,
+      upload: 0,
+    } as any);
+    setSimpleStatus('transcrevendo');
+    try {
+      // Garantir engine pronta
+      if (!isEngineReady(engineState)) {
+        await runLoadEngine();
+      }
+      // Usar micPcmRef exclusivamente — nunca loadFixture
+      const pcmEntry = micPcmRef.current;
+      if (!pcmEntry?.pcm) {
+        setSimpleStatus('erro');
+        setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+        return;
+      }
+      const engine = getEngine(selectedEngineId);
+      if (!engine) {
+        setSimpleStatus('erro');
+        setSimpleError('Não foi possível transcrever o áudio. Tente novamente.');
+        return;
+      }
+      const res = await engine.transcribe(pcmEntry.pcm, 16000);
+      const text = (res.text || '').trim();
+      if (!text) {
+        setSimpleStatus('erro');
+        setSimpleError('Não foi possível capturar sua voz. Tente novamente.');
+        return;
+      }
+      setSimpleResult(text);
+      setSimpleStatus('resultado');
+      // Também atualizar resultado detalhado para compatibilidade
+      setResult({
+        status: 'PASS',
+        engine: engine.name,
+        engineId: engine.id,
+        model: engine.model,
+        language: engine.language,
+        transcription: text,
+        transcriptionLength: text.length,
+        pcmSamples: pcmEntry.pcm.length,
+        sourceDesc: 'MICROFONE REAL (getUserMedia → MediaStream → AudioContext → PCM 16k)',
+        inferenceMs: (res as any).inferenceMs,
+      } as any);
+    } catch (e: any) {
+      setSimpleStatus('erro');
+      setSimpleError('Não foi possível transcrever o áudio. Tente novamente.');
+    }
+  }, [engineState, selectedEngineId, runLoadEngine]);
+
+  const handleFalarNovamente = useCallback(async () => {
+    setSimpleResult(null);
+    setSimpleError(null);
+    setSimpleStatus('idle');
+    micPcmRef.current = null;
+    // Manter stream e engine para reuso rápido
   }, []);
 
   const engineIsVosk = (engine: STTEngine) => engine.id === 'vosk-pt-br';
@@ -433,9 +671,51 @@ export default function VoiceTestPage() {
           <p className="text-[11px] text-emerald-300 mt-2 font-bold">LOCAL ONLY — sem upload, sem /api/stt, sem persistência de áudio</p>
         </div>
 
-        {/* Fonte de áudio */}
-        <section className="bg-white rounded-2xl border p-4 space-y-2">
-          <h2 className="font-bold text-sm">Fonte de áudio</h2>
+        {/* VOZ-008.6 — TESTE PRINCIPAL MICROFONE REAL — FALAR → PARAR → PROCESSAR → TRANSCREVER → RESULTADO */}
+        <section className="bg-white rounded-2xl border-2 border-emerald-500 p-6 space-y-4 text-center">
+          <h2 className="text-xl font-black">Teste de Voz</h2>
+          <p className="text-sm font-bold text-emerald-700">Português Brasileiro</p>
+          {simpleStatus === 'idle' && <p className="text-sm text-stone-600">Toque em FALAR e diga uma frase.</p>}
+          {simpleStatus === 'gravando' && <p className="text-sm font-bold text-rose-600 animate-pulse">Gravando... — Fale normalmente.</p>}
+          {simpleStatus === 'processando' && <p className="text-sm font-bold text-amber-600">Processando áudio...</p>}
+          {simpleStatus === 'transcrevendo' && <p className="text-sm font-bold text-stone-700">Transcrevendo...</p>}
+          {simpleStatus === 'erro' && <p className="text-sm font-bold text-rose-600">{simpleError}</p>}
+          {simpleStatus === 'idle' && (
+            <button onClick={handleFalar} className="w-full max-w-xs mx-auto px-8 py-4 bg-emerald-600 text-white rounded-full text-lg font-black shadow-lg hover:bg-emerald-700 active:scale-95 transition-all">
+              🎙️ FALAR
+            </button>
+          )}
+          {simpleStatus === 'gravando' && (
+            <button onClick={handleParar} className="w-full max-w-xs mx-auto px-8 py-4 bg-rose-600 text-white rounded-full text-lg font-black shadow-lg hover:bg-rose-700 active:scale-95 transition-all">
+              ⏹ PARAR
+            </button>
+          )}
+          {(simpleStatus === 'processando' || simpleStatus === 'transcrevendo') && (
+            <div className="flex justify-center"><div className="w-6 h-6 border-2 border-stone-300 border-t-emerald-600 rounded-full animate-spin" /></div>
+          )}
+          {simpleStatus === 'resultado' && simpleResult && (
+            <div className="space-y-3">
+              <h3 className="font-bold text-stone-800">Transcrição</h3>
+              <p className="text-base font-mono bg-stone-50 border-2 border-emerald-200 rounded-xl p-4">"{simpleResult}"</p>
+              <button onClick={handleFalarNovamente} className="w-full max-w-xs mx-auto px-6 py-3 bg-stone-900 text-white rounded-full text-sm font-bold hover:bg-stone-800 active:scale-95 transition-all">
+                🎙️ FALAR NOVAMENTE
+              </button>
+            </div>
+          )}
+          {simpleStatus === 'erro' && (
+            <button onClick={handleFalarNovamente} className="w-full max-w-xs mx-auto px-6 py-3 bg-stone-900 text-white rounded-full text-sm font-bold">
+              Tentar novamente
+            </button>
+          )}
+          <p className="text-[11px] text-stone-400">Fonte: MICROFONE REAL — getUserMedia → MediaStream → AudioContext → PCM → Vosk (nunca fixture)</p>
+          <p className="text-[11px] font-bold text-emerald-700">Status: {simpleStatus === 'idle' ? 'Pronto para gravar' : simpleStatus === 'gravando' ? 'Gravando...' : simpleStatus === 'processando' ? 'Processando...' : simpleStatus === 'transcrevendo' ? 'Transcrevendo...' : simpleStatus === 'resultado' ? 'Concluído' : 'Erro'}</p>
+        </section>
+
+        {/* Fonte de áudio — secundário, colapsado */}
+        <details className="bg-white rounded-2xl border p-4">
+          <summary className="font-bold text-sm cursor-pointer">Teste Fixture (desenvolvimento) — clique para expandir</summary>
+          <div className="mt-4 space-y-2">
+            <h2 className="font-bold text-sm">Fonte de áudio — Fixture</h2>
           <div className="bg-stone-100 rounded-xl p-3 text-sm font-mono">└─ WAV local: <code>moonshire.wav</code></div>
           <p className="text-xs text-stone-500">
             <b>AUDIO FIXTURE</b>: <code>public/moonshire.wav</code> (2.3 MB, 48 kHz stereo) — fonte conhecida de áudio de teste, não pertence a uma engine específica. GET local (sem upload).
@@ -443,7 +723,8 @@ export default function VoiceTestPage() {
           <button onClick={async () => {
             try { const info = await loadFixture(); setPrivacy(`Fixture carregado: ${info.duration}s, ${info.sourceSampleRate}Hz→${info.inputSampleRate}Hz mono (GET local, sem upload)`); } catch (e: any) { setPrivacy(`Fixture: ${e?.message}`); }
           }} className="px-4 py-2 bg-stone-900 text-white rounded-full text-sm font-bold">Carregar fixture (pré-decodificar)</button>
-        </section>
+          </div>
+        </details>
 
         {/* Captura — pipeline comum */}
         <section className="bg-white rounded-2xl border p-4 space-y-4">
@@ -510,14 +791,26 @@ export default function VoiceTestPage() {
                 {loadState.detail || <span className="text-stone-400">Aguardando — carregamento iniciado / concluído / erro</span>}
               </div>
             </div>
-            <div className="bg-stone-50 border rounded-xl p-3 space-y-2">
-              <h3 className="font-bold text-sm">G — Transcribe</h3>
+            <div className="bg-stone-50 border-2 border-emerald-600 rounded-xl p-3 space-y-3">
+              <h3 className="font-bold text-sm">G — Transcribe — MICROFONE REAL</h3>
+              <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Fonte: MICROFONE REAL — getUserMedia → MediaStream → AudioContext → PCM 16k → Vosk (NUNCA fetch WAV)</p>
               <button
-                onClick={runTranscribe}
+                onClick={runTranscribeMic}
+                disabled={!canTranscribe(engineState) || !pcmInfo || (pcmInfo as any).source !== 'MICROFONE REAL'}
+                title={!canTranscribe(engineState) ? 'Habilitado somente quando a engine está READY (carregue a engine em F)' : !pcmInfo || (pcmInfo as any).source !== 'MICROFONE REAL' ? 'Execute E (PCM Preparation) com microfone primeiro — nenhum WAV será carregado' : ''}
+                className="w-full px-4 py-2 bg-emerald-600 text-white rounded-full text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+              >Transcrever MICROFONE REAL</button>
+              <p className="text-[11px] text-stone-500">Requer PCM de E (microfone). Se ausente, falha sem carregar fixture. Uso exclusivo: <code>getUserMedia()</code>.</p>
+            </div>
+            <div className="bg-stone-50 border rounded-xl p-3 space-y-2">
+              <h3 className="font-bold text-sm">G — Transcribe — FIXTURE WAV</h3>
+              <p className="text-[11px] font-bold text-stone-700 bg-stone-100 border rounded-lg px-2 py-1">Fonte: FIXTURE WAV — fetch /moonshire.wav → decodeAudioData → PCM 16k → Vosk</p>
+              <button
+                onClick={runTranscribeFixture}
                 disabled={!canTranscribe(engineState)}
                 title={canTranscribe(engineState) ? '' : 'Habilitado somente quando a engine está READY (carregue a engine em F)'}
-                className="w-full px-4 py-2 bg-emerald-600 text-white rounded-full text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-              >Transcrever PCM</button>
+                className="w-full px-4 py-2 bg-stone-900 text-white rounded-full text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+              >Transcrever FIXTURE WAV</button>
               <div className={`p-3 rounded-xl text-xs whitespace-pre-wrap ${transcribeState.status==='pass'?'bg-emerald-50 border border-emerald-200':transcribeState.status==='fail'?'bg-rose-50 border border-rose-200':transcribeState.status==='running'?'bg-amber-50 border border-amber-200':'bg-white border'}`}>
                 {transcribeState.detail || <span className="text-stone-400">Aguardando — inferência iniciada / concluída / erro</span>}
               </div>

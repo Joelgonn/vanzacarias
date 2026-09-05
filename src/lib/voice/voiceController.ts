@@ -17,6 +17,7 @@ import { captureAudio, createPcmRecorder, resampleTo16k } from './audio/capture'
 import type { CaptureResult, PcmRecorder } from './audio/capture';
 import { engineStateReducer, INITIAL_ENGINE_STATE, isEngineReady } from './stt/engineState';
 import type { EngineState } from './stt/engineState';
+import { isVoiceDebugEnabled, voiceDebugLog, computePcmStats, computeWindowDistribution } from './debug';
 
 export type VoiceStatus = 'idle' | 'loading' | 'ready' | 'recording' | 'transcribing' | 'result' | 'error';
 
@@ -63,6 +64,8 @@ export class VoiceInputController {
   private gen = 0;
   private capture: CaptureResult | null = null;
   private recorder: PcmRecorder | null = null;
+  // VOZ-008 — instrumentação wall time (sem áudio)
+  private recordingStartMs: number | null = null;
 
   constructor(options: VoiceControllerOptions = {}) {
     this.opts = options;
@@ -203,14 +206,74 @@ export class VoiceInputController {
       return;
     }
 
-    // 3. Gravação.
+    // 3. Gravação — VOZ-008.5: garantir AudioContext running antes do PCM
+    // Ordem exigida: AudioContext → resume() → running → criação PCM
+    const stateBeforeCtrl: string = (cap.audioContext.state as string) ?? 'unknown';
+    let resumeAttemptedCtrl = false;
+    const needsResumeCtrl = typeof cap.audioContext.state === 'string' && (cap.audioContext.state as string) !== 'running' && (cap.audioContext.state as string) !== 'closed';
+    if (needsResumeCtrl) {
+      resumeAttemptedCtrl = true;
+      if (typeof cap.audioContext.resume === 'function') {
+        try {
+          await cap.audioContext.resume();
+        } catch {}
+      }
+    }
+    const stateAfterCtrl: string = (cap.audioContext.state as string) ?? 'unknown';
+    const resumeSucceededCtrl = stateAfterCtrl === 'running';
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('AUDIOCONTEXT_RESUME_CONTROLLER', {
+        stateBefore: stateBeforeCtrl,
+        resumeAttempted: resumeAttemptedCtrl,
+        stateAfter: stateAfterCtrl,
+        resumeSucceeded: resumeSucceededCtrl,
+      });
+    }
+    if (needsResumeCtrl && stateAfterCtrl !== 'running') {
+      this.loading = false;
+      try { cap.cleanup(); } catch {}
+      this.capture = null;
+      this.engineState = 'ERROR';
+      this.fail({
+        code: 'unknown',
+        userMessage: `AudioContext não está em running (estado: ${stateAfterCtrl})`,
+        detail: `stateBefore=${stateBeforeCtrl} resumeAttempted=${resumeAttemptedCtrl}`,
+      });
+      return;
+    }
+
     this.loading = false;
     this.recorder = this.opts.recorderFactory
       ? this.opts.recorderFactory(cap.stream, cap.audioContext)
       : createPcmRecorder(cap.stream, cap.audioContext);
+    this.recordingStartMs = Date.now();
     this.recorder.start();
     this.recording = true;
     this.setStatus('recording');
+    if (isVoiceDebugEnabled()) {
+      const s: any = cap.actualSettings as any;
+      voiceDebugLog('CAPTURE_START', {
+        engineId: this.engine?.id ?? 'vosk-pt-br',
+        engineState: this.engineState,
+        gen: this.gen,
+        audioContextSampleRate: cap.audioContext.sampleRate,
+        audioContextState: cap.audioContext.state,
+        trackSettings: {
+          sampleRate: s?.sampleRate ?? null,
+          channelCount: s?.channelCount ?? null,
+          echoCancellation: s?.echoCancellation ?? null,
+          noiseSuppression: s?.noiseSuppression ?? null,
+          autoGainControl: s?.autoGainControl ?? null,
+          deviceId: undefined,
+          groupId: undefined,
+        },
+        recordedRate: cap.audioContext.sampleRate,
+        actualSettingsRaw: {
+          sampleRate: s?.sampleRate ?? null,
+          channelCount: s?.channelCount ?? null,
+        },
+      });
+    }
   }
 
   async stop(): Promise<void> {
@@ -218,26 +281,96 @@ export class VoiceInputController {
     if (!this.recording || !this.recorder || !this.capture) return;
 
     const gen = this.gen;
+    const stopWallMs = Date.now();
+    const recordingWallTimeMs = this.recordingStartMs != null ? stopWallMs - this.recordingStartMs : 0;
+    // Capturar estados antes de cleanup para diagnóstico
+    const preCleanupState = this.capture?.audioContext?.state ?? 'unknown';
+    const preCleanupRate = this.capture?.audioContext?.sampleRate ?? 16000;
+    const preSettings: any = (this.capture?.actualSettings as any) ?? {};
+    const chunksEst = 0; // não exposto pelo recorder; derivado de pcm.length
     // PCM é capturado na taxa real do AudioContext (ex: 48 kHz no dispositivo).
     const recordedRate = this.capture?.audioContext?.sampleRate || 16000;
     let pcm: Float32Array;
+    let postCleanupState: string = 'unknown';
     try {
       pcm = this.recorder.stop();
     } finally {
       this.recorder = null;
       this.recording = false;
+      this.recordingStartMs = null;
       if (this.capture) {
         try { this.capture.cleanup(); } catch {}
+        try { postCleanupState = (this.capture as any)?.audioContext?.state ?? 'closed'; } catch { postCleanupState = 'closed'; }
         this.capture = null;
       }
     }
-    if (gen !== this.gen || !this.engine) return;
+    if (isVoiceDebugEnabled()) {
+      const expectedSamples = Math.round((recordingWallTimeMs * recordedRate) / 1000);
+      const actualSamples = pcm.length;
+      const sampleCoverageRatio = expectedSamples > 0 ? Number((actualSamples / expectedSamples).toFixed(3)) : 0;
+      const pcmDurationMs = recordedRate > 0 ? Math.round((actualSamples / recordedRate) * 1000) : 0;
+      const pcmStats = computePcmStats(pcm, recordedRate);
+      const distribution = computeWindowDistribution(pcm, recordedRate);
+      voiceDebugLog('CAPTURE_STOP', {
+        gen,
+        engineState: this.engineState,
+        recordingWallTimeMs,
+        audioContextStateBefore: preCleanupState,
+        audioContextStateAfter: postCleanupState,
+        audioContextSampleRate: preCleanupRate,
+        trackSettings: {
+          sampleRate: preSettings?.sampleRate ?? null,
+          channelCount: preSettings?.channelCount ?? null,
+          echoCancellation: preSettings?.echoCancellation ?? null,
+          noiseSuppression: preSettings?.noiseSuppression ?? null,
+          autoGainControl: preSettings?.autoGainControl ?? null,
+        },
+        chunksLengthEstimated: Math.ceil(actualSamples / 4096),
+        chunksEst,
+        totalPcmSamples: actualSamples,
+        recordedRate,
+        pcmDurationMs,
+        expectedSamples,
+        actualSamples,
+        sampleCoverageRatio,
+        pcmDurationOverWall: recordingWallTimeMs > 0 ? Number((pcmDurationMs / recordingWallTimeMs).toFixed(3)) : 0,
+        pcmStats,
+        windowDistribution: distribution,
+      });
+    }
+    if (gen !== this.gen || !this.engine) {
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('LIFECYCLE_ABORT', {
+          reason: !this.engine ? 'no-engine' : 'gen-changed',
+          genBefore: gen,
+          genAfter: this.gen,
+          engineState: this.engineState,
+        });
+      }
+      return;
+    }
 
     const sampleRate = 16000;
     const pcm16k = recordedRate === sampleRate ? pcm : resampleTo16k(pcm, recordedRate, sampleRate);
+    if (isVoiceDebugEnabled()) {
+      const pcmStats16 = computePcmStats(pcm16k, sampleRate);
+      voiceDebugLog('PCM_16K', {
+        gen,
+        inputSamples: pcm.length,
+        inputRate: recordedRate,
+        inputDurationMs: recordedRate > 0 ? Math.round((pcm.length / recordedRate) * 1000) : 0,
+        outputSamples: pcm16k.length,
+        outputRate: sampleRate,
+        outputDurationMs: Math.round((pcm16k.length / sampleRate) * 1000),
+        pcmStats16,
+      });
+    }
 
     // Transcrição vazia (usuário parou sem falar) — não envia nada, mantém engine pronta.
     if (pcm16k.length === 0) {
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('LIFECYCLE_EMPTY', { gen, engineState: this.engineState, pcm16kLength: pcm16k.length });
+      }
       this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_SUCCESS' });
       this.setStatus('result');
       this.fail({ code: 'empty', userMessage: 'Nenhuma fala detectada. Aproxime-se do microfone e tente novamente.' });
@@ -247,22 +380,76 @@ export class VoiceInputController {
     this.transcribing = true;
     this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_START' });
     this.setStatus('transcribing');
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('TRANSCRIBE_START', {
+        gen,
+        engineId: this.engine?.id ?? 'vosk-pt-br',
+        engineState: this.engineState,
+        pcm16kSamples: pcm16k.length,
+        pcm16kDurationMs: Math.round((pcm16k.length / sampleRate) * 1000),
+        sampleRate,
+      });
+    }
+    const transcribeStartMs = Date.now();
     try {
       const res = await this.engine.transcribe(pcm16k, sampleRate);
-      if (gen !== this.gen) return;
+      const transcribeEndMs = Date.now();
+      if (gen !== this.gen) {
+        if (isVoiceDebugEnabled()) {
+          voiceDebugLog('LIFECYCLE_DISCARD', {
+            reason: 'gen-changed-after-transcribe',
+            genBefore: gen,
+            genAfter: this.gen,
+            inferenceMs: transcribeEndMs - transcribeStartMs,
+            engineState: this.engineState,
+          });
+        }
+        return;
+      }
       const text = (res?.text || '').trim();
+      const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('TRANSCRIBE_END', {
+          gen,
+          engineState: this.engineState,
+          inferenceMs: transcribeEndMs - transcribeStartMs,
+          transcriptionLength: text.length,
+          wordCount,
+          empty: text.length === 0,
+          // texto só em debug local, nunca enviado
+          textPreview: text.slice(0, 80),
+        });
+      }
       this.transcribing = false;
       this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_SUCCESS' });
       this.setStatus('result');
       if (text) {
         this.opts.onTranscript?.(text);
+        if (isVoiceDebugEnabled()) voiceDebugLog('LIFECYCLE_DELIVERED', { gen, wordCount, engineState: this.engineState });
       } else {
         this.fail({ code: 'empty', userMessage: 'Nenhuma fala detectada. Aproxime-se do microfone e tente novamente.' });
       }
     } catch (e: any) {
-      if (gen !== this.gen) return;
+      if (gen !== this.gen) {
+        if (isVoiceDebugEnabled()) {
+          voiceDebugLog('LIFECYCLE_DISCARD', {
+            reason: 'gen-changed-on-error',
+            genBefore: gen,
+            genAfter: this.gen,
+            engineState: this.engineState,
+          });
+        }
+        return;
+      }
       this.transcribing = false;
       this.engineState = engineStateReducer(this.engineState, { type: 'TRANSCRIBE_ERROR' });
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('TRANSCRIBE_ERROR', {
+          gen,
+          engineState: this.engineState,
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      }
       this.fail({
         code: 'transcribe_failed',
         userMessage: 'Erro ao transcrever o áudio. Tente novamente.',
@@ -273,7 +460,17 @@ export class VoiceInputController {
 
   cancel(): void {
     // Aborta a sessão atual (gravação ou load em andamento) sem transcrever.
+    const prevGen = this.gen;
     this.gen++;
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('LIFECYCLE_CANCEL', {
+        prevGen,
+        newGen: this.gen,
+        engineState: this.engineState,
+        wasRecording: this.recording,
+        wasLoading: this.loading,
+      });
+    }
     if (this.recording) {
       try { this.recorder?.cancel(); } catch {}
       this.recorder = null;
@@ -284,6 +481,7 @@ export class VoiceInputController {
     }
     this.recording = false;
     this.loading = false;
+    this.recordingStartMs = null;
     if (this.engineState === 'LOADING') {
       // Load interrompido: encerra para um estado reiniciável.
       this.engineState = 'IDLE';
@@ -298,7 +496,17 @@ export class VoiceInputController {
 
   async dispose(): Promise<void> {
     // Encerra tudo: mic, AudioContext, recorder e Worker/WASM do modelo.
+    const prevGen = this.gen;
     this.gen++;
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('LIFECYCLE_DISPOSE', {
+        prevGen,
+        newGen: this.gen,
+        engineState: this.engineState,
+        wasRecording: this.recording,
+        wasTranscribing: this.transcribing,
+      });
+    }
     if (this.recording) {
       try { this.recorder?.cancel(); } catch {}
       this.recorder = null;
@@ -310,6 +518,7 @@ export class VoiceInputController {
     this.recording = false;
     this.loading = false;
     this.transcribing = false;
+    this.recordingStartMs = null;
     try { await this.engine?.dispose?.(); } catch {}
     this.engineState = INITIAL_ENGINE_STATE;
     this.setStatus('idle');

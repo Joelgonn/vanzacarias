@@ -514,7 +514,14 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   // para revisão e o envio usa o fluxo textual existente.
   const voice = useVoiceInput({
     onTranscript: (text) => {
-      if (text?.trim()) state.setInput(text);
+      const trimmed = text?.trim();
+      if (!trimmed) return;
+      // VOZ-009 — preservar texto existente: adiciona transcrição com espaço, não sobrescreve
+      state.setInput((prev: string) => {
+        const prevTrimmed = prev.trim();
+        if (!prevTrimmed) return trimmed;
+        return `${prevTrimmed} ${trimmed}`;
+      });
     },
   });
 

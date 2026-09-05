@@ -1,6 +1,8 @@
 // VOZ-004 / VOZ-004-R4 — Vosk PT-BR PoC isolado (não integra ChatAssistant)
 // - Local/offline, sem /api/stt, sem upload, sem Supabase
 //
+
+import { isVoiceDebugEnabled, voiceDebugLog, computePcmStats } from '../debug';
 // VOZ-004-R4 — Runtime/Bundling Fix:
 // - Causa do erro "Failed to resolve module specifier 'vosk-browser'": o import
 //   dinâmico era executado via `eval`, escondendo o specifier "vosk-browser" do
@@ -88,22 +90,63 @@ export async function transcribeWithVosk(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
+      // VOZ-008 — métricas antes de accept (sem áudio)
+      const voskDebug = isVoiceDebugEnabled();
+      const preStats = voskDebug ? computePcmStats(pcm, sampleRate) : null;
+      const acceptStart = Date.now();
+      if (voskDebug) {
+        voiceDebugLog('VOSK_INPUT', {
+          samples: pcm.length,
+          sampleRate,
+          durationMs: Math.round((pcm.length / sampleRate) * 1000),
+          rms: preStats?.rms ?? 0,
+          peak: preStats?.peak ?? 0,
+          min: preStats?.min ?? 0,
+          max: preStats?.max ?? 0,
+          silenceRatio: preStats?.silenceRatio ?? 0,
+        });
+      }
+
       // KaldiRecognizer aceita sampleRate; acceptWaveformFloat é o caminho oficial
       // para Float32Array (o worker recebe o PCM via audioChunk + sampleRate).
       const recognizer = new model.KaldiRecognizer(sampleRate);
       let finalText = '';
       let afterRetrieve = false;
       let done = false;
+      let acceptEnd = 0;
+      let retrieveStart = 0;
+      let resultReceivedAt = 0;
 
       const finish = (text: string) => {
         if (done) return;
         done = true;
         clearTimeout(guard);
+        const inferenceEnd = Date.now();
+        if (voskDebug) {
+          const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+          voiceDebugLog('VOSK_RESULT', {
+            samples: pcm.length,
+            sampleRate,
+            acceptStart,
+            acceptEnd,
+            retrieveStart,
+            resultReceivedAt,
+            inferenceEnd,
+            acceptWaveformMs: acceptEnd > 0 ? acceptEnd - acceptStart : 0,
+            acceptToRetrieveMs: retrieveStart > 0 && acceptEnd > 0 ? retrieveStart - acceptEnd : 0,
+            inferenceMs: inferenceEnd - acceptStart,
+            transcriptionLength: text.length,
+            wordCount,
+            empty: text.trim().length === 0,
+            textPreview: text.slice(0, 80),
+          });
+        }
         try { recognizer.remove(); } catch {}
         resolve(text);
       };
 
       recognizer.on('result', (msg: any) => {
+        if (voskDebug && resultReceivedAt === 0) resultReceivedAt = Date.now();
         if (msg?.result?.text) finalText = msg.result.text;
         // Resultado final chega após retrieveFinalResult.
         if (afterRetrieve) finish(finalText);
@@ -113,6 +156,14 @@ export async function transcribeWithVosk(
         if (done) return;
         done = true;
         clearTimeout(guard);
+        if (voskDebug) {
+          voiceDebugLog('VOSK_ERROR', {
+            samples: pcm.length,
+            sampleRate,
+            error: msg?.error || 'unknown',
+            inferenceMs: Date.now() - acceptStart,
+          });
+        }
         try { recognizer.remove(); } catch {}
         reject(new Error(`Vosk INFERENCE_ERROR: ${msg?.error || 'unknown'}`));
       });
@@ -120,13 +171,29 @@ export async function transcribeWithVosk(
       // Segurança: nunca pendura por mais de 30s.
       const guard = setTimeout(() => finish(finalText), 30000);
 
-      recognizer.acceptWaveformFloat(pcm, sampleRate);
-      // Pequeno delay para o evento de flush não competir com o resultado final.
-      setTimeout(() => {
-        afterRetrieve = true;
-        try { recognizer.retrieveFinalResult(); } catch {}
-      }, 100);
+      const chunkSize = 4096;
+      for (let i = 0; i < pcm.length; i += chunkSize) {
+        const chunk = pcm.subarray(i, Math.min(i + chunkSize, pcm.length));
+        recognizer.acceptWaveformFloat(chunk, sampleRate);
+      }
+      acceptEnd = Date.now();
+      afterRetrieve = true;
+      retrieveStart = Date.now();
+      if (voskDebug) {
+        voiceDebugLog('VOSK_RETRIEVE', {
+          samples: pcm.length,
+          sampleRate,
+          acceptEnd,
+          retrieveStart,
+          acceptToRetrieveMs: retrieveStart - acceptEnd,
+          chunks: pcm.length > 0 ? Math.ceil(pcm.length / chunkSize) : 0,
+        });
+      }
+      try { recognizer.retrieveFinalResult(); } catch {}
     } catch (e: any) {
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('VOSK_EXCEPTION', { error: e?.message || String(e) });
+      }
       reject(new Error(`Vosk INFERENCE_ERROR: ${e?.message || e}`));
     }
   });

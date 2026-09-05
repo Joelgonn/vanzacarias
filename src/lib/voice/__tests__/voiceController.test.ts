@@ -238,4 +238,88 @@ describe('VOZ-006 — VoiceInputController', () => {
     await ctrl.start();
     expect(capture).not.toHaveBeenCalled();
   });
+
+  // VOZ-008.5 — AudioContext resume
+  it('16. AudioContext já running: não chama resume e captura normalmente', async () => {
+    const resume = vi.fn().mockResolvedValue(undefined);
+    const audioContext = { sampleRate: 16000, state: 'running', resume } as any;
+    const cap = makeCapture({ audioContext, sampleRate: 16000 });
+    const capture = vi.fn().mockResolvedValue(cap);
+    const recorder: PcmRecorder = {
+      start: vi.fn(),
+      stop: vi.fn().mockReturnValue(new Float32Array([0.1, 0.2])),
+      cancel: vi.fn(),
+      cleanup: vi.fn(),
+    };
+    const engine = makeEngine();
+    const ctrl = new VoiceInputController({
+      engineId: 'vosk-pt-br',
+      getEngine: () => engine,
+      capture: capture as any,
+      recorderFactory: () => recorder,
+      checkSupport: false,
+    });
+    await ctrl.start();
+    expect(resume).not.toHaveBeenCalled();
+    expect(recorder.start).toHaveBeenCalledTimes(1);
+    expect(ctrl.getStatus()).toBe('recording');
+  });
+
+  it('17. AudioContext suspended: resume é chamado e captura continua quando passa a running', async () => {
+    const resume = vi.fn().mockImplementation(async function (this: any) {
+      this.state = 'running';
+    });
+    const audioContext: any = { sampleRate: 16000, state: 'suspended', resume };
+    // bind this para que resume altere state
+    audioContext.resume = resume.bind(audioContext);
+    const cap = makeCapture({ audioContext, sampleRate: 16000 });
+    const capture = vi.fn().mockResolvedValue(cap);
+    const recorder: PcmRecorder = {
+      start: vi.fn(),
+      stop: vi.fn().mockReturnValue(new Float32Array([0.1, 0.2])),
+      cancel: vi.fn(),
+      cleanup: vi.fn(),
+    };
+    const engine = makeEngine();
+    const ctrl = new VoiceInputController({
+      engineId: 'vosk-pt-br',
+      getEngine: () => engine,
+      capture: capture as any,
+      recorderFactory: () => recorder,
+      checkSupport: false,
+    });
+    await ctrl.start();
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(recorder.start).toHaveBeenCalledTimes(1);
+    expect(ctrl.getStatus()).toBe('recording');
+  });
+
+  it('18. AudioContext suspended e resume falha: captura falha sem enviar áudio ao Vosk', async () => {
+    const resume = vi.fn().mockRejectedValue(new Error('resume failed'));
+    const audioContext = { sampleRate: 16000, state: 'suspended', resume } as any;
+    const cap = makeCapture({ audioContext, sampleRate: 16000, cleanup: vi.fn() });
+    const capture = vi.fn().mockResolvedValue(cap);
+    const recorder: PcmRecorder = {
+      start: vi.fn(),
+      stop: vi.fn().mockReturnValue(new Float32Array([0.1])),
+      cancel: vi.fn(),
+      cleanup: vi.fn(),
+    };
+    const engine = makeEngine();
+    const errors: VoiceInputError[] = [];
+    const ctrl = new VoiceInputController({
+      engineId: 'vosk-pt-br',
+      getEngine: () => engine,
+      capture: capture as any,
+      recorderFactory: () => recorder,
+      checkSupport: false,
+      onError: (e) => errors.push(e),
+    });
+    await ctrl.start();
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(recorder.start).not.toHaveBeenCalled();
+    expect(engine.transcribe).not.toHaveBeenCalled();
+    expect(ctrl.getStatus()).toBe('error');
+    expect(errors.length).toBe(1);
+  });
 });

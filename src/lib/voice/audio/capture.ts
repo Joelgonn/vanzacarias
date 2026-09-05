@@ -1,6 +1,8 @@
 // VOZ-001.4 — Captura de áudio isolada (não depende do chatbot)
 // Objetivo: fornecer PCM 16kHz mono para Moonshine sem assumir que constraints são respeitadas.
 
+import { isVoiceDebugEnabled, voiceDebugLog } from '../debug';
+
 export type CaptureConstraints = {
   sampleRate: number; // alvo 16000 (Moonshine raw waveform)
   channelCount: 1;
@@ -76,14 +78,75 @@ export async function captureAudio(targetSampleRate = 16000): Promise<CaptureRes
 
   // AudioContext para PCM e resampling se necessário.
   // Não assume sampleRate 16k — verifica e faz resample depois.
+  // VOZ-008.5-R1 — Criação robusta: fallback sem sampleRate explícito se renderer falhar (Chrome Android 48k mismatch)
   let audioContext: AudioContext;
+  const ctxRate = (actualSettings.sampleRate as number) || targetSampleRate;
   try {
-    // Usa sampleRate real do track se disponível, caso contrário target.
-    const ctxRate = (actualSettings.sampleRate as number) || targetSampleRate;
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: ctxRate });
+    try {
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: ctxRate,
+        latencyHint: 'interactive',
+      } as any);
+    } catch (e: any) {
+      // Fallback sem sampleRate explícito — deixa browser escolher nativo (evita renderer error em Android)
+      if (isVoiceDebugEnabled()) {
+        voiceDebugLog('AUDIOCONTEXT_CREATE_FALLBACK', {
+          requestedRate: ctxRate,
+          error: e?.message || String(e),
+        });
+      }
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
   } catch (e: any) {
     stream.getTracks().forEach(t => t.stop());
     throw new CaptureError('unknown', 'AudioContext não disponível');
+  }
+
+  // VOZ-008.5 — Garantir AudioContext running no Android (suspended/interrupted → resume)
+  const stateBefore: string = (audioContext.state as string) ?? 'unknown';
+  let resumeAttempted = false;
+  let resumeSucceeded = false;
+  const isInterruptedOrSuspended =
+    typeof audioContext.state === 'string' &&
+    ((audioContext.state as string) === 'suspended' || (audioContext.state as string) === 'interrupted');
+  if (isInterruptedOrSuspended) {
+    resumeAttempted = true;
+    if (typeof audioContext.resume === 'function') {
+      try {
+        await audioContext.resume();
+        resumeSucceeded = (audioContext.state as string) === 'running';
+      } catch (e: any) {
+        resumeSucceeded = false;
+        if (isVoiceDebugEnabled()) {
+          voiceDebugLog('AUDIOCONTEXT_RESUME_ERROR', {
+            stateBefore,
+            error: e?.message || String(e),
+          });
+        }
+      }
+    } else {
+      resumeSucceeded = false;
+    }
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('AUDIOCONTEXT_RESUME', {
+        stateBefore,
+        resumeAttempted,
+        stateAfter: audioContext.state as string,
+        resumeSucceeded,
+      });
+    }
+    if ((audioContext.state as string) !== 'running') {
+      stream.getTracks().forEach(t => t.stop());
+      try { if ((audioContext.state as string) !== 'closed') audioContext.close(); } catch {}
+      throw new CaptureError('unknown', `AudioContext não está em running (estado: ${audioContext.state})`);
+    }
+  } else if (isVoiceDebugEnabled()) {
+    voiceDebugLog('AUDIOCONTEXT_RESUME', {
+      stateBefore,
+      resumeAttempted: false,
+      stateAfter: audioContext.state as string,
+      resumeSucceeded: true,
+    });
   }
 
   const cleanup = () => {
@@ -141,8 +204,33 @@ export function createPcmRecorder(
   audioContext: AudioContext,
   chunkSize = 4096
 ): PcmRecorder {
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(chunkSize, 1, 1);
+  // VOZ-008.5-R1 — Criação robusta com tratamento de renderer error (Android)
+  let source: MediaStreamAudioSourceNode;
+  let processor: ScriptProcessorNode;
+  try {
+    source = audioContext.createMediaStreamSource(stream);
+  } catch (e: any) {
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('PCMRECORDER_SOURCE_ERROR', {
+        audioContextState: (audioContext.state as string) ?? 'unknown',
+        error: e?.message || String(e),
+      });
+    }
+    throw new CaptureError('unknown', `createMediaStreamSource falhou: ${e?.message || e}`);
+  }
+  try {
+    processor = audioContext.createScriptProcessor(chunkSize, 1, 1);
+  } catch (e: any) {
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('PCMRECORDER_PROCESSOR_ERROR', {
+        audioContextState: (audioContext.state as string) ?? 'unknown',
+        chunkSize,
+        error: e?.message || String(e),
+      });
+    }
+    try { source.disconnect(); } catch {}
+    throw new CaptureError('unknown', `createScriptProcessor falhou: ${e?.message || e}`);
+  }
   const chunks: Float32Array[] = [];
   let active = false;
   let finished = false;
@@ -189,7 +277,23 @@ export function createPcmRecorder(
 }
 
 export function resampleTo16k(input: Float32Array, inputRate: number, targetRate = 16000): Float32Array {
-  if (inputRate === targetRate) return input;
+  const inputSamples = input.length;
+  const inputDurationMs = inputRate > 0 ? Math.round((inputSamples / inputRate) * 1000) : 0;
+  if (inputRate === targetRate) {
+    if (isVoiceDebugEnabled()) {
+      voiceDebugLog('RESAMPLING', {
+        inputSamples,
+        inputRate,
+        inputDurationMs,
+        outputSamples: inputSamples,
+        outputRate: targetRate,
+        outputDurationMs: inputDurationMs,
+        durationRatio: 1,
+        bypassed: true,
+      });
+    }
+    return input;
+  }
   const ratio = inputRate / targetRate;
   const newLen = Math.round(input.length / ratio);
   const out = new Float32Array(newLen);
@@ -199,6 +303,19 @@ export function resampleTo16k(input: Float32Array, inputRate: number, targetRate
     const idx1 = Math.min(idx0 + 1, input.length - 1);
     const frac = idx - idx0;
     out[i] = input[idx0] * (1 - frac) + input[idx1] * frac;
+  }
+  if (isVoiceDebugEnabled()) {
+    const outputDurationMs = Math.round((newLen / targetRate) * 1000);
+    voiceDebugLog('RESAMPLING', {
+      inputSamples,
+      inputRate,
+      inputDurationMs,
+      outputSamples: newLen,
+      outputRate: targetRate,
+      outputDurationMs,
+      durationRatio: inputDurationMs > 0 ? Number((outputDurationMs / inputDurationMs).toFixed(3)) : 0,
+      bypassed: false,
+    });
   }
   return out;
 }
