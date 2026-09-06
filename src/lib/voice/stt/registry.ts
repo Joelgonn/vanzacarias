@@ -22,13 +22,13 @@ export type STTEngine = {
 };
 
 // Registry — ponto único para engines registráveis
-// VOZ-004-R3: Vosk PT-BR deve continuar registrado; Moonshine preservado se já encapsulado
+// VOZ-004-R3: Vosk PT-BR deve continuar registrado
+// VOZ-014 — Moonshine (lab, inglês, sem pt-BR) removido; Vosk PT-BR é a única engine de produção.
+// A extração para voice-transcription preservou apenas o pipeline Vosk validado.
 import { getVoskEngine } from './engines/vosk';
-import { getMoonshineEngine } from './engines/moonshine';
 
 export const STT_ENGINES: Record<string, STTEngine> = {
   'vosk-pt-br': getVoskEngine(),
-  'moonshine-tiny': getMoonshineEngine(),
 };
 
 export function getEngine(id: string): STTEngine | undefined {
