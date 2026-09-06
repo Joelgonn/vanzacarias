@@ -1095,6 +1095,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     </button>
 
                     <textarea
+                      ref={textareaRef}
                       value={state.input}
                       rows={1}
                       onFocus={() => setIsComposerFocused(true)}

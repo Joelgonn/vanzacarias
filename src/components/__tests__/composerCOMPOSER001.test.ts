@@ -51,8 +51,8 @@ const getComposerRegion = (): string => {
 };
 
 const getTextareaClass = (): string => {
-  // Real textarea tem value + rows={1}, ignora comentário // <textarea>).
-  const m = content.match(/<textarea\s+value[\s\S]*?rows=\{1\}[\s\S]*?className=\{?(?:"([^"]*)"|`([^`]*)`)\}?/);
+  // Real textarea tem value + rows={1} + ref={textareaRef}, ignora comentário.
+  const m = content.match(/<textarea\s+[\s\S]*?value=\{state\.input\}[\s\S]*?rows=\{1\}[\s\S]*?className=\{?(?:"([^"]*)"|`([^`]*)`)\}?/);
   if (!m) throw new Error('textarea não encontrada');
   const raw = m[1] || m[2] || '';
   return raw.split('${')[0];
@@ -863,5 +863,41 @@ describe('CHAT-UX-007 — Auto-grow real e waveform flexível', () => {
     expect(content).toMatch(/el\.style\.overflowY = overflowY/);
     expect(content).not.toMatch(/style\.height = '200px'/);
     expect(content).not.toMatch(/min-h-\[200px\]/);
+  });
+});
+
+// =============================================================
+// CHAT-UX-009 (causa raiz) — o <textarea> REAL precisa ter o ref anexado.
+// Log [CHAT_DEBUG] no dispositivo mostrava `textarea: null` com o Composer em
+// edição: textareaRef nunca foi anexado ao elemento, então resizeComposer()
+// sempre retornava cedo e o auto-grow nunca aplicava altura (texto ficava no
+// intrínseco de rows={1} ~44-48px e o overflow-y-auto scrollava cedo).
+// =============================================================
+describe('CHAT-UX-009 — ref do textarea (causa raiz do auto-grow)', () => {
+  it('T-CAUSA-01 — o único <textarea> real possui ref={textareaRef}', () => {
+    const m = /^\s*<textarea([\s\S]*?)\/>/m.exec(content);
+    expect(m).not.toBeNull();
+    const open = m![1];
+    expect(open).toMatch(/ref=\{textareaRef\}/);
+    expect(open).toMatch(/value=\{state\.input\}/);
+    expect(open).toMatch(/rows=\{1\}/);
+  });
+
+  it('T-CAUSA-02 — resizeComposer usa textareaRef.current (não pode ser sempre null)', () => {
+    expect(content).toMatch(/const resizeComposer = \(\) => \{\s+const el = textareaRef\.current;/);
+    expect(content).toMatch(/const el = textareaRef\.current;/);
+    // debug [CHAT_DEBUG] lê o mesmo ref (não pode registrar textarea:null em edição)
+    expect(content).toMatch(/const t = textareaRef\.current;/);
+  });
+
+  it('T-CAUSA-03 — não há segundo textarea órfão sem ref', () => {
+    const all = content.match(/<textarea/g) ?? [];
+    // 1 real + 2 menções em comentários
+    const real = /^\s*<textarea/m.exec(content);
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(real).not.toBeNull();
+    expect(real![0]).toMatch(/<textarea/);
+    // o real (único elemento) tem o ref
+    expect(content.match(/^\s*<textarea[\s\S]*?ref=\{textareaRef\}/m)).not.toBeNull();
   });
 });
