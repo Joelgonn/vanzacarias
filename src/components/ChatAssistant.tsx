@@ -106,6 +106,16 @@ const COMPOSER_EDIT_AREAS = { gridTemplateAreas: '"input input input input" "att
 // Colunas: attach | mic | input (elástica) | send
 const COMPOSER_GRID_COLUMNS = { gridTemplateColumns: 'auto auto minmax(0, 1fr) auto' };
 
+// CHAT-UX-007 — waveform responsivo (sem largura fixa): barras flexíveis
+// (flex-1, máx. 3px) ocupam o espaço central disponível e encolhem em telas
+// estreitas sem overflow; a sequência de alturas/delays apenas repete o padrão
+// visual anterior em mais barras, dobrando a largura ocupada quando há espaço.
+const WAVEFORM_BAR_HEIGHTS = [
+  'h-2', 'h-3', 'h-4', 'h-3', 'h-2', 'h-4', 'h-3', 'h-2', 'h-4',
+  'h-3', 'h-2', 'h-4', 'h-3', 'h-2', 'h-3', 'h-4', 'h-3', 'h-2',
+  'h-4', 'h-3', 'h-2',
+];
+
 // VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
 // chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
 // duplicam regras clínicas e não expõem conteúdo Premium no botão.
@@ -578,11 +588,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
     }
   };
 
+  // CHAT-UX-007 — re-mede após o reflow real (2º frame). O Chrome Android pode
+  // reportar scrollHeight desatualizado no 1º keystroke (fonte/layout ainda em
+  // progresso); a 2ª medição no próximo frame estabiliza 1→N linhas. Reage a
+  // texto ([state.input]) E à troca idle↔editando ([isComposerFocused]), pois a
+  // largura da coluna "input" muda entre os dois modos (re-wrap altera linhas).
   useEffect(() => {
-    if (textareaRef.current) {
-      resizeComposer();
-    }
-  }, [state.input]);
+    const el = textareaRef.current;
+    if (!el) return;
+    resizeComposer();
+    const raf = requestAnimationFrame(() => resizeComposer());
+    return () => cancelAnimationFrame(raf);
+  }, [state.input, isComposerFocused]);
 
   useEffect(() => {
     const recompute = () => resizeComposer();
@@ -702,6 +719,8 @@ export default function ChatAssistant(props: ChatAssistantProps) {
       focused: isComposerFocused,
       hasContent,
       isComposerIdle,
+      recording: voice.isRecording,
+      selectedImage: !!state.selectedImage,
       textarea: t
         ? {
             scrollHeight: t.scrollHeight,
@@ -709,6 +728,8 @@ export default function ChatAssistant(props: ChatAssistantProps) {
             offsetHeight: t.offsetHeight,
             height: h(t),
             rect: rect(t),
+            styleHeightPx: t.style.height,
+            contentClipped: t.scrollHeight > t.clientHeight, // conteúdo > caixa visível
             approxLines: Math.round((t.scrollHeight - 20) / 24),
           }
         : null,
@@ -967,16 +988,14 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     </button>
                     <div className="flex-1 flex items-center justify-center gap-2 min-w-0 px-1">
                       <span className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0" aria-hidden="true"></span>
-                      <div className="flex items-end justify-center gap-0.5 h-4 flex-1 min-w-0" aria-hidden="true">
-                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '120ms' }}></span>
-                        <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: '240ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '360ms' }}></span>
-                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '480ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '600ms' }}></span>
-                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '720ms' }}></span>
-                        <span className="w-0.5 h-4 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '840ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '960ms' }}></span>
+                      <div className="flex items-end justify-center gap-[3px] h-4 flex-1 min-w-0 overflow-hidden" aria-hidden="true">
+                        {WAVEFORM_BAR_HEIGHTS.map((h, i) => (
+                          <span
+                            key={i}
+                            className={`flex-1 max-w-[3px] ${h} ${i % 5 === 2 ? 'bg-rose-500' : 'bg-rose-400'} rounded-full animate-pulse`}
+                            style={{ animationDelay: `${(i * 90) % 1260}ms` }}
+                          />
+                        ))}
                       </div>
                       <span className="text-sm font-mono font-medium text-stone-700 tabular-nums shrink-0">{formatElapsedMs(voice.recordingElapsedMs)}</span>
                     </div>
@@ -992,7 +1011,11 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 ) : (
                   <div
                     className="grid w-full min-w-0 items-center gap-x-1 gap-y-1.5"
-                    style={{ ...COMPOSER_GRID_COLUMNS, ...(isComposerIdle ? COMPOSER_IDLE_AREAS : COMPOSER_EDIT_AREAS) }}
+                    style={{
+                      ...COMPOSER_GRID_COLUMNS,
+                      gridTemplateRows: isComposerIdle ? 'auto' : 'auto auto',
+                      ...(isComposerIdle ? COMPOSER_IDLE_AREAS : COMPOSER_EDIT_AREAS),
+                    }}
                   >
                     <div className="relative [grid-area:attach]">
                       <button

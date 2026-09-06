@@ -111,7 +111,7 @@ describe('COMPOSER-001 — Estrutura: um único Composer', () => {
 
 describe('COMPOSER-001 — Auto-grow', () => {
   it('T-COMP-5 — apagar texto: recalcula e reduz (reage a qualquer mudança de input)', () => {
-    expect(content).toMatch(/}, \[state\.input\]\)/);
+    expect(content).toMatch(/\}, \[state\.input, isComposerFocused\]\)/);
     expect(content).toMatch(/state\.setInput\(e\.target\.value\)/);
     expect(content).toMatch(/resizeComposer\(\)/);
   });
@@ -126,7 +126,7 @@ describe('COMPOSER-001 — Auto-grow', () => {
     expect(content).toMatch(/onTranscript: \(text\) =>/);
     expect(content).toMatch(/state\.setInput\(\(prev: string\) =>/);
     expect(content).toMatch(/\$\{prevTrimmed\} \$\{trimmed\}/); // preserva texto existente
-    expect(content).toMatch(/}, \[state\.input\]\)/); // efeito recalcula após inserção
+    expect(content).toMatch(/\}, \[state\.input, isComposerFocused\]\)/); // efeito recalcula após inserção
   });
 
   it('recalcula após mudança de largura/orientação e teclado (visualViewport)', () => {
@@ -527,7 +527,8 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     expect(content).toMatch(/aria-label="Parar gravação"/);
     expect(content).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
     expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/); // ponto pulsante
-    expect(content).toMatch(/w-0\.5 h-.*bg-rose.*animate-pulse/); // waveform
+    expect(content).toMatch(/flex-1 max-w-\[3px\].*bg-rose.*animate-pulse/); // waveform flexível
+    expect(content).toMatch(/WAVEFORM_BAR_HEIGHTS/);
     // Não deve mostrar "Gravando" como texto principal (apenas aria-label)
     expect(content).not.toMatch(/>Gravando \{formatElapsedMs/);
     const pill = getPillRegion();
@@ -608,9 +609,11 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
     expect(content).not.toMatch(/>Gravando \{formatElapsedMs/);
     expect(content).toMatch(/aria-label="Gravando"/);
   });
-  it('VOICE-UX-02 — waveform presente (barras com espaço central flexível)', () => {
-    expect(content).toMatch(/w-0\.5 h-.*bg-rose.*animate-pulse/);
-    expect(content).toMatch(/items-end[\s\S]*?gap-0\.5[\s\S]*?h-4 flex-1 min-w-0/);
+  it('VOICE-UX-02 — waveform presente e flexível (sem largura fixa, sem w-0.5 fixo)', () => {
+    expect(content).toMatch(/flex-1 max-w-\[3px\].*bg-rose.*animate-pulse/);
+    expect(content).toMatch(/items-end[\s\S]*?gap-\[3px\][\s\S]*?h-4 flex-1 min-w-0 overflow-hidden/);
+    expect(content).not.toMatch(/max-w-\[160px\]/);
+    expect(content).not.toMatch(/w-0\.5 h-/);
   });
   it('VOICE-UX-03 — indicador vermelho pulsante presente', () => {
     expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/);
@@ -712,7 +715,7 @@ describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
     expect(content).toMatch(/!isComposerFocused && !hasContent && !voice\.isRecording && state\.selectedImage === null/);
     // edição = textarea em linha cheia + ações na linha inferior (grid areas)
     expect(content).toMatch(/'"input input input input" "attach mic \. send"'/);
-    expect(content).toMatch(/style=\{\{ \.\.\.COMPOSER_GRID_COLUMNS/);
+    expect(content).toMatch(/style=\{\{\s*\.\.\.COMPOSER_GRID_COLUMNS/);
     expect(content).toMatch(/\.\.\.\(isComposerIdle \? COMPOSER_IDLE_AREAS : COMPOSER_EDIT_AREAS\)/);
   });
 
@@ -768,7 +771,7 @@ describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
     expect(assistantMsg).not.toMatch(/border border-stone-200/);
   });
 
-  it('UX6-10 — voz: X esquerda, ■ direita, waveform com espaço central, timer M:SS', () => {
+  it('UX6-10 — voz: X esquerda, ■ direita, waveform flexível central, timer M:SS', () => {
     const iCancel = content.indexOf('aria-label="Cancelar gravação"');
     const iStop = content.indexOf('aria-label="Parar gravação"');
     expect(iCancel).toBeGreaterThan(-1);
@@ -776,8 +779,10 @@ describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
     const rec = content.slice(iCancel, iStop + 900);
     expect(rec).toMatch(/aria-label="Parar gravação"/);
     expect(rec).toMatch(/flex-1 flex items-center justify-center gap-2 min-w-0/);
-    expect(rec).toMatch(/items-end[\s\S]*?gap-0\.5[\s\S]*?h-4 flex-1 min-w-0/);
+    expect(rec).toMatch(/items-end[\s\S]*?gap-\[3px\][\s\S]*?h-4 flex-1 min-w-0 overflow-hidden/);
+    expect(rec).toMatch(/WAVEFORM_BAR_HEIGHTS\.map/);
     expect(rec).not.toMatch(/max-w-\[160px\]/);
+    expect(rec).not.toMatch(/w-0\.5 h-/);
     expect(rec).toMatch(/tabular-nums/);
     expect(rec).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
     // sem textos visíveis de gravação
@@ -796,5 +801,62 @@ describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
     expect(diag).toMatch(/innerHeight/);
     expect(diag).not.toMatch(/transcription/);
     expect(diag).not.toMatch(/textPreview/);
+  });
+});
+
+// =============================================================
+// CHAT-UX-007 — Correção cirúrgica do auto-grow (2ª medição + grid rows
+// explícitos + sem altura artificial) e expansão horizontal do waveform.
+// =============================================================
+describe('CHAT-UX-007 — Auto-grow real e waveform flexível', () => {
+  it('UX7-01 — grid com linhas explícitas auto (idle 1 linha; editando row do texto + row de ações) — sem linhas implícitas fixas', () => {
+    expect(content).toMatch(/gridTemplateRows: isComposerIdle \? 'auto' : 'auto auto'/);
+    // Nenhuma altura artificial como solução para o crescimento
+    expect(content).not.toMatch(/style\.height = '200px'/);
+    expect(content).not.toMatch(/min-h-\[200px\]/);
+    expect(content).not.toMatch(/min-h-\[120px\]/);
+  });
+
+  it('UX7-02 — auto-grow re-mede após reflow real (requestAnimationFrame) e reage à troca idle↔editando', () => {
+    expect(content).toMatch(/requestAnimationFrame\(\(\) => resizeComposer\(\)\)/);
+    expect(content).toMatch(/cancelAnimationFrame\(raf\)/);
+    expect(content).toMatch(/\}, \[state\.input, isComposerFocused\]\)/);
+  });
+
+  it('UX7-03 — instrumentação registra contentClipped e estilo de altura (diagnóstico §25)', () => {
+    expect(content).toMatch(/contentClipped: t\.scrollHeight > t\.clientHeight/);
+    expect(content).toMatch(/styleHeightPx: t\.style\.height/);
+    expect(content).toMatch(/recording: voice\.isRecording/);
+    expect(content).toMatch(/selectedImage: !!state\.selectedImage/);
+  });
+
+  it('UX7-04 — textarea ocupa a largura disponível e permanece sem borda/outline/ring', () => {
+    const pill = getPillRegion();
+    expect(pill).toMatch(/\[grid-area:input\] w-full min-w-0 bg-transparent/);
+    expect(pill).toMatch(/border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none/);
+    // textarea sem fundo próprio
+    const tc = getTextareaClass();
+    expect(tc).not.toMatch(/bg-white/);
+    expect(tc).not.toMatch(/bg-stone/);
+  });
+
+  it('UX7-05 — waveform elástico: barras flex-1 max-w-[3px], sem largura fixa/artificial', () => {
+    expect(content).toMatch(/const WAVEFORM_BAR_HEIGHTS = \[/);
+    expect(content).toMatch(/flex-1 max-w-\[3px\]/);
+    expect(content).toMatch(/flex items-end justify-center gap-\[3px\] h-4 flex-1 min-w-0 overflow-hidden/);
+    expect(content).not.toMatch(/max-w-\[160px\]/);
+    expect(content).not.toMatch(/width: 320px/);
+    expect(content).not.toMatch(/w-0\.5 h-/);
+    // X, timer e Parar continuam presentes na mesma linha
+    expect(content).toMatch(/aria-label="Cancelar gravação"/);
+    expect(content).toMatch(/aria-label="Parar gravação"/);
+    expect(content).toMatch(/tabular-nums/);
+  });
+
+  it('UX7-06 — auto-grow SEM altura artificial: usa scrollHeight e clamp em COMPOSER_MAX_HEIGHT', () => {
+    expect(content).toMatch(/style\.height = Math\.min\(textareaRef\.current\.scrollHeight, maxH\) \+ 'px'/);
+    expect(content).toMatch(/const maxH = COMPOSER_MAX_HEIGHT/);
+    expect(content).not.toMatch(/style\.height = '200px'/);
+    expect(content).not.toMatch(/const maxH = 200/);
   });
 });

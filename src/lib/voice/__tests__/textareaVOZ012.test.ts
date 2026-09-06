@@ -17,10 +17,12 @@ describe('VOZ-012 — Textarea / Texto Longo', () => {
     expect(content).toMatch(/textareaRef\.current\.style\.overflowY/);
   });
 
-  it('useEffect observa state.input para transcrição longa', () => {
-    // O useEffect deve reagir a state.input, não apenas a '' (limpeza)
-    expect(content).toMatch(/useEffect\(\(\) => \{\s+if \(textareaRef\.current\)/);
-    expect(content).toMatch(/}, \[state\.input\]\)/);
+  it('useEffect observa state.input e foco para transcrição longa / troca idle↔editando', () => {
+    // O useEffect deve reagir a state.input (não apenas a ''), além do foco
+    // (CHAT-UX-007: re-mede na troca idle↔editando, pois a largura muda).
+    expect(content).toMatch(/useEffect\(\(\) => \{\s+const el = textareaRef\.current/);
+    expect(content).toMatch(/resizeComposer\(\);/);
+    expect(content).toMatch(/\}, \[state\.input, isComposerFocused\]\)/);
   });
 
   it('texto curto → normal, médio → cresce, longo → scroll (max 200)', () => {
