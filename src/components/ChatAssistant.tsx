@@ -802,7 +802,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               )}
             </div>
 
-            <div className="p-3 sm:p-4 bg-white border-t border-stone-100 shrink-0 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
+            <div className="p-3 sm:p-4 shrink-0 relative z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
               
               {state.selectedImage && (
                 <div className="relative mb-3 inline-block animate-in fade-in slide-in-from-bottom-2">
