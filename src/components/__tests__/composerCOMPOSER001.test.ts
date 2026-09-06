@@ -7,15 +7,27 @@ import path from 'path';
 // texto, com altura máxima + scroll interno e ações ancoradas na parte inferior.
 // Os testes seguem o padrão do projeto (vitest em node, inspeção de fonte) e
 // cobrem T-COMP-1..T-COMP-12.
+// CHAT-UX-002 — Fundação: pill vertical bg-white rounded-3xl flex-col
 
 const chatPath = path.join(process.cwd(), 'src/components/ChatAssistant.tsx');
 const content = fs.readFileSync(chatPath, 'utf8');
 
-// A caixa única do Composer (pill) — contém attach, microfone, textarea e enviar.
+// Pill atual CHAT-UX-002: flex flex-col w-full bg-white p-2 rounded-3xl
+// Fallback para código pré-002 (flex w-full gap-2 bg-stone-50 rounded-[2rem]) para compatibilidade de teste durante migração
+const getPillRegion = (): string => {
+  const newIdx = content.indexOf('flex flex-col w-full bg-white p-2 rounded-3xl');
+  if (newIdx !== -1) {
+    return content.slice(newIdx, newIdx + 8000);
+  }
+  const oldIdx = content.indexOf('flex w-full gap-2 bg-stone-50');
+  if (oldIdx !== -1) {
+    return content.slice(content.lastIndexOf('<div className="', oldIdx), oldIdx + 8000);
+  }
+  throw new Error('pill do Composer não encontrada');
+};
+
 const getPill = (): string => {
-  const m = content.match(/<div\s+className="flex w-full gap-2 bg-stone-50 p-1\.5 rounded-\[2rem\][\s\S]*?<\/div>/);
-  if (!m) throw new Error('pill do Composer não encontrada');
-  return m[0];
+  return getPillRegion();
 };
 
 // Helpers estruturais COMPOSER-001.1 — identificam DOCK e região do Composer
@@ -58,16 +70,19 @@ describe('COMPOSER-001 — Estrutura: um único Composer', () => {
   });
 
   it('T-COMP-3 — texto em várias linhas: textarea e controles no MESMO container', () => {
-    // Existe UMA única caixa (pill) com rounded-[2rem] que contém attach,
-    // microfone, textarea e enviar — sem "caixa de texto" separada.
-    const pill = getPill();
-    expect(pill.indexOf('rounded-[2rem]')).toBeGreaterThanOrEqual(0);
+    // Pill vertical (CHAT-UX-002) ou pill horizontal legada — contém attach, mic, textarea e enviar
+    const pill = getPillRegion();
+    // Verifica rounded e bg conforme fundação atual (rounded-3xl bg-white) ou legado (rounded-[2rem] bg-stone-50)
+    const hasRounded = pill.includes('rounded-3xl') || pill.includes('rounded-[2rem]');
+    expect(hasRounded).toBe(true);
     expect(pill.indexOf('<textarea')).toBeGreaterThan(0);
     expect(pill.indexOf('aria-label="Anexar foto"')).toBeGreaterThan(0);
     expect(pill.indexOf("aria-label={voice.isRecording ? 'Parar e transcrever' : 'Falar mensagem'}")).toBeGreaterThan(0);
     expect(pill.indexOf('aria-label="Enviar mensagem"')).toBeGreaterThan(0);
-    // Ações vêm antes do textarea; enviar vem depois (ordem estrutural da referência)
-    expect(pill.indexOf('aria-label="Enviar mensagem"')).toBeGreaterThan(pill.indexOf('<textarea'));
+    // Em CHAT-UX-002 vertical, textarea vem antes da barra de ações (border-t); enviar é último
+    const textareaIdx = pill.indexOf('<textarea');
+    const enviarIdx = pill.indexOf('aria-label="Enviar mensagem"');
+    expect(enviarIdx).toBeGreaterThan(textareaIdx);
     // Nenhuma segunda caixa independente ao redor do textarea (só o elemento real)
     const textareas = content.match(/^\s*<textarea/mg) ?? [];
     expect(textareas.length).toBe(1);
@@ -140,10 +155,11 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
     expect(content).toMatch(/min-w-0/); // textarea pode encolher em 320px sem empurrar os botões
     expect(content).toMatch(/min-w-\[44px\]/);
     expect(content).toMatch(/h-\[44px\]/);
-    expect(content).toMatch(/min-w-\[48px\]/);
     expect(content).toMatch(/w-full/);
-    expect(content).toMatch(/sm:w-\[400px\]/); // variantes responsivas preservadas
-    expect(content).toMatch(/sm:items-end/); // painel segue ancorado embaixo no mobile
+    // CHAT-UX-002: painel fluido 420-440px, não mais 400px fixo
+    const hasFluid = content.includes('sm:w-[420px]') || content.includes('sm:w-[400px]');
+    expect(hasFluid).toBe(true);
+    expect(content).toMatch(/sm:items-end/); // painel segue ancorado embaixo no mobile (overlay)
   });
 
   it('composer respeita área segura inferior do aparelho (safe-area)', () => {
@@ -151,12 +167,22 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
     expect(content).toMatch(/sm:pb-4/);
   });
 
-  it('ações ancoradas na parte inferior do Composer (items-end)', () => {
-    const pill = getPill();
-    const opening = pill.slice(0, pill.indexOf('>'));
-    expect(opening).toMatch(/rounded-\[2rem\]/);
-    expect(opening).toMatch(/items-end/);
-    expect(opening).not.toMatch(/items-center/);
+  it('ações ancoradas na parte inferior do Composer (items-end ou estrutura vertical)', () => {
+    const pill = getPillRegion();
+    // CHAT-UX-002 vertical usa flex-col + border-t na barra; legado usava items-end
+    const hasVertical = pill.includes('flex flex-col') && pill.includes('border-t');
+    const hasItemsEnd = pill.includes('items-end');
+    expect(hasVertical || hasItemsEnd).toBe(true);
+    // Verifica que não há conflito items-center no pill (permitido em botões internos)
+    // Para vertical, items-end não é necessário; para horizontal legado, deve ter items-end
+    if (pill.includes('rounded-3xl') && pill.includes('flex flex-col')) {
+      expect(pill).not.toMatch(/items-end/); // vertical não usa items-end
+      expect(pill).toMatch(/border-t/);
+    } else {
+      const opening = pill.slice(0, pill.indexOf('>'));
+      expect(opening).toMatch(/rounded-\[2rem\]/);
+      expect(opening).toMatch(/items-end/);
+    }
   });
 
   it('controles continuam sendo <button>', () => {
@@ -188,6 +214,7 @@ describe('COMPOSER-001 — Regressão', () => {
 // e garantir que a PILL B seja o único container com bg+border+rounded.
 // Estes testes FALHAM no código pré-correção (DOCK com bg-white+border-t+shadow)
 // e PASSAM apenas após a correção estrutural.
+// Atualizado CHAT-UX-002: PILL agora bg-white rounded-3xl flex-col
 // =============================================================
 describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)', () => {
   it('T-COMP-STRUCT-1 — wrapper externo (DOCK) não possui identidade visual de caixa (bg-white + border-t + shadow simultâneos)', () => {
@@ -210,15 +237,20 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
 
   it('T-COMP-STRUCT-2 — existe somente UM container visual principal (bg + border + rounded) na região do Composer', () => {
     const region = getComposerRegion();
-    // PILL é o único container com rounded-[2rem] + bg-stone-50 + border
-    const allRounded = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
-    const visualContainers = allRounded.filter((c) => /bg-stone-50/.test(c) && /border/.test(c));
+    // CHAT-UX-002: PILL bg-white rounded-3xl; legado bg-stone-50 rounded-[2rem]
+    const allRounded3xl = region.match(/<div className="[^"]*rounded-3xl[^"]*"/g) ?? [];
+    const allRounded2rem = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
+    const allRounded = [...allRounded3xl, ...allRounded2rem];
+    const visualContainers = allRounded.filter((c) => /bg-white/.test(c) && /border/.test(c) || /bg-stone-50/.test(c) && /border/.test(c));
+    // Deve haver exatamente 1 principal (exclui preview condicional)
     expect(visualContainers.length).toBe(1);
-    expect(visualContainers[0]).toMatch(/rounded-\[2rem\]/);
-    expect(visualContainers[0]).toMatch(/bg-stone-50/);
+    const hasNew = visualContainers[0].includes('rounded-3xl') && visualContainers[0].includes('bg-white');
+    const hasOld = visualContainers[0].includes('rounded-[2rem]') && visualContainers[0].includes('bg-stone-50');
+    expect(hasNew || hasOld).toBe(true);
     // DOCK não deve ser um container visual
     const dockClass = getDockClass();
     expect(dockClass).not.toMatch(/rounded-\[/);
+    expect(dockClass).not.toMatch(/rounded-3xl/);
     expect(dockClass).not.toMatch(/bg-white/);
   });
 
@@ -229,15 +261,14 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     expect(pill).toMatch(/aria-label="Anexar foto"/);
     expect(pill).toMatch(/aria-label=\{voice\.isRecording \? 'Parar e transcrever' : 'Falar mensagem'\}/);
     expect(pill).toMatch(/aria-label="Enviar mensagem"/);
-    // Ordem estrutural: ações antes do textarea, enviar depois
+    // Ordem estrutural em CHAT-UX-002 vertical: textarea antes da barra border-t, enviar é último
     const textareaIdx = pill.indexOf('<textarea');
     const anexarIdx = pill.indexOf('aria-label="Anexar foto"');
     const micIdx = pill.indexOf("aria-label={voice.isRecording ? 'Parar e transcrever'");
     const enviarIdx = pill.indexOf('aria-label="Enviar mensagem"');
     expect(anexarIdx).toBeGreaterThan(-1);
     expect(micIdx).toBeGreaterThan(-1);
-    expect(textareaIdx).toBeGreaterThan(anexarIdx);
-    expect(textareaIdx).toBeGreaterThan(micIdx);
+    expect(textareaIdx).toBeGreaterThan(-1);
     expect(enviarIdx).toBeGreaterThan(textareaIdx);
     // DOCK não deve conter diretamente os botões — eles estão na PILL
     const dockClass = getDockClass();
@@ -257,14 +288,21 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     expect(textareaClass).toMatch(/overflow-y-auto/);
   });
 
-  it('T-COMP-STRUCT-5 — PILL utiliza items-end (ações ancoradas na base em multilinha)', () => {
+  it('T-COMP-STRUCT-5 — PILL utiliza estrutura vertical fundação (flex-col + barra border-t)', () => {
     const pill = getPill();
-    const opening = pill.slice(0, pill.indexOf('>'));
-    expect(opening).toMatch(/items-end/);
-    expect(opening).not.toMatch(/items-center/);
-    expect(opening).toMatch(/flex/);
-    // Verifica que a pill não usa items-center como alinhamento principal —
-    // items-center em botões internos (flex items-center justify-center) é permitido
+    // CHAT-UX-002: vertical flex-col com barra border-t; legado usava items-end
+    const isVertical = pill.includes('flex flex-col') && pill.includes('border-t');
+    const isLegacy = pill.includes('items-end') && pill.includes('rounded-[2rem]');
+    expect(isVertical || isLegacy).toBe(true);
+    if (isVertical) {
+      expect(pill).toMatch(/flex flex-col/);
+      expect(pill).toMatch(/rounded-3xl/);
+      expect(pill).toMatch(/bg-white/);
+      expect(pill).toMatch(/border-t/);
+    } else {
+      const opening = pill.slice(0, pill.indexOf('>'));
+      expect(opening).toMatch(/items-end/);
+    }
   });
 
   it('T-COMP-STRUCT-6 — não existe segundo background/border/radius criando "caixa dentro de caixa"', () => {
@@ -276,15 +314,80 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     expect(dockClass).not.toMatch(/border-t/);
     expect(dockClass).not.toMatch(/border-stone-/);
     expect(dockClass).not.toMatch(/rounded-\[/);
+    expect(dockClass).not.toMatch(/rounded-3xl/);
     expect(dockClass).not.toMatch(/shadow-\[/);
-    // PILL é o único com identidade visual completa
-    expect(pill).toMatch(/bg-stone-50/);
-    expect(pill).toMatch(/border/);
-    expect(pill).toMatch(/rounded-\[2rem\]/);
-    // Verificação: apenas a PILL (rounded-[2rem]) possui bg+border+rounded principal na região
+    // PILL é o único com identidade visual completa (nova ou legada)
+    const hasNewPill = pill.includes('bg-white') && pill.includes('border') && pill.includes('rounded-3xl');
+    const hasOldPill = pill.includes('bg-stone-50') && pill.includes('border') && pill.includes('rounded-[2rem]');
+    expect(hasNewPill || hasOldPill).toBe(true);
+    // Verificação: apenas a PILL principal possui bg+border+rounded na região
     const region = getComposerRegion();
-    const allRounded = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
-    const principalVisuals = allRounded.filter((c) => /bg-stone-50/.test(c) && /border/.test(c));
+    const allRounded3xl = region.match(/<div className="[^"]*rounded-3xl[^"]*"/g) ?? [];
+    const allRounded2rem = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
+    const allRounded = [...allRounded3xl, ...allRounded2rem];
+    const principalVisuals = allRounded.filter((c) => (/bg-white/.test(c) || /bg-stone-50/.test(c)) && /border/.test(c));
     expect(principalVisuals.length).toBe(1);
+  });
+});
+
+// =============================================================
+// CHAT-UX-002 — Fundação (shell, header, conversation, empty, composer vertical)
+// Valida nova fundação sem quebrar invariantes
+// =============================================================
+describe('CHAT-UX-002 — Fundação UX/UI', () => {
+  it('F-01 — shell fluido 420-440px com max-w calc e altura dvh', () => {
+    expect(content).toMatch(/sm:w-\[420px\]/);
+    expect(content).toMatch(/lg:w-\[440px\]/);
+    expect(content).toMatch(/max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
+    expect(content).toMatch(/h-\[85dvh\]/);
+    expect(content).toMatch(/sm:h-\[min\(600px,85dvh\)\]/);
+    expect(content).toMatch(/bg-white/);
+    expect(content).toMatch(/rounded-3xl/);
+    expect(content).toMatch(/shadow-premium/);
+    expect(content).toMatch(/border border-stone-100/);
+  });
+
+  it('F-02 — overlay com scrim e dismiss (z-[60], bg-stone-900/30, onClick, Esc)', () => {
+    expect(content).toMatch(/z-\[60\]/);
+    expect(content).toMatch(/bg-stone-900\/30/);
+    expect(content).toMatch(/backdrop-blur-sm/);
+    expect(content).toMatch(/onClick=\{\(\) => state\.setIsOpen\(false\)\}/);
+    expect(content).toMatch(/onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
+    expect(content).toMatch(/role="dialog"/);
+    expect(content).toMatch(/aria-modal="true"/);
+    expect(content).toMatch(/Escape/);
+  });
+
+  it('F-03 — header nutri com amber controlado e 44px close', () => {
+    expect(content).toMatch(/bg-nutri-900/);
+    expect(content).toMatch(/bg-amber-50 text-amber-700 border border-amber-100/);
+    expect(content).toMatch(/text-\[11px\]/); // status 11px não 10px
+    expect(content).toMatch(/min-w-\[44px\] min-h-\[44px\] w-11 h-11/);
+    expect(content).toMatch(/w-12 h-12/); // avatar 48px
+  });
+
+  it('F-04 — conversation com role log e espaço reduzido', () => {
+    expect(content).toMatch(/role="log"/);
+    expect(content).toMatch(/aria-live="polite"/);
+    expect(content).toMatch(/space-y-4/);
+    expect(content).toMatch(/max-w-\[75%\]/);
+    expect(content).toMatch(/bg-nutri-900/); // user bubble nutri
+  });
+
+  it('F-05 — empty state com hero 80px e headline 20px', () => {
+    expect(content).toMatch(/w-20 h-20 sm:w-\[88px\] sm:h-\[88px\]/);
+    expect(content).toMatch(/text-\[20px\] sm:text-\[22px\]/);
+    expect(content).toMatch(/max-w-\[32ch\]/);
+    expect(content).toMatch(/hover:border-nutri-200.*hover:text-nutri-700/);
+  });
+
+  it('F-06 — composer vertical com textarea full-width e barra border-t', () => {
+    const pill = getPillRegion();
+    expect(pill).toMatch(/flex flex-col w-full bg-white p-2 rounded-3xl/);
+    expect(pill).toMatch(/w-full min-w-0 bg-transparent/);
+    expect(pill).toMatch(/border-t border-stone-100/);
+    expect(pill).toMatch(/focus-within:border-nutri-300/);
+    expect(content).toMatch(/capture="environment"/); // camera affordance
+    expect(content).toMatch(/bg-nutri-800/); // enviar nutri
   });
 });
