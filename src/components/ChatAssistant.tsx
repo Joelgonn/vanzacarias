@@ -95,6 +95,17 @@ const MAX_MESSAGE_LENGTH = 500;
 // max-h-[200px] aplicado no <textarea>).
 const COMPOSER_MAX_HEIGHT = 200;
 
+// CHAT-UX-006 — Composer em dois modos com UM ÚNICO <textarea> e UM ÚNICO
+// conjunto de controles (sem duplicação de DOM, sem display:none no textarea):
+// a mesma grade (grid) troca apenas o template de áreas:
+//   idle     → uma linha:  attach | mic | input (placeholder flex) | send
+//   editando → textarea em linha cheia no topo; ações na linha inferior.
+// Colunas constantes: auto auto minmax(0,1fr) auto (input é a coluna elástica).
+const COMPOSER_IDLE_AREAS = { gridTemplateAreas: '"attach mic input send"' };
+const COMPOSER_EDIT_AREAS = { gridTemplateAreas: '"input input input input" "attach mic . send"' };
+// Colunas: attach | mic | input (elástica) | send
+const COMPOSER_GRID_COLUMNS = { gridTemplateColumns: 'auto auto minmax(0, 1fr) auto' };
+
 // VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
 // chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
 // duplicam regras clínicas e não expõem conteúdo Premium no botão.
@@ -512,6 +523,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileGenericRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const patientLogic = useChatPatient(state, !isRoleAdmin);
@@ -663,6 +675,56 @@ export default function ChatAssistant(props: ChatAssistantProps) {
 
   const hasContent = state.input.trim().length > 0 || state.selectedImage !== null;
 
+  // CHAT-UX-006 — idle compacto (uma linha) somente quando o Composer está
+  // realmente vazio e sem interação; qualquer texto/foco/imagem/gravação
+  // mantém o modo de edição (textarea + linha de ações).
+  const isComposerIdle =
+    !isComposerFocused && !hasContent && !voice.isRecording && state.selectedImage === null;
+
+  // CHAT-UX-006 §5 — Instrumentação temporária de crescimento (somente debug).
+  // Registra as alturas reais (textarea/Composer/Conversation/Panel/viewport)
+  // a cada mudança de texto/foco. Ativa apenas com NEXT_PUBLIC_CHAT_DEBUG==='1'
+  // no build; não registra conteúdo digitado, apenas métricas.
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_CHAT_DEBUG !== '1') return;
+    const t = textareaRef.current;
+    const p = composerRef.current;
+    const conv = scrollRef.current;
+    const panel = panelRef.current;
+    const h = (el: Element | null | undefined): number | null =>
+      el ? Math.round(el.getBoundingClientRect().height) : null;
+    const rect = (el: Element | null | undefined): { top: number; bottom: number } | null =>
+      el
+        ? { top: Math.round(el.getBoundingClientRect().top), bottom: Math.round(el.getBoundingClientRect().bottom) }
+        : null;
+    // eslint-disable-next-line no-console
+    console.info('[CHAT_DEBUG] composer metrics', {
+      focused: isComposerFocused,
+      hasContent,
+      isComposerIdle,
+      textarea: t
+        ? {
+            scrollHeight: t.scrollHeight,
+            clientHeight: t.clientHeight,
+            offsetHeight: t.offsetHeight,
+            height: h(t),
+            rect: rect(t),
+            approxLines: Math.round((t.scrollHeight - 20) / 24),
+          }
+        : null,
+      composer: p ? { height: h(p), rect: rect(p) } : null,
+      conversation: conv ? { height: h(conv), rect: rect(conv) } : null,
+      panel: panel ? { height: h(panel), rect: rect(panel) } : null,
+      viewport: {
+        innerHeight: window.innerHeight,
+        docClientHeight: document.documentElement.clientHeight,
+        vvHeight: window.visualViewport ? Math.round(window.visualViewport.height) : null,
+        vvOffsetTop: window.visualViewport ? Math.round(window.visualViewport.offsetTop) : null,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.input, isComposerFocused, hasContent, isComposerIdle]);
+
   return (
     <>
       {!state.isOpen && (
@@ -707,7 +769,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
           
           <div
             ref={panelRef}
-            className="w-full sm:w-[420px] lg:w-[440px] max-w-[min(440px,calc(100vw-32px))] h-[85vh] h-[85dvh] sm:h-[min(600px,85dvh)] max-h-[800px] bg-white rounded-t-3xl sm:rounded-3xl shadow-premium border border-stone-100 flex flex-col overflow-hidden animate-slide-in-bottom duration-300 pointer-events-auto"
+            className="w-full sm:w-[420px] lg:w-[440px] sm:max-w-[min(440px,calc(100vw-32px))] h-[85vh] h-[85dvh] sm:h-[min(600px,85dvh)] max-h-[800px] bg-white rounded-t-3xl sm:rounded-3xl shadow-premium border border-stone-100 flex flex-col overflow-hidden animate-slide-in-bottom duration-300 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -738,34 +800,23 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     className="w-[90%] h-[90%] object-cover object-top drop-shadow-md" 
                   />
                 </div>
-                <div className="flex flex-col">
-                  <h4 className="font-semibold text-[14px] leading-tight text-white tracking-tight flex items-center gap-2">
-                    Nutri <span className="text-emerald-400">Van</span>
-                    {!isRoleAdmin && canAccessMealPlan && (
-                      <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 text-[9px] font-bold tracking-wider">
-                        Premium
-                      </span>
-                    )}
-                    {!isRoleAdmin && !canAccessMealPlan && (
-                      <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white/70">
-                        Gratuito
-                      </span>
-                    )}
-                  </h4>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                <h4 className="font-semibold text-[14px] leading-tight text-white tracking-tight flex items-center gap-1.5">
+                  Nutri <span className="text-emerald-400">Van</span>
+                  <span className="relative flex h-1.5 w-1.5 shrink-0" aria-hidden="true">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  {!isRoleAdmin && canAccessMealPlan && (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 text-[9px] font-bold tracking-wider">
+                      Premium
                     </span>
-                    <span className="text-[10px] text-white/60 tracking-widest font-medium">
-                      {isRoleAdmin 
-                        ? 'Assistente IA da Nutri' 
-                        : state.avatarMood === 'seria' 
-                          ? 'De olho em você' 
-                          : 'Online agora'}
+                  )}
+                  {!isRoleAdmin && !canAccessMealPlan && (
+                    <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white/70">
+                      Gratuito
                     </span>
-                  </div>
-                </div>
+                  )}
+                </h4>
               </div>
               
               <div className="flex items-center gap-2">
@@ -880,7 +931,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
 
             <div className="p-2 sm:p-3 shrink-0 relative z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3">
               
-              <div className={`flex flex-col w-full bg-white p-2.5 rounded-3xl border border-stone-200 shadow-sm transition-all min-h-0 ${voice.isRecording ? 'min-h-[68px] justify-center' : isComposerFocused || hasContent ? 'min-h-[120px]' : 'min-h-[68px] justify-center'}`}>
+              <div ref={composerRef} className="flex flex-col w-full bg-white p-2 rounded-3xl border border-stone-200 shadow-sm transition-colors min-h-0">
                 
                 {state.selectedImage && (
                   <div className="flex items-center gap-3 px-2 pb-3 mb-3 border-b border-stone-100 animate-in fade-in slide-in-from-bottom-2">
@@ -905,18 +956,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 )}
 
                 {voice.isRecording ? (
-                  <div className="w-full flex items-center justify-between py-1 px-0 gap-1" aria-live="polite" aria-label="Gravando">
+                  <div className="w-full flex items-center gap-1 py-0.5" aria-live="polite" aria-label="Gravando">
                     <button
                       type="button"
                       onClick={voice.cancel}
                       aria-label="Cancelar gravação"
-                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
+                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
                     >
                       <X size={18} strokeWidth={2.5} />
                     </button>
-                    <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
+                    <div className="flex-1 flex items-center justify-center gap-2 min-w-0 px-1">
                       <span className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0" aria-hidden="true"></span>
-                      <div className="flex items-end gap-0.5 h-4 flex-1 max-w-[160px] justify-center" aria-hidden="true">
+                      <div className="flex items-end justify-center gap-0.5 h-4 flex-1 min-w-0" aria-hidden="true">
                         <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
                         <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '120ms' }}></span>
                         <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: '240ms' }}></span>
@@ -933,13 +984,92 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                       type="button"
                       onClick={() => voice.stop()}
                       aria-label="Parar gravação"
-                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center bg-rose-600 text-white hover:bg-rose-700 rounded-full shadow-md transition-all shrink-0 active:scale-95"
+                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center rounded-full bg-nutri-800 bg-[#2A5C43] text-white hover:bg-nutri-900 hover:bg-[#1A3B2B] shadow-sm transition-all shrink-0 active:scale-95"
                     >
-                      <Square size={12} strokeWidth={2.5} fill="currentColor" />
+                      <Square size={11} strokeWidth={2.5} fill="currentColor" />
                     </button>
                   </div>
                 ) : (
-                  <>
+                  <div
+                    className="grid w-full min-w-0 items-center gap-x-1 gap-y-1.5"
+                    style={{ ...COMPOSER_GRID_COLUMNS, ...(isComposerIdle ? COMPOSER_IDLE_AREAS : COMPOSER_EDIT_AREAS) }}
+                  >
+                    <div className="relative [grid-area:attach]">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAttachMenu(!showAttachMenu); }}
+                        className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-nutri-700 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
+                        disabled={state.isLoading}
+                        title="Anexar"
+                        aria-label="Anexar foto"
+                        aria-expanded={showAttachMenu}
+                        aria-haspopup="menu"
+                      >
+                        <ImagePlus size={18} strokeWidth={2.5} />
+                      </button>
+                      {showAttachMenu && (
+                        <div className="absolute bottom-full mb-2 left-0 bg-white border border-stone-200 rounded-2xl shadow-lg p-2 flex flex-col gap-1 w-56 z-20" role="menu" onClick={(e)=>e.stopPropagation()}>
+                          <button
+                            onClick={() => { cameraInputRef.current?.click(); setShowAttachMenu(false); }}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                            role="menuitem"
+                          >
+                            <Camera size={18} strokeWidth={2} /> Tirar foto
+                          </button>
+                          <button
+                            onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                            role="menuitem"
+                          >
+                            <ImagePlus size={18} strokeWidth={2} /> Escolher da galeria
+                          </button>
+                          <button
+                            onClick={() => { fileGenericRef.current?.click(); setShowAttachMenu(false); }}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                            role="menuitem"
+                          >
+                            <FileText size={18} strokeWidth={2} /> Arquivo
+                          </button>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={state.handleImageSelect}
+                      />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        ref={cameraInputRef}
+                        className="hidden"
+                        onChange={state.handleImageSelect}
+                      />
+                      <input
+                        type="file"
+                        accept="*/*"
+                        ref={fileGenericRef}
+                        className="hidden"
+                        onChange={state.handleImageSelect}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void voice.start()}
+                      disabled={micDisabled}
+                      title={!voice.isSupported
+                        ? 'Transcrição de voz não suportada neste navegador (exige HTTPS e microfone).'
+                        : 'Falar mensagem'}
+                      aria-label="Falar mensagem"
+                      className="[grid-area:mic] min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center rounded-full text-stone-500 hover:text-nutri-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 active:scale-95"
+                    >
+                      {voice.isBusy
+                        ? <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
+                        : <Mic size={20} strokeWidth={2.5} />}
+                    </button>
+
                     <textarea
                       value={state.input}
                       rows={1}
@@ -952,108 +1082,27 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                       maxLength={MAX_MESSAGE_LENGTH}
                       placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                       aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                      className={`w-full min-w-0 bg-transparent border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none px-1 text-[15px] text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-[1.6] min-h-[44px] max-h-[200px] ${!isComposerFocused && !hasContent ? 'py-2.5 text-center placeholder:text-center' : 'py-2.5'}`}
+                      className="[grid-area:input] w-full min-w-0 bg-transparent border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none px-2 py-2 text-[15px] leading-[1.6] text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto min-h-[44px] max-h-[200px] disabled:opacity-60"
                       disabled={state.isLoading}
                     />
 
-                    <div className="flex items-center justify-between pt-2 mt-2 relative">
-                      <div className="flex items-center gap-1">
-                        <div className="relative">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowAttachMenu(!showAttachMenu); }}
-                            className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-nutri-700 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
-                            disabled={state.isLoading}
-                            title="Anexar"
-                            aria-label="Anexar foto"
-                            aria-expanded={showAttachMenu}
-                            aria-haspopup="menu"
-                          >
-                            <ImagePlus size={18} strokeWidth={2.5} />
-                          </button>
-                          {showAttachMenu && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-white border border-stone-200 rounded-2xl shadow-lg p-2 flex flex-col gap-1 w-56 z-20" role="menu" onClick={(e)=>e.stopPropagation()}>
-                              <button
-                                onClick={() => { cameraInputRef.current?.click(); setShowAttachMenu(false); }}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                                role="menuitem"
-                              >
-                                <Camera size={18} strokeWidth={2} /> Tirar foto
-                              </button>
-                              <button
-                                onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                                role="menuitem"
-                              >
-                                <ImagePlus size={18} strokeWidth={2} /> Escolher da galeria
-                              </button>
-                              <button
-                                onClick={() => { fileGenericRef.current?.click(); setShowAttachMenu(false); }}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                                role="menuitem"
-                              >
-                                <FileText size={18} strokeWidth={2} /> Arquivo
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        
-                        <input
-                          type="file"
-                          accept="image/*"
-                          ref={fileInputRef}
-                          className="hidden"
-                          onChange={state.handleImageSelect}
-                        />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          ref={cameraInputRef}
-                          className="hidden"
-                          onChange={state.handleImageSelect}
-                        />
-                        <input
-                          type="file"
-                          accept="*/*"
-                          ref={fileGenericRef}
-                          className="hidden"
-                          onChange={state.handleImageSelect}
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() => void voice.start()}
-                          disabled={micDisabled}
-                          title={!voice.isSupported
-                            ? 'Transcrição de voz não suportada neste navegador (exige HTTPS e microfone).'
-                            : 'Falar mensagem'}
-                          aria-label="Falar mensagem"
-                          className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center rounded-full text-stone-500 hover:text-nutri-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 active:scale-95"
-                        >
-                          {voice.isBusy
-                            ? <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
-                            : <Mic size={20} strokeWidth={2.5} />}
-                        </button>
-                      </div>
-
-                      <button 
-                        onClick={handleSend} 
-                        disabled={state.isLoading || !hasContent} 
-                        className={`min-w-[44px] h-[44px] w-11 h-11 rounded-full transition-all shrink-0 flex items-center justify-center ${
-                          state.isLoading || !hasContent
-                            ? 'bg-stone-200 text-stone-400' 
-                            : 'bg-nutri-800 bg-[#2A5C43] text-white hover:bg-nutri-700 hover:bg-[#1A3B2B] shadow-md hover:shadow-lg active:scale-95'
-                        }`}
-                        aria-label="Enviar mensagem"
-                      >
-                        {state.isLoading ? (
-                          <Loader2 size={18} className="animate-spin" strokeWidth={2.5} />
-                        ) : (
-                          <Send size={18} strokeWidth={2.5} className="ml-0.5" />
-                        )}
-                      </button>
-                    </div>
-                  </>
+                    <button 
+                      onClick={handleSend} 
+                      disabled={state.isLoading || !hasContent} 
+                      className={`[grid-area:send] min-w-[44px] h-[44px] w-11 h-11 rounded-full transition-all shrink-0 flex items-center justify-center ${
+                        state.isLoading || !hasContent
+                          ? 'bg-stone-200 text-stone-400' 
+                          : 'bg-nutri-800 bg-[#2A5C43] text-white hover:bg-nutri-700 hover:bg-[#1A3B2B] shadow-md hover:shadow-lg active:scale-95'
+                      }`}
+                      aria-label="Enviar mensagem"
+                    >
+                      {state.isLoading ? (
+                        <Loader2 size={18} className="animate-spin" strokeWidth={2.5} />
+                      ) : (
+                        <Send size={18} strokeWidth={2.5} className="ml-0.5" />
+                      )}
+                    </button>
+                  </div>
                 )}
 
                 {!voice.isRecording && (voice.isBusy || voice.error) ? (

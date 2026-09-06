@@ -15,6 +15,9 @@ const content = fs.readFileSync(chatPath, 'utf8');
 // Pill atual CHAT-UX-004: flex flex-col w-full bg-white p-2.5 rounded-3xl (CHAT-UX-003 usava p-3, CHAT-UX-002 p-2)
 // Fallback para código pré-002 (flex w-full gap-2 bg-stone-50 rounded-[2rem])
 const getPillRegion = (): string => {
+  // CHAT-UX-006: pill flex-col bg-white rounded-3xl (container visual único), p-2
+  const idx6 = content.indexOf('flex flex-col w-full bg-white p-2 rounded-3xl');
+  if (idx6 !== -1) return content.slice(idx6, idx6 + 12000);
   const idxNew = content.indexOf('flex flex-col w-full bg-white p-2.5 rounded-3xl');
   if (idxNew !== -1) return content.slice(idxNew, idxNew + 12000);
   const idx3 = content.indexOf('flex flex-col w-full bg-white p-3 rounded-3xl');
@@ -177,23 +180,23 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
     expect(content).toMatch(/sm:pb-(3|4)/);
   });
 
-  it('ações ancoradas na parte inferior do Composer (vertical sem border-t)', () => {
+  it('ações na linha inferior do Composer editando via grid (sem border-t, sem barra empilhada no idle)', () => {
     const pill = getPillRegion();
-    // CHAT-UX-003: vertical flex-col sem border-t (superfície única por espaçamento)
-    const hasVertical = pill.includes('flex flex-col') && pill.includes('rounded-3xl');
-    const hasLegacy = pill.includes('items-end') && pill.includes('rounded-[2rem]');
-    expect(hasVertical || hasLegacy).toBe(true);
-    if (hasVertical) {
-      // Pill opening não deve conter items-end (legado)
-      const pillOpening = content.match(/<div className=(?:"[^"]*flex flex-col[^"]*"|`[^`]*flex flex-col[^`]*`)/)?.[0] || '';
-      expect(pillOpening).not.toMatch(/items-end/);
-      expect(pill).toMatch(/flex flex-col/);
-      expect(pill).toMatch(/pt-(2|3) mt-(2|3)/); // ações integradas por espaçamento, não border-t
-    } else {
-      const opening = pill.slice(0, pill.indexOf('>'));
-      expect(opening).toMatch(/rounded-\[2rem\]/);
-      expect(opening).toMatch(/items-end/);
-    }
+    // CHAT-UX-006: os controles são filhos diretos do mesmo grid do textarea
+    // (áreas nomeadas) — não há barra de ações separada com border-t/pt-mt.
+    expect(content).toMatch(/COMPOSER_IDLE_AREAS/);
+    expect(content).toMatch(/COMPOSER_EDIT_AREAS/);
+    expect(content).toMatch(/COMPOSER_GRID_COLUMNS/);
+    expect(content).toMatch(/isComposerIdle/);
+    expect(pill).toMatch(/grid w-full min-w-0 items-center gap-x-1 gap-y-1\.5/);
+    expect(pill).toMatch(/\[grid-area:attach\]/);
+    expect(pill).toMatch(/\[grid-area:mic\]/);
+    expect(pill).toMatch(/\[grid-area:input\]/);
+    expect(pill).toMatch(/\[grid-area:send\]/);
+    expect(content).not.toMatch(/flex items-center justify-between pt-2 mt-2/);
+    // Nenhuma segunda "linha de ações" empilhada no idle: idle é 1 linha do grid.
+    expect(content).toMatch(/gridTemplateAreas: '"attach mic input send"'/);
+    expect(content).toMatch(/gridTemplateAreas: '"input input input input" "attach mic \. send"'/);
   });
 
   it('controles continuam sendo <button>', () => {
@@ -359,10 +362,13 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
 // Valida nova fundação sem quebrar invariantes
 // =============================================================
 describe('CHAT-UX-002 — Fundação UX/UI', () => {
-  it('F-01 — shell fluido 420-440px com max-w calc e altura dvh', () => {
+  it('F-01 — mobile full-width (sem max-w base); desktop 420-440 preservado via sm:max-w', () => {
     expect(content).toMatch(/sm:w-\[420px\]/);
     expect(content).toMatch(/lg:w-\[440px\]/);
-    expect(content).toMatch(/max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
+    expect(content).toMatch(/sm:max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
+    // Nenhuma ocorrência de max-w-[min(...)] SEM o prefixo sm: (causava 16px de
+    // margem lateral em cada lado no mobile). Lookbehind: rejeita o prefixado.
+    expect(content).not.toMatch(/(?<!sm:)max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
     expect(content).toMatch(/h-\[85dvh\]/);
     expect(content).toMatch(/sm:h-\[min\(600px,85dvh\)\]/);
     expect(content).toMatch(/bg-white/);
@@ -382,13 +388,17 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
     expect(content).toMatch(/Escape/);
   });
 
-  it('F-03 — header nutri com amber controlado e 44px close', () => {
+  it('F-03 — header nutri em UMA linha: avatar 40 + nome com dot inline + badge + ações; sem linha de status', () => {
     expect(content).toMatch(/bg-nutri-900/);
     expect(content).toMatch(/bg-amber-50 text-amber-700 border border-amber-100/);
-    // CHAT-UX-003: header mais limpo — avatar 40px, status 10px secundário (antes 48px/11px)
-    const hasNewHeader = content.includes('w-10 h-10') && content.includes('text-white/60');
-    const hasOldHeader = content.includes('w-12 h-12') && content.includes('text-[11px]');
-    expect(hasNewHeader || hasOldHeader).toBe(true);
+    // CHAT-UX-006: header 1 linha — avatar 40px, dot pulsante inline após "Van"
+    expect(content).toMatch(/w-10 h-10/);
+    expect(content).not.toMatch(/text-white\/60 tracking-widest/); // status removido
+    expect(content).not.toMatch(/Online agora/);
+    expect(content).not.toMatch(/De olho em voc/);
+    expect(content).not.toMatch(/Assistente IA da Nutri/);
+    expect(content).toMatch(/text-emerald-400">Van<\/span>/);
+    expect(content).toMatch(/relative flex h-1\.5 w-1\.5 shrink-0/); // dot inline
     expect(content).toMatch(/min-w-\[44px\] min-h-\[44px\] w-11 h-11/);
     const hasAvatar = content.includes('w-10 h-10') || content.includes('w-12 h-12');
     expect(hasAvatar).toBe(true);
@@ -409,21 +419,21 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
     expect(content).toMatch(/hover:border-nutri-200.*hover:text-nutri-700/);
   });
 
-  it('F-06 — composer vertical com textarea full-width sem border-t (superfície única)', () => {
+  it('F-06 — composer single surface com grid dual-mode e controles internos (sem border-t/barra)', () => {
     const pill = getPillRegion();
-    // CHAT-UX-003 refinado: sem border-t entre texto e ações, separação por espaçamento
-    const hasPill = pill.includes('flex flex-col w-full bg-white p-2.5 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-3 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-2 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-');
+    const hasPill = pill.includes('flex flex-col w-full bg-white p-2 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-2.5 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-3 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-');
     expect(hasPill).toBe(true);
+    // CHAT-UX-006: textarea e controles no MESMO grid (áreas nomeadas)
     expect(pill).toMatch(/w-full min-w-0 bg-transparent/);
-    // Verifica que NÃO há border-t interno entre textarea e ações (superfície única)
-    const textareaIdx = pill.indexOf('<textarea');
-    const actionsIdx = pill.lastIndexOf('flex items-center justify-between pt-');
-    expect(textareaIdx).toBeGreaterThan(0);
-    expect(actionsIdx).toBeGreaterThan(textareaIdx);
-    const between = pill.slice(textareaIdx, actionsIdx);
-    expect(between).not.toMatch(/border-t/);
-    expect(pill).not.toMatch(/focus-within:ring/); // CHAT-UX-004: sem ring interno, superfície única
-    expect(content).toMatch(/capture="environment"/); // camera affordance (ainda existe para Tirar foto)
+    expect(pill).toMatch(/\[grid-area:input\]/);
+    expect(pill).toMatch(/\[grid-area:attach\]/);
+    expect(pill).toMatch(/\[grid-area:mic\]/);
+    expect(pill).toMatch(/\[grid-area:send\]/);
+    expect(content).toMatch(/COMPOSER_IDLE_AREAS/);
+    expect(content).toMatch(/COMPOSER_EDIT_AREAS/);
+    expect(content).not.toMatch(/flex items-center justify-between pt-2 mt-2/);
+    expect(content).not.toMatch(/focus-within:ring/); // sem ring interno, superfície única
+    expect(content).toMatch(/capture="environment"/); // camera affordance (Tirar foto)
     expect(content).toMatch(/bg-nutri-800/); // enviar nutri
     expect(content).toMatch(/accept="image\/\*"/);
   });
@@ -447,30 +457,34 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     expect(freeItems.length).toBe(3);
   });
 
-  it('R-02 — header mais limpo (avatar 40px, status secundário 10px white/60, altura py-3)', () => {
-    expect(content).toMatch(/w-10 h-10/); // avatar 40px (antes 48px)
-    expect(content).toMatch(/px-4 py-3/); // header py-3 não py-4
-    expect(content).toMatch(/text-\[10px\] text-white\/60/); // status secundário
+  it('R-02 — header em 1 linha (avatar 40, py-3, dot inline, badge 9px, sem status)', () => {
+    expect(content).toMatch(/w-10 h-10/); // avatar 40px
+    expect(content).toMatch(/px-4 py-3/); // header py-3
     expect(content).toMatch(/text-\[9px\]/); // badge 9px
     expect(content).toMatch(/Premium/);
-    expect(content).toMatch(/gap-3/); // gap reduzido
+    expect(content).toMatch(/gap-3/);
+    expect(content).not.toMatch(/text-\[10px\] text-white\/60/); // status removido
   });
 
-  it('R-03 — composer single surface amplia (p-3, min-h-0, textarea w-full, sem border-t)', () => {
+  it('R-03 — composer single surface com grid dual-mode (idle 1 linha ↔ editando), sem border-t', () => {
     const pill = getPillRegion();
     expect(pill).toMatch(/flex flex-col w-full bg-white p-(2\.5|2|3) rounded-3xl/);
     expect(pill).toMatch(/min-h-0/);
-    expect(content).toMatch(/flex-1 min-h-0 p-4/); // conversation min-h-0 para permitir crescimento
+    expect(content).toMatch(/flex-1 min-h-0 p-4/); // conversation min-h-0 p/ crescimento
     expect(content).toMatch(/leading-\[1\.6\]/);
     expect(content).toMatch(/min-h-\[44px\] max-h-\[200px\]/);
-    // Verifica superfície única: textarea acima da barra pt-(2|3) mt-(2|3) sem border-t
-    expect(pill.indexOf('<textarea')).toBeLessThan(pill.search(/flex items-center justify-between pt-(2|3) mt-(2|3)/));
-    const textareaIdx = pill.indexOf('<textarea');
-    const actionsIdx = pill.lastIndexOf('flex items-center justify-between pt-');
-    const between = pill.slice(textareaIdx, actionsIdx);
-    expect(between).not.toMatch(/border-t/);
-    // Verifica expansão focus: isComposerFocused
-    expect(content).toMatch(/isComposerFocused/);
+    // Grid único com áreas nomeadas: mesmos controles em idle (1 linha) e editando (2 linhas)
+    expect(content).toMatch(/COMPOSER_IDLE_AREAS/);
+    expect(content).toMatch(/COMPOSER_EDIT_AREAS/);
+    expect(pill).toMatch(/grid w-full min-w-0 items-center/);
+    expect(pill).toMatch(/\[grid-area:input\]/);
+    expect(pill).toMatch(/\[grid-area:attach\]/);
+    expect(pill).toMatch(/\[grid-area:mic\]/);
+    expect(pill).toMatch(/\[grid-area:send\]/);
+    expect(pill).not.toMatch(/flex items-center justify-between pt-2 mt-2/); // sem barra antiga
+    // Sem piso artificial de foco (min-h-[120px]) — altura segue o conteúdo
+    expect(content).not.toMatch(/min-h-\[120px\]/);
+    expect(content).toMatch(/isComposerIdle/);
     expect(content).toMatch(/onFocus.*setIsComposerFocused\(true\)/);
     expect(content).toMatch(/onBlur.*setIsComposerFocused\(false\)/);
   });
@@ -521,39 +535,45 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     expect(content).toMatch(/Falar mensagem/);
   });
 
-  it('R-07 — composer cresce até 200px com scroll interno (investigado flex constraints)', () => {
+  it('R-07 — composer cresce até 200px com scroll interno (flex/grid constraints tratadas)', () => {
     expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200/);
     expect(content).toMatch(/max-h-\[200px\]/);
     expect(content).toMatch(/overflowY = textareaRef\.current\.scrollHeight > maxH \? 'auto' : 'hidden'/);
-    // Verifica fix de flex constraints: min-h-0 em conversation e pill
+    // Fix de constraints: min-h-0 na conversation e no pill
     expect(content).toMatch(/flex-1 min-h-0 p-4/);
-    expect(content).toMatch(/flex flex-col w-full bg-white p-(2\.5|3).*min-h-0/);
+    expect(content).toMatch(/flex flex-col w-full bg-white p-(2\.5|2|3).*min-h-0/);
   });
 });
 
 describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)', () => {
-  it('COMPOSER-UX-01 — estado vazio compacto (min-h 72px)', () => {
-    expect(content).toMatch(/min-h-\[(68|72)px\] justify-center/);
-    expect(content).toMatch(/isComposerFocused \|\| hasContent \? 'min-h-\[(120|140)px\]'/);
+  it('COMPOSER-UX-01 — idle compacto: 1 linha do grid, sem pisos artificiais (min-h-[68/120px])', () => {
+    expect(content).toMatch(/const isComposerIdle/);
+    expect(content).toMatch(/attach mic input send/); // idle = uma linha (grid areas)
+    expect(content).not.toMatch(/min-h-\[120px\]/);
+    expect(content).not.toMatch(/min-h-\[68px\]/);
+    expect(content).not.toMatch(/min-h-\[72px\]/);
+    expect(content).not.toMatch(/min-h-\[140px\]/);
   });
-  it('COMPOSER-UX-02 — placeholder dentro do Composer centralizado', () => {
-    expect(content).toMatch(/placeholder.*Digite sua dúvida/);
-    expect(content).toMatch(/placeholder:text-center/);
-    expect(content).toMatch(/text-center placeholder:text-center/);
+  it('COMPOSER-UX-02 — placeholder dentro do Composer (texto real, sem caixa; alinhamento padrão)', () => {
+    expect(content).toMatch(/Digite sua dúvida/);
+    expect(content).not.toMatch(/placeholder:text-center/);
+    expect(content).not.toMatch(/text-center placeholder:text-center/);
+    expect(content).toMatch(/placeholder:text-stone-400/);
   });
-  it('COMPOSER-UX-03 — focus expande Composer (onFocus/onBlur)', () => {
+  it('COMPOSER-UX-03 — focus expande Composer (onFocus/onBlur → modo edição)', () => {
     expect(content).toMatch(/onFocus.*setIsComposerFocused\(true\)/);
     expect(content).toMatch(/onBlur.*setIsComposerFocused\(false\)/);
     expect(content).toMatch(/isComposerFocused/);
-    expect(content).toMatch(/min-h-\[(68|72|120|140)px\]/);
+    expect(content).toMatch(/isComposerIdle/);
   });
-  it('COMPOSER-UX-04 — blur vazio retorna ao compacto', () => {
+  it('COMPOSER-UX-04 — blur vazio retorna ao idle compacto', () => {
     expect(content).toMatch(/!isComposerFocused && !hasContent/);
-    expect(content).toMatch(/text-center placeholder:text-center/);
+    expect(content).toMatch(/state\.selectedImage === null/);
+    expect(content).not.toMatch(/text-center placeholder:text-center/);
   });
-  it('COMPOSER-UX-05 — texto mantém Composer expandido', () => {
+  it('COMPOSER-UX-05 — texto mantém Composer expandido (guarda idle inclui foco/conteúdo)', () => {
     expect(content).toMatch(/hasContent/);
-    expect(content).toMatch(/isComposerFocused \|\| hasContent/);
+    expect(content).toMatch(/!voice\.isRecording && state\.selectedImage === null/);
   });
   it('COMPOSER-UX-06 — textarea cresce além de duas linhas (flex, line-height)', () => {
     const pill = getPillRegion();
@@ -569,14 +589,14 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
     expect(content).toMatch(/overflowY.*auto.*hidden/);
     expect(content).toMatch(/overflow-y-auto/);
   });
-  it('COMPOSER-UX-09 — não existe border-t entre texto e ações', () => {
+  it('COMPOSER-UX-09 — superfície única: controles no mesmo grid do texto, sem border-t/barra empilhada', () => {
     const pill = getPillRegion();
-    const textareaIdx = pill.indexOf('<textarea');
-    const actionsIdx = pill.indexOf('flex items-center justify-between pt-2 mt-2') !== -1 ? pill.indexOf('flex items-center justify-between pt-2 mt-2') : pill.indexOf('flex items-center justify-between pt-(2|3) mt-(2|3)');
-    expect(textareaIdx).toBeGreaterThan(0);
-    expect(actionsIdx).toBeGreaterThan(textareaIdx);
-    const between = pill.slice(textareaIdx, actionsIdx);
-    expect(between).not.toMatch(/border-t/);
+    expect(pill).toMatch(/\[grid-area:attach\]/);
+    expect(pill).toMatch(/\[grid-area:mic\]/);
+    expect(pill).toMatch(/\[grid-area:input\]/);
+    expect(pill).toMatch(/\[grid-area:send\]/);
+    expect(pill).not.toMatch(/flex items-center justify-between pt-2 mt-2/);
+    expect(pill).not.toMatch(/pt-2 mt-2/);
   });
   it('COMPOSER-UX-10 — ações continuam dentro do Composer', () => {
     const pill = getPillRegion();
@@ -588,9 +608,9 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
     expect(content).not.toMatch(/>Gravando \{formatElapsedMs/);
     expect(content).toMatch(/aria-label="Gravando"/);
   });
-  it('VOICE-UX-02 — waveform presente', () => {
+  it('VOICE-UX-02 — waveform presente (barras com espaço central flexível)', () => {
     expect(content).toMatch(/w-0\.5 h-.*bg-rose.*animate-pulse/);
-    expect(content).toMatch(/flex items-end gap-0\.5 h-4/);
+    expect(content).toMatch(/items-end[\s\S]*?gap-0\.5[\s\S]*?h-4 flex-1 min-w-0/);
   });
   it('VOICE-UX-03 — indicador vermelho pulsante presente', () => {
     expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/);
@@ -604,9 +624,16 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
     expect(content).toMatch(/aria-label="Cancelar gravação"/);
     expect(content).toMatch(/<X size=\{18\}/);
   });
-  it('VOICE-UX-06 — parar disponível (■)', () => {
+  it('VOICE-UX-06 — parar disponível (■ verde compacto, sem vermelho no botão)', () => {
     expect(content).toMatch(/aria-label="Parar gravação"/);
-    expect(content).toMatch(/<Square.*fill="currentColor"/);
+    const idx = content.indexOf('aria-label="Parar gravação"');
+    expect(idx).toBeGreaterThan(-1);
+    const stopBtn = content.slice(idx, idx + 500);
+    expect(stopBtn).toMatch(/bg-nutri-800 bg-\[#2A5C43\]/);
+    expect(stopBtn).toMatch(/<Square size=\{11\}/);
+    expect(stopBtn).not.toMatch(/bg-rose/);
+    // Vermelho fica reservado ao ● de gravação
+    expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/);
   });
   it('VOICE-UX-07 — imagem/anexo oculto durante gravação', () => {
     const pill = getPillRegion();
@@ -647,5 +674,127 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
   it('DRAG-UX-03 — drag insuficiente retorna (setDragY 0)', () => {
     expect(content).toMatch(/setDragY\(0\)/);
     expect(content).toMatch(/translateY/);
+  });
+});
+
+// =============================================================
+// CHAT-UX-006 — Composer compacto (idle ↔ editando), Full-Width Mobile,
+// Parar verde, Header 1 linha, Enter só nova linha.
+// Contrato: UM único textarea real, sem display:none, sem DOM duplicado.
+// =============================================================
+describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
+  it('UX6-01 — um único textarea real (sem fake button, sem segundo textarea, sem display:none)', () => {
+    // Conta somente o elemento real (linha começando em <textarea); comentários
+    // contêm "<textarea" mas não iniciam a linha com o elemento.
+    const textareas = content.match(/^\s*<textarea/mg) ?? [];
+    expect(textareas.length).toBe(1);
+    expect(content).not.toMatch(/role="button"[\s\S]*?Digite sua dúvida/); // sem botão fake
+    // display:none nunca no textarea
+    const mReal = /^\s*<textarea/m.exec(content);
+    expect(mReal).not.toBeNull();
+    const taChunk = content.slice(mReal!.index, mReal!.index + 900);
+    expect(taChunk).not.toMatch(/display\s*:\s*none/);
+  });
+
+  it('UX6-02 — idle = linha única do grid: attach | mic | input | send', () => {
+    expect(content).toMatch(/'"attach mic input send"'/);
+    const pill = getPillRegion();
+    expect(pill).toMatch(/COMPOSER_IDLE_AREAS/); // binding no style do grid
+    // todos os controles presentes no idle (mesmo grid, sem segunda linha empilhada)
+    expect(pill).toMatch(/aria-label="Anexar foto"/);
+    expect(pill).toMatch(/aria-label="Falar mensagem"/);
+    expect(pill).toMatch(/aria-label="Enviar mensagem"/);
+    expect(pill).not.toMatch(/flex items-center justify-between pt-2 mt-2/);
+  });
+
+  it('UX6-03 — expande quando foco OU conteúdo OU imagem OU gravação (guarda isComposerIdle)', () => {
+    expect(content).toMatch(/const isComposerIdle =/);
+    expect(content).toMatch(/!isComposerFocused && !hasContent && !voice\.isRecording && state\.selectedImage === null/);
+    // edição = textarea em linha cheia + ações na linha inferior (grid areas)
+    expect(content).toMatch(/'"input input input input" "attach mic \. send"'/);
+    expect(content).toMatch(/style=\{\{ \.\.\.COMPOSER_GRID_COLUMNS/);
+    expect(content).toMatch(/\.\.\.\(isComposerIdle \? COMPOSER_IDLE_AREAS : COMPOSER_EDIT_AREAS\)/);
+  });
+
+  it('UX6-04 — altura segue conteúdo: sem piso min-h-[120px], auto-grow até 200 + scroll interno', () => {
+    expect(content).not.toMatch(/min-h-\[120px\]/);
+    expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200/);
+    expect(content).toMatch(/max-h-\[200px\]/);
+    expect(content).toMatch(/Math\.min\(textareaRef\.current\.scrollHeight, maxH\)/);
+    expect(content).toMatch(/overflow-y-auto/);
+    expect(content).toMatch(/resize-none/);
+    expect(content).toMatch(/min-h-0/);
+  });
+
+  it('UX6-05 — Enter e Shift+Enter criam nova linha; nenhum envia; só o botão Enviar envia', () => {
+    expect(content).not.toMatch(/onKeyDown/);
+    expect(content).not.toMatch(/e\.key === 'Enter'/);
+    expect(content).not.toMatch(/shiftKey/);
+    expect(content).toMatch(/onClick=\{handleSend\}/);
+    expect(content).toMatch(/disabled=\{state\.isLoading \|\| !hasContent\}/);
+  });
+
+  it('UX6-06 — mobile full-width: max-w-[min(...)] somente com prefixo sm:', () => {
+    expect(content).toMatch(/sm:max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
+    expect(content).not.toMatch(/(?<!sm:)max-w-\[min\(440px,calc\(100vw-32px\)\)\]/);
+  });
+
+  it('UX6-07 — Parar: botão verde nutri compacto com ■ branco pequeno (touch 44px)', () => {
+    const idx = content.indexOf('aria-label="Parar gravação"');
+    expect(idx).toBeGreaterThan(-1);
+    const stopBtn = content.slice(idx, idx + 500);
+    expect(stopBtn).toMatch(/min-w-\[44px\] h-\[44px\]/);
+    expect(stopBtn).toMatch(/bg-nutri-800 bg-\[#2A5C43\]/);
+    expect(stopBtn).toMatch(/text-white/);
+    expect(stopBtn).not.toMatch(/bg-rose/);
+  });
+
+  it('UX6-08 — header: 1 linha, dot inline após o nome, sem frases de status', () => {
+    expect(content).not.toMatch(/De olho em voc/);
+    expect(content).not.toMatch(/Online agora/);
+    expect(content).not.toMatch(/Assistente IA da Nutri/);
+    expect(content).toMatch(/relative flex h-1\.5 w-1\.5 shrink-0/);
+    const nameIdx = content.indexOf('text-emerald-400">Van</span>');
+    const dotIdx = content.indexOf('relative flex h-1.5 w-1.5 shrink-0');
+    expect(nameIdx).toBeGreaterThan(-1);
+    expect(dotIdx).toBeGreaterThan(nameIdx); // dot logo após o nome
+  });
+
+  it('UX6-09 — resposta da assistente em largura integral, sem card/borda/raio', () => {
+    expect(content).toMatch(/w-full bg-transparent border-0 shadow-none rounded-none px-1 py-2/);
+    // Nenhum max-w que limite a resposta a um card estreito
+    const assistantMsg = content.slice(content.indexOf('m.role === \'assistant\' ?'), content.indexOf('m.role === \'assistant\' ?') + 900);
+    expect(assistantMsg).not.toMatch(/max-w-\[75%\]/);
+    expect(assistantMsg).not.toMatch(/border border-stone-200/);
+  });
+
+  it('UX6-10 — voz: X esquerda, ■ direita, waveform com espaço central, timer M:SS', () => {
+    const iCancel = content.indexOf('aria-label="Cancelar gravação"');
+    const iStop = content.indexOf('aria-label="Parar gravação"');
+    expect(iCancel).toBeGreaterThan(-1);
+    expect(iStop).toBeGreaterThan(iCancel);
+    const rec = content.slice(iCancel, iStop + 900);
+    expect(rec).toMatch(/aria-label="Parar gravação"/);
+    expect(rec).toMatch(/flex-1 flex items-center justify-center gap-2 min-w-0/);
+    expect(rec).toMatch(/items-end[\s\S]*?gap-0\.5[\s\S]*?h-4 flex-1 min-w-0/);
+    expect(rec).not.toMatch(/max-w-\[160px\]/);
+    expect(rec).toMatch(/tabular-nums/);
+    expect(rec).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
+    // sem textos visíveis de gravação
+    expect(rec).not.toMatch(/>Gravando </);
+    expect(rec).not.toMatch(/>Cancelar</);
+    expect(rec).not.toMatch(/>Parar</);
+  });
+
+  it('UX6-11 — instrumentação de crescimento é controlada por env (NEXT_PUBLIC_CHAT_DEBUG) e não loga texto', () => {
+    expect(content).toMatch(/NEXT_PUBLIC_CHAT_DEBUG/);
+    const diagIdx = content.indexOf('NEXT_PUBLIC_CHAT_DEBUG');
+    const diag = content.slice(diagIdx, diagIdx + 6000);
+    expect(diag).toMatch(/scrollHeight/);
+    expect(diag).toMatch(/clientHeight/);
+    expect(diag).toMatch(/visualViewport/);
+    expect(diag).toMatch(/innerHeight/);
+    expect(diag).not.toMatch(/transcription/);
+    expect(diag).not.toMatch(/textPreview/);
   });
 });
