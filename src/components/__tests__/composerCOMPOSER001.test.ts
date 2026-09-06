@@ -52,9 +52,12 @@ const getComposerRegion = (): string => {
 };
 
 const getTextareaClass = (): string => {
-  const m = content.match(/<textarea\s+[\s\S]*?className="([^"]*)"/);
+  // Real textarea tem rows={1}, ignora comentário // <textarea>
+  // Suporta className="..." e className={`...`} com template ${}
+  const m = content.match(/<textarea[^>]*rows=\{1\}[\s\S]*?className=\{?(?:"([^"]*)"|`([^`]*)`)\}?/);
   if (!m) throw new Error('textarea não encontrada');
-  return m[1];
+  const raw = m[1] || m[2] || '';
+  return raw.split('${')[0];
 };
 
 describe('COMPOSER-001 — Estrutura: um único Composer', () => {
@@ -177,17 +180,18 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
     expect(content).toMatch(/sm:pb-4/);
   });
 
-  it('ações ancoradas na parte inferior do Composer (items-end ou estrutura vertical)', () => {
+  it('ações ancoradas na parte inferior do Composer (vertical sem border-t)', () => {
     const pill = getPillRegion();
-    // CHAT-UX-002 vertical usa flex-col + border-t na barra; legado usava items-end
-    const hasVertical = pill.includes('flex flex-col') && pill.includes('border-t');
-    const hasItemsEnd = pill.includes('items-end');
-    expect(hasVertical || hasItemsEnd).toBe(true);
-    // Verifica que não há conflito items-center no pill (permitido em botões internos)
-    // Para vertical, items-end não é necessário; para horizontal legado, deve ter items-end
-    if (pill.includes('rounded-3xl') && pill.includes('flex flex-col')) {
-      expect(pill).not.toMatch(/items-end/); // vertical não usa items-end
-      expect(pill).toMatch(/border-t/);
+    // CHAT-UX-003: vertical flex-col sem border-t (superfície única por espaçamento)
+    const hasVertical = pill.includes('flex flex-col') && pill.includes('rounded-3xl');
+    const hasLegacy = pill.includes('items-end') && pill.includes('rounded-[2rem]');
+    expect(hasVertical || hasLegacy).toBe(true);
+    if (hasVertical) {
+      // Pill opening não deve conter items-end (legado)
+      const pillOpening = content.match(/<div className=(?:"[^"]*flex flex-col[^"]*"|`[^`]*flex flex-col[^`]*`)/)?.[0] || '';
+      expect(pillOpening).not.toMatch(/items-end/);
+      expect(pill).toMatch(/flex flex-col/);
+      expect(pill).toMatch(/pt-3 mt-3/); // ações integradas por espaçamento, não border-t
     } else {
       const opening = pill.slice(0, pill.indexOf('>'));
       expect(opening).toMatch(/rounded-\[2rem\]/);
@@ -208,7 +212,9 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
 describe('COMPOSER-001 — Regressão', () => {
   it('T-COMP-12 — invariantes de voz (VOZ-012.x) permanecem intactas', () => {
     expect(content).toMatch(/useVoiceInput\(\{/);
-    expect(content).toMatch(/Gravando \{formatElapsedMs\(voice\.recordingElapsedMs\)\}/);
+    // CHAT-UX-003: voz simplificada sem texto "Gravando" — verifica timer e estados
+    const hasGravando = content.includes('Gravando {formatElapsedMs') || content.includes('formatElapsedMs(voice.recordingElapsedMs)');
+    expect(hasGravando).toBe(true);
     expect(content).toMatch(/voice\.status === 'processing'/);
     expect(content).toMatch(/voice\.status === 'transcribing'/);
     expect(content).toMatch(/onClick=\{voice\.cancel\}/);
@@ -250,17 +256,16 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
 
   it('T-COMP-STRUCT-2 — existe somente UM container visual principal (bg + border + rounded) na região do Composer', () => {
     const region = getComposerRegion();
-    // CHAT-UX-002: PILL bg-white rounded-3xl; legado bg-stone-50 rounded-[2rem]
-    const allRounded3xl = region.match(/<div className="[^"]*rounded-3xl[^"]*"/g) ?? [];
-    const allRounded2rem = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
-    const allRounded = [...allRounded3xl, ...allRounded2rem];
-    const visualContainers = allRounded.filter((c) => /bg-white/.test(c) && /border/.test(c) || /bg-stone-50/.test(c) && /border/.test(c));
-    // Deve haver exatamente 1 principal (exclui preview condicional)
-    expect(visualContainers.length).toBe(1);
-    const hasNew = visualContainers[0].includes('rounded-3xl') && visualContainers[0].includes('bg-white');
-    const hasOld = visualContainers[0].includes('rounded-[2rem]') && visualContainers[0].includes('bg-stone-50');
-    expect(hasNew || hasOld).toBe(true);
-    // DOCK não deve ser um container visual
+    // CHAT-UX-003: conta rounded-3xl (novo) ou rounded-[2rem] (legado) na região do Composer (DOCK+pill)
+    const count3xl = (region.match(/rounded-3xl/g) || []).length;
+    const count2rem = (region.match(/rounded-\[2rem\]/g) || []).length;
+    // Deve haver exatamente 1 principal (pill) — panel tem rounded-3xl mas está fora da região DOCK
+    const totalRounded = count3xl + count2rem;
+    // Filtra apenas os que têm bg-white+border (pill)
+    const hasPillNew = region.includes('rounded-3xl') && region.includes('bg-white') && region.includes('border border-stone-200');
+    const hasPillOld = region.includes('rounded-[2rem]') && region.includes('bg-stone-50');
+    expect(hasPillNew || hasPillOld).toBe(true);
+    expect(totalRounded).toBe(1);
     const dockClass = getDockClass();
     expect(dockClass).not.toMatch(/rounded-\[/);
     expect(dockClass).not.toMatch(/rounded-3xl/);
@@ -305,17 +310,23 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     expect(textareaClass).toMatch(/overflow-y-auto/);
   });
 
-  it('T-COMP-STRUCT-5 — PILL utiliza estrutura vertical fundação (flex-col + barra border-t)', () => {
+  it('T-COMP-STRUCT-5 — PILL utiliza estrutura vertical fundação (flex-col, superfície única)', () => {
     const pill = getPill();
-    // CHAT-UX-002: vertical flex-col com barra border-t; legado usava items-end
-    const isVertical = pill.includes('flex flex-col') && pill.includes('border-t');
+    // CHAT-UX-003: vertical flex-col sem border-t interno (superfície única); legado usava items-end
+    const isVertical = pill.includes('flex flex-col') && pill.includes('rounded-3xl');
     const isLegacy = pill.includes('items-end') && pill.includes('rounded-[2rem]');
     expect(isVertical || isLegacy).toBe(true);
     if (isVertical) {
       expect(pill).toMatch(/flex flex-col/);
       expect(pill).toMatch(/rounded-3xl/);
       expect(pill).toMatch(/bg-white/);
-      expect(pill).toMatch(/border-t/);
+      // Verifica superfície única: não há border-t entre textarea e ações (separação por espaçamento)
+      const textareaIdx = pill.indexOf('<textarea');
+      const actionsIdx = pill.indexOf('flex items-center justify-between pt-3 mt-3');
+      if (textareaIdx !== -1 && actionsIdx !== -1) {
+        const between = pill.slice(textareaIdx, actionsIdx);
+        expect(between).not.toMatch(/border-t/);
+      }
     } else {
       const opening = pill.slice(0, pill.indexOf('>'));
       expect(opening).toMatch(/items-end/);
@@ -339,11 +350,10 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     expect(hasNewPill || hasOldPill).toBe(true);
     // Verificação: apenas a PILL principal possui bg+border+rounded na região
     const region = getComposerRegion();
-    const allRounded3xl = region.match(/<div className="[^"]*rounded-3xl[^"]*"/g) ?? [];
-    const allRounded2rem = region.match(/<div className="[^"]*rounded-\[2rem\][^"]*"/g) ?? [];
-    const allRounded = [...allRounded3xl, ...allRounded2rem];
-    const principalVisuals = allRounded.filter((c) => (/bg-white/.test(c) || /bg-stone-50/.test(c)) && /border/.test(c));
-    expect(principalVisuals.length).toBe(1);
+    const count3xl = (region.match(/rounded-3xl/g) || []).length;
+    const count2rem = (region.match(/rounded-\[2rem\]/g) || []).length;
+    expect(count3xl + count2rem).toBe(1);
+    expect(region).toMatch(/border border-stone-200/);
   });
 });
 
@@ -402,17 +412,22 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
     expect(content).toMatch(/hover:border-nutri-200.*hover:text-nutri-700/);
   });
 
-  it('F-06 — composer vertical com textarea full-width e barra border-t', () => {
+  it('F-06 — composer vertical com textarea full-width sem border-t (superfície única)', () => {
     const pill = getPillRegion();
-    // CHAT-UX-003: p-3 (antes p-2) para superfície única mais espaçosa
+    // CHAT-UX-003 refinado: sem border-t entre texto e ações, separação por espaçamento
     const hasPill = pill.includes('flex flex-col w-full bg-white p-3 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-2 rounded-3xl');
     expect(hasPill).toBe(true);
     expect(pill).toMatch(/w-full min-w-0 bg-transparent/);
-    expect(pill).toMatch(/border-t border-stone-100/);
+    // Verifica que NÃO há border-t interno entre textarea e ações (superfície única)
+    const textareaIdx = pill.indexOf('<textarea');
+    const actionsIdx = pill.indexOf('flex items-center justify-between pt-3 mt-3');
+    expect(textareaIdx).toBeGreaterThan(0);
+    expect(actionsIdx).toBeGreaterThan(textareaIdx);
+    const between = pill.slice(textareaIdx, actionsIdx);
+    expect(between).not.toMatch(/border-t/);
     expect(pill).toMatch(/focus-within:border-nutri-300/);
     expect(content).toMatch(/capture="environment"/); // camera affordance (ainda existe para Tirar foto)
     expect(content).toMatch(/bg-nutri-800/); // enviar nutri
-    // Verifica que não há capture restritivo no input principal (sem capture no gallery)
     expect(content).toMatch(/accept="image\/\*"/);
   });
 });
@@ -444,15 +459,23 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     expect(content).toMatch(/gap-3/); // gap reduzido
   });
 
-  it('R-03 — composer single surface amplia (p-3, min-h-0, textarea w-full, border-t)', () => {
+  it('R-03 — composer single surface amplia (p-3, min-h-0, textarea w-full, sem border-t)', () => {
     const pill = getPillRegion();
     expect(pill).toMatch(/flex flex-col w-full bg-white p-3 rounded-3xl/);
     expect(pill).toMatch(/min-h-0/);
     expect(content).toMatch(/flex-1 min-h-0 p-4/); // conversation min-h-0 para permitir crescimento
     expect(content).toMatch(/leading-\[1\.6\]/);
     expect(content).toMatch(/min-h-\[44px\] max-h-\[200px\]/);
-    // Verifica que textarea ocupa largura total acima da barra (não lado a lado)
-    expect(pill.indexOf('<textarea')).toBeLessThan(pill.indexOf('border-t border-stone-100'));
+    // Verifica superfície única: textarea acima da barra pt-3 mt-3 sem border-t
+    expect(pill.indexOf('<textarea')).toBeLessThan(pill.indexOf('flex items-center justify-between pt-3 mt-3'));
+    const textareaIdx = pill.indexOf('<textarea');
+    const actionsIdx = pill.indexOf('flex items-center justify-between pt-3 mt-3');
+    const between = pill.slice(textareaIdx, actionsIdx);
+    expect(between).not.toMatch(/border-t/);
+    // Verifica expansão focus: isComposerFocused
+    expect(content).toMatch(/isComposerFocused/);
+    expect(content).toMatch(/onFocus.*setIsComposerFocused\(true\)/);
+    expect(content).toMatch(/onBlur.*setIsComposerFocused\(false\)/);
   });
 
   it('R-04 — drag bottom-sheet mobile isolado (touch handlers, threshold, não move atrás)', () => {
@@ -486,18 +509,18 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     expect(content).toMatch(/FileText.*Arquivo/);
   });
 
-  it('R-06 — voz simplificada durante gravação (esconde anexo, mostra Cancelar e Parar)', () => {
-    // Verifica estrutura condicional voice.isRecording
+  it('R-06 — voz simplificada durante gravação (× ● waveform timer ■ sem textos)', () => {
+    // Verifica estrutura condicional voice.isRecording com novo padrão single line
     expect(content).toMatch(/\{voice\.isRecording \? \(/);
     expect(content).toMatch(/aria-label="Cancelar gravação"/);
     expect(content).toMatch(/aria-label="Parar gravação"/);
-    expect(content).toMatch(/Gravando \{formatElapsedMs/);
-    expect(content).toMatch(/Cancelar/);
-    // Verifica que anexo é escondido durante gravação (não renderiza no branch isRecording)
+    expect(content).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
+    expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/); // ponto pulsante
+    expect(content).toMatch(/w-0\.5 h-.*bg-rose.*animate-pulse/); // waveform
+    // Não deve mostrar "Gravando" como texto principal (apenas aria-label)
+    expect(content).not.toMatch(/>Gravando \{formatElapsedMs/);
     const pill = getPillRegion();
-    // No branch isRecording, não há ImagePlus anexo — apenas Cancelar e Parar
     expect(pill).toMatch(/voice\.isRecording/);
-    // Verifica que mic simplificado não tem mais condicional complexa com Parar e transcrever
     expect(content).toMatch(/Falar mensagem/);
   });
 
@@ -508,5 +531,124 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
     // Verifica fix de flex constraints: min-h-0 em conversation e pill
     expect(content).toMatch(/flex-1 min-h-0 p-4/);
     expect(content).toMatch(/flex flex-col w-full bg-white p-3.*min-h-0/);
+  });
+});
+
+describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)', () => {
+  it('COMPOSER-UX-01 — estado vazio compacto (min-h 72px)', () => {
+    expect(content).toMatch(/min-h-\[72px\] justify-center/);
+    expect(content).toMatch(/isComposerFocused \|\| hasContent \? 'min-h-\[140px\]'/);
+  });
+  it('COMPOSER-UX-02 — placeholder dentro do Composer centralizado', () => {
+    expect(content).toMatch(/placeholder.*Digite sua dúvida/);
+    expect(content).toMatch(/placeholder:text-center/);
+    expect(content).toMatch(/text-center placeholder:text-center/);
+  });
+  it('COMPOSER-UX-03 — focus expande Composer (onFocus/onBlur)', () => {
+    expect(content).toMatch(/onFocus.*setIsComposerFocused\(true\)/);
+    expect(content).toMatch(/onBlur.*setIsComposerFocused\(false\)/);
+    expect(content).toMatch(/isComposerFocused/);
+    expect(content).toMatch(/min-h-\[140px\]/);
+  });
+  it('COMPOSER-UX-04 — blur vazio retorna ao compacto', () => {
+    expect(content).toMatch(/!isComposerFocused && !hasContent/);
+    expect(content).toMatch(/py-3 text-center placeholder:text-center/);
+  });
+  it('COMPOSER-UX-05 — texto mantém Composer expandido', () => {
+    expect(content).toMatch(/hasContent/);
+    expect(content).toMatch(/isComposerFocused \|\| hasContent/);
+  });
+  it('COMPOSER-UX-06 — textarea cresce além de duas linhas (flex, line-height)', () => {
+    const pill = getPillRegion();
+    expect(pill).toMatch(/leading-\[1\.6\]/);
+    expect(content).toMatch(/min-h-\[44px\] max-h-\[200px\]/);
+    expect(content).toMatch(/resize-none overflow-y-auto/);
+  });
+  it('COMPOSER-UX-07 — limite 200px', () => {
+    expect(content).toMatch(/COMPOSER_MAX_HEIGHT = 200/);
+    expect(content).toMatch(/max-h-\[200px\]/);
+  });
+  it('COMPOSER-UX-08 — scroll interno', () => {
+    expect(content).toMatch(/overflowY.*auto.*hidden/);
+    expect(content).toMatch(/overflow-y-auto/);
+  });
+  it('COMPOSER-UX-09 — não existe border-t entre texto e ações', () => {
+    const pill = getPillRegion();
+    const textareaIdx = pill.indexOf('<textarea');
+    const actionsIdx = pill.indexOf('flex items-center justify-between pt-3 mt-3');
+    expect(textareaIdx).toBeGreaterThan(0);
+    expect(actionsIdx).toBeGreaterThan(textareaIdx);
+    const between = pill.slice(textareaIdx, actionsIdx);
+    expect(between).not.toMatch(/border-t/);
+  });
+  it('COMPOSER-UX-10 — ações continuam dentro do Composer', () => {
+    const pill = getPillRegion();
+    expect(pill).toMatch(/aria-label="Anexar foto"/);
+    expect(pill).toMatch(/Falar mensagem/);
+    expect(pill).toMatch(/aria-label="Enviar mensagem"/);
+  });
+  it('VOICE-UX-01 — recording não mostra "Gravando" como texto', () => {
+    expect(content).not.toMatch(/>Gravando \{formatElapsedMs/);
+    expect(content).toMatch(/aria-label="Gravando"/);
+  });
+  it('VOICE-UX-02 — waveform presente', () => {
+    expect(content).toMatch(/w-0\.5 h-.*bg-rose.*animate-pulse/);
+    expect(content).toMatch(/flex items-end gap-0\.5 h-4/);
+  });
+  it('VOICE-UX-03 — indicador vermelho pulsante presente', () => {
+    expect(content).toMatch(/bg-rose-500 rounded-full animate-pulse/);
+    expect(content).toMatch(/w-2 h-2 bg-rose-500/);
+  });
+  it('VOICE-UX-04 — timer presente', () => {
+    expect(content).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
+    expect(content).toMatch(/tabular-nums/);
+  });
+  it('VOICE-UX-05 — cancelar disponível (×)', () => {
+    expect(content).toMatch(/aria-label="Cancelar gravação"/);
+    expect(content).toMatch(/<X size=\{18\}/);
+  });
+  it('VOICE-UX-06 — parar disponível (■)', () => {
+    expect(content).toMatch(/aria-label="Parar gravação"/);
+    expect(content).toMatch(/<Square.*fill="currentColor"/);
+  });
+  it('VOICE-UX-07 — imagem/anexo oculto durante gravação', () => {
+    const pill = getPillRegion();
+    // Quando isRecording, anexo não está no branch de gravação
+    expect(pill).toMatch(/voice\.isRecording \? \(/);
+    // Verifica que o branch de gravação não contém "Anexar foto"
+    const recordingBranch = content.slice(content.indexOf('voice.isRecording ? ('), content.indexOf('voice.isRecording ? (') + 2000);
+    expect(recordingBranch).not.toMatch(/Anexar foto/);
+  });
+  it('ATTACH-UX-01 — menu de adicionar disponível', () => {
+    expect(content).toMatch(/showAttachMenu/);
+    expect(content).toMatch(/role="menu"/);
+  });
+  it('ATTACH-UX-02 — câmera preservada', () => {
+    expect(content).toMatch(/cameraInputRef/);
+    expect(content).toMatch(/capture="environment"/);
+    expect(content).toMatch(/Tirar foto/);
+  });
+  it('ATTACH-UX-03 — galeria disponível', () => {
+    expect(content).toMatch(/Escolher da galeria/);
+    expect(content).toMatch(/accept="image\/\*"/);
+  });
+  it('ATTACH-UX-04 — arquivo disponível', () => {
+    expect(content).toMatch(/Arquivo/);
+    expect(content).toMatch(/accept="\*\/\*"/);
+    expect(content).toMatch(/FileText/);
+  });
+  it('DRAG-UX-01 — drag afeta somente ChatAssistant (panelRef, não document)', () => {
+    expect(content).toMatch(/panelRef/);
+    expect(content).toMatch(/handleTouchStart/);
+    expect(content).not.toMatch(/document\.addEventListener\('touchmove'/);
+  });
+  it('DRAG-UX-02 — threshold fecha (100px)', () => {
+    expect(content).toMatch(/threshold.*100/);
+    expect(content).toMatch(/dragY > threshold/);
+    expect(content).toMatch(/setIsOpen\(false\)/);
+  });
+  it('DRAG-UX-03 — drag insuficiente retorna (setDragY 0)', () => {
+    expect(content).toMatch(/setDragY\(0\)/);
+    expect(content).toMatch(/translateY/);
   });
 });

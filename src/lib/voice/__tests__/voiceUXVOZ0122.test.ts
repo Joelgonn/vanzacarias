@@ -65,7 +65,10 @@ describe('VOZ-012.2 — Chat: indicação visual e mensagens por estado', () => 
   });
 
   it('GRAVANDO com cronômetro em tempo real (formato 00:00)', () => {
-    expect(chatContent).toMatch(/Gravando \{formatElapsedMs\(voice\.recordingElapsedMs\)\}/);
+    // CHAT-UX-003: voz simplificada — timer com waveform, sem texto "Gravando" principal, mas com aria-label e ponto pulsante
+    expect(chatContent).toMatch(/formatElapsedMs\(voice\.recordingElapsedMs\)/);
+    expect(chatContent).toMatch(/aria-label="Gravando"/);
+    expect(chatContent).toMatch(/bg-rose-500 rounded-full animate-pulse/);
   });
 
   it('diferenciação visual: quadrado (parar) ao gravar, spinner ao processar/transcrever', () => {

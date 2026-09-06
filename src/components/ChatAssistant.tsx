@@ -520,6 +520,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragY, setDragY] = useState(0);
   const startYRef = useRef<number>(0);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
 
   // VOZ-006 — Entrada por voz: Vosk PT-BR → texto → input normal.
   // A voz NÃO envia automaticamente: a transcrição aparece no campo de texto
@@ -879,7 +880,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
 
             <div className="p-3 sm:p-4 shrink-0 relative z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
               
-              <div className="flex flex-col w-full bg-white p-3 rounded-3xl border border-stone-200 shadow-sm focus-within:border-nutri-300 focus-within:ring-4 focus-within:ring-nutri-50 transition-all min-h-0">
+              <div className={`flex flex-col w-full bg-white p-3 rounded-3xl border border-stone-200 shadow-sm focus-within:border-nutri-300 focus-within:ring-4 focus-within:ring-nutri-50 transition-all min-h-0 ${voice.isRecording ? 'min-h-[72px] justify-center' : isComposerFocused || hasContent ? 'min-h-[140px]' : 'min-h-[72px] justify-center'}`}>
                 
                 {state.selectedImage && (
                   <div className="flex items-center gap-3 px-2 pb-3 mb-3 border-b border-stone-100 animate-in fade-in slide-in-from-bottom-2">
@@ -904,158 +905,163 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 )}
 
                 {voice.isRecording ? (
-                  <div className="w-full min-h-[52px] flex items-center justify-center py-3" aria-live="polite" aria-label="Gravando">
-                    <span className="inline-flex items-center gap-2 text-rose-600 font-semibold text-[15px]">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                      </span>
-                      Gravando {formatElapsedMs(voice.recordingElapsedMs)}
-                    </span>
-                  </div>
-                ) : (
-                  <textarea
-                    value={state.input}
-                    rows={1}
-                    onChange={(e) => {
-                      state.setInput(e.target.value);
-                      resizeComposer();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    maxLength={MAX_MESSAGE_LENGTH}
-                    placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
-                    aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                    className="w-full min-w-0 bg-transparent px-1 py-3 text-[15px] outline-none text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-[1.6] min-h-[44px] max-h-[200px]"
-                    disabled={state.isLoading}
-                  />
-                )}
-
-                {voice.isRecording ? (
-                  <div className="flex items-center justify-between pt-3 border-t border-stone-100 mt-3">
+                  <div className="w-full flex items-center justify-between py-2 px-1 gap-2" aria-live="polite" aria-label="Gravando">
                     <button
                       type="button"
                       onClick={voice.cancel}
                       aria-label="Cancelar gravação"
-                      className="min-h-[44px] px-4 py-2 rounded-full inline-flex items-center gap-2 text-stone-700 hover:text-rose-600 hover:bg-stone-100 border border-stone-200 hover:border-rose-200 transition-all shrink-0 active:scale-95 text-sm font-medium"
+                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
                     >
-                      <X size={16} strokeWidth={2.5} /> Cancelar
+                      <X size={18} strokeWidth={2.5} />
                     </button>
+                    <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                      <span className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0" aria-hidden="true"></span>
+                      <div className="flex items-end gap-0.5 h-4 flex-1 max-w-[120px] justify-center" aria-hidden="true">
+                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
+                        <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '450ms' }}></span>
+                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '600ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '750ms' }}></span>
+                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '900ms' }}></span>
+                      </div>
+                      <span className="text-sm font-mono font-medium text-stone-700 tabular-nums shrink-0">{formatElapsedMs(voice.recordingElapsedMs)}</span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => voice.stop()}
                       aria-label="Parar gravação"
-                      className="min-h-[44px] px-5 py-2 rounded-full inline-flex items-center gap-2 bg-rose-600 text-white hover:bg-rose-700 shadow-md transition-all shrink-0 active:scale-95 text-sm font-semibold"
+                      className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center bg-rose-600 text-white hover:bg-rose-700 rounded-full shadow-md transition-all shrink-0 active:scale-95"
                     >
-                      <Square size={16} strokeWidth={2.5} fill="currentColor" /> Parar
+                      <Square size={14} strokeWidth={2.5} fill="currentColor" />
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between pt-3 border-t border-stone-100 mt-3 relative">
-                    <div className="flex items-center gap-1">
-                      <div className="relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowAttachMenu(!showAttachMenu); }}
-                          className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-nutri-700 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
-                          disabled={state.isLoading}
-                          title="Anexar"
-                          aria-label="Anexar foto"
-                          aria-expanded={showAttachMenu}
-                          aria-haspopup="menu"
-                        >
-                          <ImagePlus size={18} strokeWidth={2.5} />
-                        </button>
-                        {showAttachMenu && (
-                          <div className="absolute bottom-full mb-2 left-0 bg-white border border-stone-200 rounded-2xl shadow-lg p-2 flex flex-col gap-1 w-56 z-20" role="menu" onClick={(e)=>e.stopPropagation()}>
-                            <button
-                              onClick={() => { cameraInputRef.current?.click(); setShowAttachMenu(false); }}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                              role="menuitem"
-                            >
-                              <Camera size={18} strokeWidth={2} /> Tirar foto
-                            </button>
-                            <button
-                              onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                              role="menuitem"
-                            >
-                              <ImagePlus size={18} strokeWidth={2} /> Escolher da galeria
-                            </button>
-                            <button
-                              onClick={() => { fileGenericRef.current?.click(); setShowAttachMenu(false); }}
-                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
-                              role="menuitem"
-                            >
-                              <FileText size={18} strokeWidth={2} /> Arquivo
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={state.handleImageSelect}
-                      />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        ref={cameraInputRef}
-                        className="hidden"
-                        onChange={state.handleImageSelect}
-                      />
-                      <input
-                        type="file"
-                        accept="*/*"
-                        ref={fileGenericRef}
-                        className="hidden"
-                        onChange={state.handleImageSelect}
-                      />
+                  <>
+                    <textarea
+                      value={state.input}
+                      rows={1}
+                      onFocus={() => setIsComposerFocused(true)}
+                      onBlur={() => setIsComposerFocused(false)}
+                      onChange={(e) => {
+                        state.setInput(e.target.value);
+                        resizeComposer();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      maxLength={MAX_MESSAGE_LENGTH}
+                      placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
+                      aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
+                      className={`w-full min-w-0 bg-transparent px-1 text-[15px] outline-none text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-[1.6] min-h-[44px] max-h-[200px] ${!isComposerFocused && !hasContent ? 'py-3 text-center placeholder:text-center' : 'py-3'}`}
+                      disabled={state.isLoading}
+                    />
 
-                      <button
-                        type="button"
-                        onClick={() => void voice.start()}
-                        disabled={micDisabled}
-                        title={!voice.isSupported
-                          ? 'Transcrição de voz não suportada neste navegador (exige HTTPS e microfone).'
-                          : 'Falar mensagem'}
-                        aria-label="Falar mensagem"
-                        className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center rounded-full text-stone-500 hover:text-nutri-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 active:scale-95"
+                    <div className="flex items-center justify-between pt-3 mt-3 relative">
+                      <div className="flex items-center gap-1">
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowAttachMenu(!showAttachMenu); }}
+                            className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center text-stone-500 hover:text-nutri-700 hover:bg-stone-100 rounded-full transition-all shrink-0 active:scale-95"
+                            disabled={state.isLoading}
+                            title="Anexar"
+                            aria-label="Anexar foto"
+                            aria-expanded={showAttachMenu}
+                            aria-haspopup="menu"
+                          >
+                            <ImagePlus size={18} strokeWidth={2.5} />
+                          </button>
+                          {showAttachMenu && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-white border border-stone-200 rounded-2xl shadow-lg p-2 flex flex-col gap-1 w-56 z-20" role="menu" onClick={(e)=>e.stopPropagation()}>
+                              <button
+                                onClick={() => { cameraInputRef.current?.click(); setShowAttachMenu(false); }}
+                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                                role="menuitem"
+                              >
+                                <Camera size={18} strokeWidth={2} /> Tirar foto
+                              </button>
+                              <button
+                                onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                                role="menuitem"
+                              >
+                                <ImagePlus size={18} strokeWidth={2} /> Escolher da galeria
+                              </button>
+                              <button
+                                onClick={() => { fileGenericRef.current?.click(); setShowAttachMenu(false); }}
+                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-stone-50 text-left text-sm font-medium text-stone-700 transition-colors"
+                                role="menuitem"
+                              >
+                                <FileText size={18} strokeWidth={2} /> Arquivo
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <input
+                          type="file"
+                          accept="image/*"
+                          ref={fileInputRef}
+                          className="hidden"
+                          onChange={state.handleImageSelect}
+                        />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          ref={cameraInputRef}
+                          className="hidden"
+                          onChange={state.handleImageSelect}
+                        />
+                        <input
+                          type="file"
+                          accept="*/*"
+                          ref={fileGenericRef}
+                          className="hidden"
+                          onChange={state.handleImageSelect}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => void voice.start()}
+                          disabled={micDisabled}
+                          title={!voice.isSupported
+                            ? 'Transcrição de voz não suportada neste navegador (exige HTTPS e microfone).'
+                            : 'Falar mensagem'}
+                          aria-label="Falar mensagem"
+                          className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center rounded-full text-stone-500 hover:text-nutri-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 active:scale-95"
+                        >
+                          {voice.isBusy
+                            ? <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
+                            : <Mic size={20} strokeWidth={2.5} />}
+                        </button>
+                      </div>
+
+                      <button 
+                        onClick={handleSend} 
+                        disabled={state.isLoading || !hasContent} 
+                        className={`min-w-[44px] h-[44px] w-11 h-11 rounded-full transition-all shrink-0 flex items-center justify-center ${
+                          state.isLoading || !hasContent
+                            ? 'bg-stone-200 text-stone-400' 
+                            : 'bg-nutri-800 bg-[#2A5C43] text-white hover:bg-nutri-700 hover:bg-[#1A3B2B] shadow-md hover:shadow-lg active:scale-95'
+                        }`}
+                        aria-label="Enviar mensagem"
                       >
-                        {voice.isBusy
-                          ? <Loader2 size={20} className="animate-spin" strokeWidth={2.5} />
-                          : <Mic size={20} strokeWidth={2.5} />}
+                        {state.isLoading ? (
+                          <Loader2 size={18} className="animate-spin" strokeWidth={2.5} />
+                        ) : (
+                          <Send size={18} strokeWidth={2.5} className="ml-0.5" />
+                        )}
                       </button>
                     </div>
-
-                    <button 
-                      onClick={handleSend} 
-                      disabled={state.isLoading || !hasContent} 
-                      className={`min-w-[44px] h-[44px] w-11 h-11 rounded-full transition-all shrink-0 flex items-center justify-center ${
-                        state.isLoading || !hasContent
-                          ? 'bg-stone-200 text-stone-400' 
-                          : 'bg-nutri-800 bg-[#2A5C43] text-white hover:bg-nutri-700 hover:bg-[#1A3B2B] shadow-md hover:shadow-lg active:scale-95'
-                      }`}
-                      aria-label="Enviar mensagem"
-                    >
-                      {state.isLoading ? (
-                        <Loader2 size={18} className="animate-spin" strokeWidth={2.5} />
-                      ) : (
-                        <Send size={18} strokeWidth={2.5} className="ml-0.5" />
-                      )}
-                    </button>
-                  </div>
+                  </>
                 )}
 
                 {!voice.isRecording && (voice.isBusy || voice.error) ? (
-                  <div className="mt-2 pt-2 border-t border-stone-100 px-2 flex items-center gap-2 text-xs" role="status" aria-live="polite">
+                  <div className="mt-2 px-2 flex items-center gap-2 text-xs" role="status" aria-live="polite">
                     {voice.status === 'processing' && (
                       <span className="text-stone-600 font-medium">Processando...</span>
                     )}
