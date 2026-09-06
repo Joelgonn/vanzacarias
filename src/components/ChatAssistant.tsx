@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { X, Send, Loader2, ImagePlus, MessageCircle, Mic, Square, Camera, FileText } from 'lucide-react';
 import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useVoiceInput, formatElapsedMs } from '@/lib/voice/useVoiceInput';
 import { isVoiceDebugEnabled, voiceDebugLog } from '@/lib/voice/debug';
+import { autoGrowHeight } from './composerAutoGrow';
 
 // ===============================
 // 1. TIPAGEM E INTERFACES APRIMORADAS
@@ -579,21 +580,21 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   // então ativa scroll interno (overflow-y:auto). Recalcula a cada mudança de
   // texto — digitar, apagar, colar e transcrição de voz ([state.input]) — e em
   // resize/orientação/visualViewport (teclado, redimensionar janela).
+  // CHAT-UX-008 — medir SOMENTE após o commit do React e ANTES da pintura
+  // (useLayoutEffect). Ordem garantida: render(com o novo value) → medir → pintar.
+  // Isso remove qualquer medição no meio do evento (antes do valor controlado
+  // ser comitado) e qualquer dependência da ordem onChange/setState. A 2ª
+  // medição em requestAnimationFrame cobre fonte/layout que terminam depois.
   const resizeComposer = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const maxH = COMPOSER_MAX_HEIGHT;
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, maxH) + 'px';
-      textareaRef.current.style.overflowY = textareaRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
-    }
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const { heightPx, overflowY } = autoGrowHeight(el.scrollHeight, COMPOSER_MAX_HEIGHT);
+    el.style.height = `${heightPx}px`;
+    el.style.overflowY = overflowY;
   };
 
-  // CHAT-UX-007 — re-mede após o reflow real (2º frame). O Chrome Android pode
-  // reportar scrollHeight desatualizado no 1º keystroke (fonte/layout ainda em
-  // progresso); a 2ª medição no próximo frame estabiliza 1→N linhas. Reage a
-  // texto ([state.input]) E à troca idle↔editando ([isComposerFocused]), pois a
-  // largura da coluna "input" muda entre os dois modos (re-wrap altera linhas).
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     resizeComposer();
@@ -1099,8 +1100,9 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                       onFocus={() => setIsComposerFocused(true)}
                       onBlur={() => setIsComposerFocused(false)}
                       onChange={(e) => {
+                        // CHAT-UX-008: medição NÃO ocorre aqui (antes do commit);
+                        // o useLayoutEffect mede após o React renderizar o novo value.
                         state.setInput(e.target.value);
-                        resizeComposer();
                       }}
                       maxLength={MAX_MESSAGE_LENGTH}
                       placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}

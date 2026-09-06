@@ -102,8 +102,8 @@ describe('COMPOSER-001 — Estrutura: um único Composer', () => {
   it('T-COMP-4 — ultrapassou max-height: Composer não cresce, scroll interno aparece', () => {
     expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200;/);
     expect(content).toMatch(/max-h-\[200px\]/);
-    expect(content).toMatch(/Math\.min\(textareaRef\.current\.scrollHeight, maxH\)/);
-    expect(content).toMatch(/overflowY = textareaRef\.current\.scrollHeight > maxH \? 'auto' : 'hidden'/);
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
+    expect(content).toMatch(/el\.style\.overflowY = overflowY/);
     expect(content).toMatch(/overflow-y-auto/);
     expect(content).toMatch(/resize-none/);
   });
@@ -116,10 +116,12 @@ describe('COMPOSER-001 — Auto-grow', () => {
     expect(content).toMatch(/resizeComposer\(\)/);
   });
 
-  it('T-COMP-6 — colar texto longo: onChange (valor novo) dispara o auto-grow', () => {
-    expect(content).toMatch(/onChange=\{\(e\) => \{\s+state\.setInput\(e\.target\.value\);\s+resizeComposer\(\);\s+\}\}/);
-    expect(content).toMatch(/style\.height = 'auto'/);
-    expect(content).toMatch(/style\.height = Math\.min\(textareaRef\.current\.scrollHeight, maxH\) \+ 'px'/);
+  it('T-COMP-6 — colar texto longo: onChange só atualiza o value; auto-grow roda no useLayoutEffect pós-render', () => {
+    expect(content).toMatch(/state\.setInput\(e\.target\.value\);/);
+    expect(content).not.toMatch(/state\.setInput\(e\.target\.value\);\s+resizeComposer\(\)/);
+    expect(content).toMatch(/useLayoutEffect/);
+    expect(content).toMatch(/el\.style\.height = 'auto'/);
+    expect(content).toMatch(/el\.style\.height = `\$\{heightPx\}px`/);
   });
 
   it('T-COMP-7 — transcrição de voz longa: recalcula e não perde texto', () => {
@@ -539,7 +541,7 @@ describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo,
   it('R-07 — composer cresce até 200px com scroll interno (flex/grid constraints tratadas)', () => {
     expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200/);
     expect(content).toMatch(/max-h-\[200px\]/);
-    expect(content).toMatch(/overflowY = textareaRef\.current\.scrollHeight > maxH \? 'auto' : 'hidden'/);
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
     // Fix de constraints: min-h-0 na conversation e no pill
     expect(content).toMatch(/flex-1 min-h-0 p-4/);
     expect(content).toMatch(/flex flex-col w-full bg-white p-(2\.5|2|3).*min-h-0/);
@@ -587,7 +589,8 @@ describe('CHAT-UX-003 — COMPOSER-UX e VOICE-UX refinados (validação visual)'
     expect(content).toMatch(/max-h-\[200px\]/);
   });
   it('COMPOSER-UX-08 — scroll interno', () => {
-    expect(content).toMatch(/overflowY.*auto.*hidden/);
+    expect(content).toMatch(/el\.style\.overflowY = overflowY/);
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
     expect(content).toMatch(/overflow-y-auto/);
   });
   it('COMPOSER-UX-09 — superfície única: controles no mesmo grid do texto, sem border-t/barra empilhada', () => {
@@ -723,7 +726,7 @@ describe('CHAT-UX-006 — Composer compacto idle ↔ editando', () => {
     expect(content).not.toMatch(/min-h-\[120px\]/);
     expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200/);
     expect(content).toMatch(/max-h-\[200px\]/);
-    expect(content).toMatch(/Math\.min\(textareaRef\.current\.scrollHeight, maxH\)/);
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
     expect(content).toMatch(/overflow-y-auto/);
     expect(content).toMatch(/resize-none/);
     expect(content).toMatch(/min-h-0/);
@@ -853,10 +856,12 @@ describe('CHAT-UX-007 — Auto-grow real e waveform flexível', () => {
     expect(content).toMatch(/tabular-nums/);
   });
 
-  it('UX7-06 — auto-grow SEM altura artificial: usa scrollHeight e clamp em COMPOSER_MAX_HEIGHT', () => {
-    expect(content).toMatch(/style\.height = Math\.min\(textareaRef\.current\.scrollHeight, maxH\) \+ 'px'/);
-    expect(content).toMatch(/const maxH = COMPOSER_MAX_HEIGHT/);
+  it('UX7-06 — auto-grow SEM altura artificial: usa scrollHeight → autoGrowHeight → style.height', () => {
+    expect(content).toMatch(/el\.style\.height = 'auto'/);
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
+    expect(content).toMatch(/el\.style\.height = `\$\{heightPx\}px`/);
+    expect(content).toMatch(/el\.style\.overflowY = overflowY/);
     expect(content).not.toMatch(/style\.height = '200px'/);
-    expect(content).not.toMatch(/const maxH = 200/);
+    expect(content).not.toMatch(/min-h-\[200px\]/);
   });
 });

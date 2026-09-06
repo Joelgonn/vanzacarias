@@ -12,15 +12,14 @@ describe('VOZ-012 — Textarea / Texto Longo', () => {
     expect(content).toMatch(/overflow-y-auto/);
   });
 
-  it('onChange e useEffect expandem até 200px com scroll', () => {
-    expect(content).toMatch(/Math\.min\(textareaRef\.current\.scrollHeight, maxH\)/);
-    expect(content).toMatch(/textareaRef\.current\.style\.overflowY/);
+  it('auto-grow aplica scrollHeight → altura até 200px com scroll (CHAT-UX-008)', () => {
+    expect(content).toMatch(/autoGrowHeight\(el\.scrollHeight, COMPOSER_MAX_HEIGHT\)/);
+    expect(content).toMatch(/el\.style\.height = `\$\{heightPx\}px`/);
+    expect(content).toMatch(/el\.style\.overflowY = overflowY/);
   });
 
-  it('useEffect observa state.input e foco para transcrição longa / troca idle↔editando', () => {
-    // O useEffect deve reagir a state.input (não apenas a ''), além do foco
-    // (CHAT-UX-007: re-mede na troca idle↔editando, pois a largura muda).
-    expect(content).toMatch(/useEffect\(\(\) => \{\s+const el = textareaRef\.current/);
+  it('useLayoutEffect observa state.input e foco (render → medir, antes da pintura)', () => {
+    expect(content).toMatch(/useLayoutEffect\(\(\) => \{\s+const el = textareaRef\.current/);
     expect(content).toMatch(/resizeComposer\(\);/);
     expect(content).toMatch(/\}, \[state\.input, isComposerFocused\]\)/);
   });
