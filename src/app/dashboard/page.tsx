@@ -972,8 +972,25 @@ export default function Dashboard() {
         onSave={handleAddActivity}
       />
 
-      {/* 🔥 MODAL / COMPONENTE DE CHAT FLUTUANTE — VZ-017 premium quick actions */}
-      <ChatAssistant role="patient" canAccessMealPlan={!!canAccessMealPlan} />
+      {/* CHAT-SUG-002 — chat flutuante: smartContext alimenta o catálogo
+          determinístico de sugestões (sem nova query, sem PII no backend) */}
+      <ChatAssistant
+        role="patient"
+        canAccessMealPlan={!!canAccessMealPlan}
+        smartContext={{
+          isPremium: !!isPremium,
+          canAccessMealPlan: !!canAccessMealPlan,
+          isMealPlanReady,
+          isCheckinDoneThisWeek,
+          waterGoal,
+          waterProgress,
+          hasDailyLogToday,
+          totalMeals,
+          completedMeals,
+          checkinsCount: checkins.length,
+          hasCompletedQFA,
+        }}
+      />
     </div>
   );
 }

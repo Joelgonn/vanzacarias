@@ -91,11 +91,16 @@ describe('VZ-017: Premium Readiness — Foundation Hardening + Comercial', () =>
     expect(FREE).not.toContain('O que mudou na minha jornada?');
     expect(FREE).not.toContain('O que devo priorizar hoje?');
   });
-  it('ChatAssistant diferencia Free/Premium via canAccessMealPlan', () => {
+  it('ChatAssistant diferencia Premium via catálogo determinístico (sem QUICK_ACTIONS legados)', () => {
     const src = readFileSync(path.resolve(__dirname, '../../components/ChatAssistant.tsx'), 'utf8');
-    expect(src).toContain('QUICK_ACTIONS_FREE');
-    expect(src).toContain('QUICK_ACTIONS_PREMIUM');
-    expect(src).toContain('canAccessMealPlan ? QUICK_ACTIONS_PREMIUM : QUICK_ACTIONS_FREE');
+    expect(src).not.toContain('QUICK_ACTIONS_FREE');
+    expect(src).not.toContain('QUICK_ACTIONS_PREMIUM');
+    expect(src).toContain('canAccessMealPlan');
+    expect(src).toContain('smartContext');
+    // sugestão premium (proximas_refeicoes) continua gated por canAccessMealPlan no catálogo
+    const catalogSrc = readFileSync(path.resolve(__dirname, '../smartSuggestions.ts'), 'utf8');
+    expect(catalogSrc).toContain("id: 'proximas_refeicoes'");
+    expect(catalogSrc).toContain('!!ctx.canAccessMealPlan && !!ctx.isMealPlanReady');
   });
 
   // B — ScoreRing removido (funcional)

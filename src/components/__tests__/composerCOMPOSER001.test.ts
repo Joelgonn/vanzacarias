@@ -442,21 +442,19 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
 });
 
 describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo, voz simplificada)', () => {
-  it('R-01 — exatamente 3 sugestões (evolução, prioridade, análise)', () => {
-    const m = content.match(/const QUICK_ACTIONS_PREMIUM = \[([\s\S]*?)\];/);
-    expect(m).not.toBeNull();
-    const items = (m![1].match(/'[^']+'/g) || []);
-    expect(items.length).toBe(3);
-    expect(items.join(' ')).toMatch(/Como está minha evolução\?/);
-    expect(items.join(' ')).toMatch(/O que devo priorizar hoje\?/);
-    expect(items.join(' ')).toMatch(/Analisar uma refeição/);
-    expect(m![1]).not.toMatch(/Quero rever meu plano/);
-    expect(m![1]).not.toMatch(/O que mudou na minha jornada/);
-    // Free também 3
-    const mFree = content.match(/const QUICK_ACTIONS_FREE = \[([\s\S]*?)\];/);
-    expect(mFree).not.toBeNull();
-    const freeItems = (mFree![1].match(/'[^']+'/g) || []);
-    expect(freeItems.length).toBe(3);
+  it('R-01 — exatamente 3 sugestões via seletor determinístico (CHAT-SUG-002), sem QUICK_ACTIONS legados', () => {
+    // O bloco de sugestões usa o catálogo/seletor de Smart Suggestions
+    expect(content).toContain('selectSuggestions(suggestionContext,');
+    expect(content).toContain('renderSuggestionChips');
+    expect(content).toMatch(/role="group" aria-label="Sugestões"/);
+    // Constantes legadas removidas (não vira lógica morta)
+    expect(content).not.toContain('const QUICK_ACTIONS_FREE');
+    expect(content).not.toContain('const QUICK_ACTIONS_PREMIUM');
+    // Catálogo preserva a sugestão de plano SEM vazamento (gated por canAccessMealPlan)
+    const modulePath = path.join(process.cwd(), 'src/lib/smartSuggestions.ts');
+    const moduleSrc = fs.readFileSync(modulePath, 'utf8');
+    expect(moduleSrc).toContain("id: 'proximas_refeicoes'");
+    expect(moduleSrc).toContain('!!ctx.canAccessMealPlan && !!ctx.isMealPlanReady');
   });
 
   it('R-02 — header em 1 linha (avatar 40, py-3, dot inline, badge 9px, sem status)', () => {

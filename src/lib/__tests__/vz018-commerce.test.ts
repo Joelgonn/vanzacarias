@@ -64,11 +64,13 @@ describe('VZ-018 E2E Comercial — 13 testes', () => {
     expect(src).toContain('PremiumAccessCard');
     expect(src).toContain('isPremium');
   });
-  // T11 chatbot reflete Premium
-  it('T11 chatbot quick actions 3 vs 5', () => {
+  // T11 chatbot reflete Premium (CHAT-SUG-002: sugestões via catálogo determinístico)
+  it('T11 chatbot distingue Premium via smartContext/seletor (sem QUICK_ACTIONS legados)', () => {
     const src = readFileSync(path.resolve(__dirname, '../../components/ChatAssistant.tsx'), 'utf8');
-    expect(src).toContain('QUICK_ACTIONS_FREE');
-    expect(src).toContain('QUICK_ACTIONS_PREMIUM');
+    expect(src).toContain('smartContext');
+    expect(src).toContain('selectSuggestions');
+    expect(src).not.toContain('QUICK_ACTIONS_FREE');
+    expect(src).not.toContain('QUICK_ACTIONS_PREMIUM');
   });
   // T12 conteúdo Premium continua protegido
   it('T12 plano bloqueado para Free no patient route', () => {

@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { X, Send, Loader2, ImagePlus, MessageCircle, Mic, Square, Camera, FileText } from 'lucide-react';
 import NextImage from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useVoiceInput, formatElapsedMs } from '@/lib/voice/useVoiceInput';
 import { isVoiceDebugEnabled, voiceDebugLog } from '@/lib/voice/debug';
 import { autoGrowHeight } from './composerAutoGrow';
+import {
+  selectSuggestions,
+  type SmartSuggestContext,
+  type SmartSuggestDashboardFlags,
+} from '@/lib/smartSuggestions';
 
 // ===============================
 // 1. TIPAGEM E INTERFACES APRIMORADAS
@@ -61,10 +66,19 @@ export interface AdminContext {
   bodyComposition?: BodyComposition | null;
 }
 
-// 🔥 BLINDAGEM MÁXIMA (TypeScript Discriminated Union) — VZ-017: canAccessMealPlan para quick actions premium
+// BLINDAGEM MÁXIMA (TypeScript Discriminated Union) — VZ-017 mantém
+// canAccessMealPlan (selo Premium do header); as sugestões agora vêm do
+// catálogo determinístico (CHAT-SUG-002) em @/lib/smartSuggestions, que usa
+// canAccessMealPlan/isMealPlanReady no contexto. smartContext é opcional —
+// admin ou ausência de contexto caem no fallback sempre-ativo genérico.
 export type ChatAssistantProps =
   | { role: 'admin'; adminContext: AdminContext }
-  | { role: 'patient'; adminContext?: never; canAccessMealPlan?: boolean };
+  | {
+      role: 'patient';
+      adminContext?: never;
+      canAccessMealPlan?: boolean;
+      smartContext?: SmartSuggestDashboardFlags;
+    };
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -117,21 +131,11 @@ const WAVEFORM_BAR_HEIGHTS = [
   'h-4', 'h-3', 'h-2',
 ];
 
-// VZ-013 FASE D: ações rápidas — apenas enviam uma pergunta normal ao
-// chatbot (mesmo handleSend/submit). Não criam resposta hardcoded, não
-// duplicam regras clínicas e não expõem conteúdo Premium no botão.
-// VZ-017: diferenciação Free (3) vs Premium (5) — premium contextualizadas
-const QUICK_ACTIONS_FREE = [
-  'Como está minha evolução?',
-  'Como posso melhorar minha alimentação?',
-  'Registrar uma refeição'
-];
-
-const QUICK_ACTIONS_PREMIUM = [
-  'Como está minha evolução?',
-  'O que devo priorizar hoje?',
-  'Analisar uma refeição',
-];
+// VZ-013 FASE D → CHAT-SUG-002: as "ações rápidas" estáticas (Free × Premium)
+// foram substituídas pelo catálogo determinístico de Smart Suggestions em
+// src/lib/smartSuggestions.ts, selecionado via selectSuggestions() com
+// contexto do Dashboard. Os 5 labels originais validados estão preservados
+// no catálogo (CHAT-SUG-001 §7).
 
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve) => {
@@ -526,7 +530,7 @@ function useChatAdmin(state: ReturnType<typeof useChatState>, adminContext: Admi
 export default function ChatAssistant(props: ChatAssistantProps) {
   const { role, adminContext } = props as ChatAssistantProps & { canAccessMealPlan?: boolean };
   const canAccessMealPlan = (props as { canAccessMealPlan?: boolean }).canAccessMealPlan === true;
-  const quickActions = canAccessMealPlan ? QUICK_ACTIONS_PREMIUM : QUICK_ACTIONS_FREE;
+  const smartContext = (props as { smartContext?: SmartSuggestDashboardFlags }).smartContext;
   const isRoleAdmin = role === 'admin';
   
   const state = useChatState();
@@ -684,6 +688,73 @@ export default function ChatAssistant(props: ChatAssistantProps) {
       return patientLogic.retry?.();
     }
   };
+
+  // =============================================================
+  // Smart Suggestions (CHAT-SUG-002) — seleção pura no frontend.
+  // Anti-repetição via lastIds + rotação/seed em memória (determinístico,
+  // sem relógio — ver CHAT-SUG-001 §10).
+  // =============================================================
+  const [suggestionRotation, setSuggestionRotation] = useState(0);
+  const lastSuggestionIdsRef = useRef<string[]>([]);
+  const lastShowingRef = useRef(false);
+
+  const suggestionContext = useMemo<SmartSuggestContext>(() => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    return {
+      messagesCount: state.messages.length,
+      lastRole: lastMessage ? lastMessage.role : undefined,
+      isLoading: state.isLoading,
+      ...smartContext,
+    };
+  }, [state.messages, state.isLoading, smartContext]);
+
+  // Recalculado a cada mudança relevante; seed/rotação avançam a cada
+  // reexibição (abertura e pós-resposta). Admin nunca recebe sugestões.
+  const suggestions = useMemo(() => {
+    if (isRoleAdmin) return [];
+    const selected = selectSuggestions(suggestionContext, {
+      seed: suggestionRotation,
+      rotationIndex: suggestionRotation,
+      lastIds: lastSuggestionIdsRef.current,
+    });
+    lastSuggestionIdsRef.current = selected.map((s) => s.id);
+    return selected;
+  }, [suggestionContext, isRoleAdmin, suggestionRotation]);
+
+  const lastMessage = state.messages[state.messages.length - 1];
+  const showAfterResponse =
+    !isRoleAdmin &&
+    state.messages.length > 0 &&
+    lastMessage.role === 'assistant' &&
+    !lastMessage.isError &&
+    !state.isLoading &&
+    !state.streamingText;
+
+  // Rotação avança apenas nas transições "oculto → visível". Erros não
+  // recalibram — mantém o último conjunto (sem spam).
+  useEffect(() => {
+    const showing = !isRoleAdmin && (state.messages.length === 0 || showAfterResponse);
+    if (showing && !lastShowingRef.current) {
+      setSuggestionRotation((prev) => prev + 1);
+    }
+    lastShowingRef.current = showing;
+  }, [showAfterResponse, state.messages.length, isRoleAdmin, state.isLoading, state.streamingText]);
+
+  const renderSuggestionChips = () => (
+    <div className="w-full flex flex-wrap justify-center gap-2 pt-1" role="group" aria-label="Sugestões">
+      {suggestions.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => handleAsk(s.label)}
+          disabled={state.isLoading}
+          className="min-h-[44px] px-4 py-2 rounded-full bg-white border border-stone-200 text-stone-700 hover:border-nutri-200 hover:text-nutri-700 hover:bg-nutri-50 shadow-sm text-[13px] font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
 
   const getAvatarAnimation = () => {
     if (state.avatarMood === 'feliz') return 'animate-pulse-soft';
@@ -888,21 +959,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     </p>
                   </div>
 
-                  {!isRoleAdmin && (
-                    <div className="w-full flex flex-wrap justify-center gap-2 pt-1" role="group" aria-label="Ações rápidas">
-                      {quickActions.map((qa) => (
-                        <button
-                          key={qa}
-                          type="button"
-                          onClick={() => handleAsk(qa)}
-                          disabled={state.isLoading}
-                          className="min-h-[44px] px-4 py-2 rounded-full bg-white border border-stone-200 text-stone-700 hover:border-nutri-200 hover:text-nutri-700 hover:bg-nutri-50 shadow-sm text-[13px] font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                        >
-                          {qa}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {!isRoleAdmin && renderSuggestionChips()}
                 </div>
               )}
               
@@ -928,6 +985,8 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   )}
                 </div>
               ))}
+              
+              {showAfterResponse && renderSuggestionChips()}
               
               {state.streamingText ? (
                 <div className="flex justify-start animate-fade-in">
