@@ -12,16 +12,20 @@ import path from 'path';
 const chatPath = path.join(process.cwd(), 'src/components/ChatAssistant.tsx');
 const content = fs.readFileSync(chatPath, 'utf8');
 
-// Pill atual CHAT-UX-002: flex flex-col w-full bg-white p-2 rounded-3xl
+// Pill atual CHAT-UX-003: flex flex-col w-full bg-white p-3 rounded-3xl (CHAT-UX-002 usava p-2)
 // Fallback para código pré-002 (flex w-full gap-2 bg-stone-50 rounded-[2rem]) para compatibilidade de teste durante migração
 const getPillRegion = (): string => {
+  const newIdx3 = content.indexOf('flex flex-col w-full bg-white p-3 rounded-3xl');
+  if (newIdx3 !== -1) {
+    return content.slice(newIdx3, newIdx3 + 12000);
+  }
   const newIdx = content.indexOf('flex flex-col w-full bg-white p-2 rounded-3xl');
   if (newIdx !== -1) {
-    return content.slice(newIdx, newIdx + 8000);
+    return content.slice(newIdx, newIdx + 12000);
   }
   const oldIdx = content.indexOf('flex w-full gap-2 bg-stone-50');
   if (oldIdx !== -1) {
-    return content.slice(content.lastIndexOf('<div className="', oldIdx), oldIdx + 8000);
+    return content.slice(content.lastIndexOf('<div className="', oldIdx), oldIdx + 12000);
   }
   throw new Error('pill do Composer não encontrada');
 };
@@ -44,7 +48,7 @@ const getComposerRegion = (): string => {
   // Volta até o início da div do DOCK
   const start = content.lastIndexOf('<div className="', dockIdx);
   // Região suficientemente grande para conter DOCK + pill + textarea + ações + status
-  return content.slice(start, start + 8000);
+  return content.slice(start, start + 12000);
 };
 
 const getTextareaClass = (): string => {
@@ -58,7 +62,9 @@ describe('COMPOSER-001 — Estrutura: um único Composer', () => {
     expect(content).toMatch(/min-h-\[44px\]/);
     expect(content).toMatch(/rows=\{1\}/);
     expect(content).toMatch(/aria-label="Anexar foto"/);
-    expect(content).toMatch(/aria-label=\{voice\.isRecording \? 'Parar e transcrever' : 'Falar mensagem'\}/);
+    // CHAT-UX-003: voz simplificada — "Falar mensagem" idle, "Parar gravação" + "Cancelar gravação" quando gravando
+    const hasVoiceLabel = content.includes('Falar mensagem') || content.includes('Parar e transcrever');
+    expect(hasVoiceLabel).toBe(true);
     expect(content).toMatch(/aria-label="Enviar mensagem"/);
   });
 
@@ -70,14 +76,18 @@ describe('COMPOSER-001 — Estrutura: um único Composer', () => {
   });
 
   it('T-COMP-3 — texto em várias linhas: textarea e controles no MESMO container', () => {
-    // Pill vertical (CHAT-UX-002) ou pill horizontal legada — contém attach, mic, textarea e enviar
+    // Pill vertical (CHAT-UX-003) ou pill horizontal legada — contém attach, mic, textarea e enviar
     const pill = getPillRegion();
     // Verifica rounded e bg conforme fundação atual (rounded-3xl bg-white) ou legado (rounded-[2rem] bg-stone-50)
     const hasRounded = pill.includes('rounded-3xl') || pill.includes('rounded-[2rem]');
     expect(hasRounded).toBe(true);
     expect(pill.indexOf('<textarea')).toBeGreaterThan(0);
     expect(pill.indexOf('aria-label="Anexar foto"')).toBeGreaterThan(0);
-    expect(pill.indexOf("aria-label={voice.isRecording ? 'Parar e transcrever' : 'Falar mensagem'}")).toBeGreaterThan(0);
+    // CHAT-UX-003: voz simplificada — Falar mensagem (idle) e Parar/Cancelar gravação (recording)
+    const hasMic = pill.includes('Falar mensagem') || pill.includes('Parar e transcrever');
+    expect(hasMic).toBe(true);
+    const hasParar = pill.includes('Parar gravação') || pill.includes('Parar e transcrever');
+    expect(hasParar).toBe(true);
     expect(pill.indexOf('aria-label="Enviar mensagem"')).toBeGreaterThan(0);
     // Em CHAT-UX-002 vertical, textarea vem antes da barra de ações (border-t); enviar é último
     const textareaIdx = pill.indexOf('<textarea');
@@ -187,7 +197,10 @@ describe('COMPOSER-001 — Mobile e acessibilidade', () => {
 
   it('controles continuam sendo <button>', () => {
     expect(content).toMatch(/<button[\s\S]*?aria-label="Anexar foto"/);
-    expect(content).toMatch(/<button[\s\S]*?aria-label=\{voice\.isRecording \? 'Parar e transcrever' : 'Falar mensagem'\}/);
+    // CHAT-UX-003: voz simplificada — Falar mensagem (idle) e Parar/Cancelar gravação
+    const hasFalar = /<button[\s\S]*?aria-label="Falar mensagem"/.test(content);
+    const hasParar = /<button[\s\S]*?aria-label="Parar gravação"/.test(content) || /Parar e transcrever/.test(content);
+    expect(hasFalar || hasParar).toBe(true);
     expect(content).toMatch(/<button[\s\S]*?aria-label="Enviar mensagem"/);
   });
 });
@@ -259,12 +272,16 @@ describe('COMPOSER-001.1 — Correção Estrutural (um único container visual)'
     // Propriedade estrutural: todos os controles e o campo estão dentro da mesma pill
     expect(pill).toMatch(/<textarea/);
     expect(pill).toMatch(/aria-label="Anexar foto"/);
-    expect(pill).toMatch(/aria-label=\{voice\.isRecording \? 'Parar e transcrever' : 'Falar mensagem'\}/);
+    // CHAT-UX-003: voz simplificada — Falar mensagem / Parar gravação / Cancelar gravação
+    const hasMic = pill.includes('Falar mensagem') || pill.includes('Parar e transcrever');
+    expect(hasMic).toBe(true);
+    const hasParar = pill.includes('Parar gravação') || pill.includes('Parar e transcrever');
+    expect(hasParar).toBe(true);
     expect(pill).toMatch(/aria-label="Enviar mensagem"/);
     // Ordem estrutural em CHAT-UX-002 vertical: textarea antes da barra border-t, enviar é último
     const textareaIdx = pill.indexOf('<textarea');
     const anexarIdx = pill.indexOf('aria-label="Anexar foto"');
-    const micIdx = pill.indexOf("aria-label={voice.isRecording ? 'Parar e transcrever'");
+    const micIdx = pill.indexOf('Falar mensagem') !== -1 ? pill.indexOf('Falar mensagem') : pill.indexOf('Parar e transcrever');
     const enviarIdx = pill.indexOf('aria-label="Enviar mensagem"');
     expect(anexarIdx).toBeGreaterThan(-1);
     expect(micIdx).toBeGreaterThan(-1);
@@ -361,9 +378,13 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
   it('F-03 — header nutri com amber controlado e 44px close', () => {
     expect(content).toMatch(/bg-nutri-900/);
     expect(content).toMatch(/bg-amber-50 text-amber-700 border border-amber-100/);
-    expect(content).toMatch(/text-\[11px\]/); // status 11px não 10px
+    // CHAT-UX-003: header mais limpo — avatar 40px, status 10px secundário (antes 48px/11px)
+    const hasNewHeader = content.includes('w-10 h-10') && content.includes('text-white/60');
+    const hasOldHeader = content.includes('w-12 h-12') && content.includes('text-[11px]');
+    expect(hasNewHeader || hasOldHeader).toBe(true);
     expect(content).toMatch(/min-w-\[44px\] min-h-\[44px\] w-11 h-11/);
-    expect(content).toMatch(/w-12 h-12/); // avatar 48px
+    const hasAvatar = content.includes('w-10 h-10') || content.includes('w-12 h-12');
+    expect(hasAvatar).toBe(true);
   });
 
   it('F-04 — conversation com role log e espaço reduzido', () => {
@@ -383,11 +404,109 @@ describe('CHAT-UX-002 — Fundação UX/UI', () => {
 
   it('F-06 — composer vertical com textarea full-width e barra border-t', () => {
     const pill = getPillRegion();
-    expect(pill).toMatch(/flex flex-col w-full bg-white p-2 rounded-3xl/);
+    // CHAT-UX-003: p-3 (antes p-2) para superfície única mais espaçosa
+    const hasPill = pill.includes('flex flex-col w-full bg-white p-3 rounded-3xl') || pill.includes('flex flex-col w-full bg-white p-2 rounded-3xl');
+    expect(hasPill).toBe(true);
     expect(pill).toMatch(/w-full min-w-0 bg-transparent/);
     expect(pill).toMatch(/border-t border-stone-100/);
     expect(pill).toMatch(/focus-within:border-nutri-300/);
-    expect(content).toMatch(/capture="environment"/); // camera affordance
+    expect(content).toMatch(/capture="environment"/); // camera affordance (ainda existe para Tirar foto)
     expect(content).toMatch(/bg-nutri-800/); // enviar nutri
+    // Verifica que não há capture restritivo no input principal (sem capture no gallery)
+    expect(content).toMatch(/accept="image\/\*"/);
+  });
+});
+
+describe('CHAT-UX-003 — Refinamento Mobile (header, 3 sugestões, drag, anexo, voz simplificada)', () => {
+  it('R-01 — exatamente 3 sugestões (evolução, prioridade, análise)', () => {
+    const m = content.match(/const QUICK_ACTIONS_PREMIUM = \[([\s\S]*?)\];/);
+    expect(m).not.toBeNull();
+    const items = (m![1].match(/'[^']+'/g) || []);
+    expect(items.length).toBe(3);
+    expect(items.join(' ')).toMatch(/Como está minha evolução\?/);
+    expect(items.join(' ')).toMatch(/O que devo priorizar hoje\?/);
+    expect(items.join(' ')).toMatch(/Analisar uma refeição/);
+    expect(m![1]).not.toMatch(/Quero rever meu plano/);
+    expect(m![1]).not.toMatch(/O que mudou na minha jornada/);
+    // Free também 3
+    const mFree = content.match(/const QUICK_ACTIONS_FREE = \[([\s\S]*?)\];/);
+    expect(mFree).not.toBeNull();
+    const freeItems = (mFree![1].match(/'[^']+'/g) || []);
+    expect(freeItems.length).toBe(3);
+  });
+
+  it('R-02 — header mais limpo (avatar 40px, status secundário 10px white/60, altura py-3)', () => {
+    expect(content).toMatch(/w-10 h-10/); // avatar 40px (antes 48px)
+    expect(content).toMatch(/px-4 py-3/); // header py-3 não py-4
+    expect(content).toMatch(/text-\[10px\] text-white\/60/); // status secundário
+    expect(content).toMatch(/text-\[9px\]/); // badge 9px
+    expect(content).toMatch(/Premium/);
+    expect(content).toMatch(/gap-3/); // gap reduzido
+  });
+
+  it('R-03 — composer single surface amplia (p-3, min-h-0, textarea w-full, border-t)', () => {
+    const pill = getPillRegion();
+    expect(pill).toMatch(/flex flex-col w-full bg-white p-3 rounded-3xl/);
+    expect(pill).toMatch(/min-h-0/);
+    expect(content).toMatch(/flex-1 min-h-0 p-4/); // conversation min-h-0 para permitir crescimento
+    expect(content).toMatch(/leading-\[1\.6\]/);
+    expect(content).toMatch(/min-h-\[44px\] max-h-\[200px\]/);
+    // Verifica que textarea ocupa largura total acima da barra (não lado a lado)
+    expect(pill.indexOf('<textarea')).toBeLessThan(pill.indexOf('border-t border-stone-100'));
+  });
+
+  it('R-04 — drag bottom-sheet mobile isolado (touch handlers, threshold, não move atrás)', () => {
+    expect(content).toMatch(/const handleTouchStart/);
+    expect(content).toMatch(/const handleTouchMove/);
+    expect(content).toMatch(/const handleTouchEnd/);
+    expect(content).toMatch(/isDragging/);
+    expect(content).toMatch(/dragY/);
+    expect(content).toMatch(/panelRef/);
+    expect(content).toMatch(/onTouchStart=\{handleTouchStart\}/);
+    expect(content).toMatch(/onTouchMove=\{handleTouchMove\}/);
+    expect(content).toMatch(/onTouchEnd=\{handleTouchEnd\}/);
+    expect(content).toMatch(/translateY\(/);
+    expect(content).toMatch(/threshold.*100/);
+    // Verifica que não usa document drag global que move conteúdo atrás
+    expect(content).not.toMatch(/document\.addEventListener\('touchmove'/);
+  });
+
+  it('R-05 — anexo com menu (Tirar foto, Galeria, Arquivo) sem capture restritivo', () => {
+    expect(content).toMatch(/showAttachMenu/);
+    expect(content).toMatch(/cameraInputRef/);
+    expect(content).toMatch(/fileGenericRef/);
+    expect(content).toMatch(/Tirar foto/);
+    expect(content).toMatch(/Escolher da galeria/);
+    expect(content).toMatch(/Arquivo/);
+    expect(content).toMatch(/role="menu"/);
+    expect(content).toMatch(/accept="image\/\*"/);
+    expect(content).toMatch(/accept="\*\/\*"/);
+    // Verifica que menu tem 3 opções e não apenas capture environment
+    expect(content).toMatch(/Camera.*Tirar foto/);
+    expect(content).toMatch(/FileText.*Arquivo/);
+  });
+
+  it('R-06 — voz simplificada durante gravação (esconde anexo, mostra Cancelar e Parar)', () => {
+    // Verifica estrutura condicional voice.isRecording
+    expect(content).toMatch(/\{voice\.isRecording \? \(/);
+    expect(content).toMatch(/aria-label="Cancelar gravação"/);
+    expect(content).toMatch(/aria-label="Parar gravação"/);
+    expect(content).toMatch(/Gravando \{formatElapsedMs/);
+    expect(content).toMatch(/Cancelar/);
+    // Verifica que anexo é escondido durante gravação (não renderiza no branch isRecording)
+    const pill = getPillRegion();
+    // No branch isRecording, não há ImagePlus anexo — apenas Cancelar e Parar
+    expect(pill).toMatch(/voice\.isRecording/);
+    // Verifica que mic simplificado não tem mais condicional complexa com Parar e transcrever
+    expect(content).toMatch(/Falar mensagem/);
+  });
+
+  it('R-07 — composer cresce até 200px com scroll interno (investigado flex constraints)', () => {
+    expect(content).toMatch(/const COMPOSER_MAX_HEIGHT = 200/);
+    expect(content).toMatch(/max-h-\[200px\]/);
+    expect(content).toMatch(/overflowY = textareaRef\.current\.scrollHeight > maxH \? 'auto' : 'hidden'/);
+    // Verifica fix de flex constraints: min-h-0 em conversation e pill
+    expect(content).toMatch(/flex-1 min-h-0 p-4/);
+    expect(content).toMatch(/flex flex-col w-full bg-white p-3.*min-h-0/);
   });
 });
