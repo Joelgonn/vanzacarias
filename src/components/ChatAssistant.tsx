@@ -835,11 +835,11 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               
               {state.messages.map((m, i) => (
                 <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                  <div className={`px-4 py-3 text-[15px] leading-relaxed break-words [overflow-wrap:break-word] shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
+                  <div className={`text-[15px] leading-relaxed break-words [overflow-wrap:break-word] ${
                     m.role === 'user' 
-                      ? 'max-w-[75%] bg-nutri-900 bg-[#1A3B2B] text-white rounded-2xl rounded-tr-sm font-medium' 
-                      : 'max-w-[75%] sm:max-w-[65ch] bg-white border border-stone-200 text-stone-700 rounded-2xl rounded-tl-sm'
-                  } ${m.isError ? 'border-amber-200 bg-amber-50 text-amber-900' : ''}`}>
+                      ? 'max-w-[75%] bg-nutri-900 bg-[#1A3B2B] text-white rounded-2xl rounded-tr-sm font-medium px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]' 
+                      : 'w-full bg-transparent border-0 shadow-none rounded-none px-1 py-2 text-stone-800 text-left'
+                  } ${m.isError ? 'border border-amber-200 bg-amber-50 text-amber-900 rounded-2xl px-4 py-3' : ''}`}>
                     {m.role === 'assistant' ? renderMessage(m.content) : m.content}
                   </div>
                   {m.isError && !state.isLoading && (
@@ -858,7 +858,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               
               {state.streamingText ? (
                 <div className="flex justify-start animate-fade-in">
-                  <div className="max-w-[75%] sm:max-w-[65ch] px-4 py-3 text-[15px] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.04)] break-words [overflow-wrap:break-word] bg-white border border-stone-200 text-stone-700 rounded-2xl rounded-tl-sm">
+                  <div className="w-full bg-transparent border-0 shadow-none rounded-none px-1 py-2 text-[15px] leading-relaxed break-words [overflow-wrap:break-word] text-stone-800 text-left">
                     {renderMessage(state.streamingText)}
                   </div>
                 </div>
@@ -878,9 +878,9 @@ export default function ChatAssistant(props: ChatAssistantProps) {
               )}
             </div>
 
-            <div className="p-3 sm:p-4 shrink-0 relative z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
+            <div className="p-2 sm:p-3 shrink-0 relative z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3">
               
-              <div className={`flex flex-col w-full bg-white p-3 rounded-3xl border border-stone-200 shadow-sm focus-within:border-nutri-300 focus-within:ring-4 focus-within:ring-nutri-50 transition-all min-h-0 ${voice.isRecording ? 'min-h-[72px] justify-center' : isComposerFocused || hasContent ? 'min-h-[140px]' : 'min-h-[72px] justify-center'}`}>
+              <div className={`flex flex-col w-full bg-white p-2.5 rounded-3xl border border-stone-200 shadow-sm transition-all min-h-0 ${voice.isRecording ? 'min-h-[68px] justify-center' : isComposerFocused || hasContent ? 'min-h-[120px]' : 'min-h-[68px] justify-center'}`}>
                 
                 {state.selectedImage && (
                   <div className="flex items-center gap-3 px-2 pb-3 mb-3 border-b border-stone-100 animate-in fade-in slide-in-from-bottom-2">
@@ -905,7 +905,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 )}
 
                 {voice.isRecording ? (
-                  <div className="w-full flex items-center justify-between py-2 px-1 gap-2" aria-live="polite" aria-label="Gravando">
+                  <div className="w-full flex items-center justify-between py-1 px-0 gap-1" aria-live="polite" aria-label="Gravando">
                     <button
                       type="button"
                       onClick={voice.cancel}
@@ -914,16 +914,18 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     >
                       <X size={18} strokeWidth={2.5} />
                     </button>
-                    <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                    <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
                       <span className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0" aria-hidden="true"></span>
-                      <div className="flex items-end gap-0.5 h-4 flex-1 max-w-[120px] justify-center" aria-hidden="true">
+                      <div className="flex items-end gap-0.5 h-4 flex-1 max-w-[160px] justify-center" aria-hidden="true">
                         <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
-                        <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '450ms' }}></span>
-                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '600ms' }}></span>
-                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '750ms' }}></span>
-                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '900ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '120ms' }}></span>
+                        <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: '240ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '360ms' }}></span>
+                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '480ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '600ms' }}></span>
+                        <span className="w-0.5 h-2 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '720ms' }}></span>
+                        <span className="w-0.5 h-4 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '840ms' }}></span>
+                        <span className="w-0.5 h-3 bg-rose-400 rounded-full animate-pulse" style={{ animationDelay: '960ms' }}></span>
                       </div>
                       <span className="text-sm font-mono font-medium text-stone-700 tabular-nums shrink-0">{formatElapsedMs(voice.recordingElapsedMs)}</span>
                     </div>
@@ -933,7 +935,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                       aria-label="Parar gravação"
                       className="min-w-[44px] h-[44px] w-11 h-11 flex items-center justify-center bg-rose-600 text-white hover:bg-rose-700 rounded-full shadow-md transition-all shrink-0 active:scale-95"
                     >
-                      <Square size={14} strokeWidth={2.5} fill="currentColor" />
+                      <Square size={12} strokeWidth={2.5} fill="currentColor" />
                     </button>
                   </div>
                 ) : (
@@ -947,20 +949,14 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                         state.setInput(e.target.value);
                         resizeComposer();
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
                       maxLength={MAX_MESSAGE_LENGTH}
                       placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                       aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                      className={`w-full min-w-0 bg-transparent px-1 text-[15px] outline-none text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-[1.6] min-h-[44px] max-h-[200px] ${!isComposerFocused && !hasContent ? 'py-3 text-center placeholder:text-center' : 'py-3'}`}
+                      className={`w-full min-w-0 bg-transparent border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none px-1 text-[15px] text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto leading-[1.6] min-h-[44px] max-h-[200px] ${!isComposerFocused && !hasContent ? 'py-2.5 text-center placeholder:text-center' : 'py-2.5'}`}
                       disabled={state.isLoading}
                     />
 
-                    <div className="flex items-center justify-between pt-3 mt-3 relative">
+                    <div className="flex items-center justify-between pt-2 mt-2 relative">
                       <div className="flex items-center gap-1">
                         <div className="relative">
                           <button

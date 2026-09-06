@@ -14,24 +14,24 @@ const hookContent = fs.readFileSync(hookPath, 'utf8');
 
 describe('VOZ-012.2 — Formatador do cronômetro', () => {
   it('00:00 no início de uma gravação', () => {
-    expect(formatElapsedMs(0)).toBe('00:00');
+    expect(formatElapsedMs(0)).toBe('0:00');
   });
 
-  it('T2 — o tempo aumenta: 7s vira 00:07, 59s vira 00:59', () => {
-    expect(formatElapsedMs(7_000)).toBe('00:07');
-    expect(formatElapsedMs(59_000)).toBe('00:59');
-    expect(formatElapsedMs(59_999)).toBe('00:59');
+  it('T2 — o tempo aumenta: 7s vira 0:07, 59s vira 0:59', () => {
+    expect(formatElapsedMs(7_000)).toBe('0:07');
+    expect(formatElapsedMs(59_000)).toBe('0:59');
+    expect(formatElapsedMs(59_999)).toBe('0:59');
   });
 
-  it('passa de 1 minuto corretamente (61s → 01:01)', () => {
-    expect(formatElapsedMs(61_000)).toBe('01:01');
-    expect(formatElapsedMs(60_000)).toBe('01:00');
+  it('passa de 1 minuto corretamente (61s → 1:01)', () => {
+    expect(formatElapsedMs(61_000)).toBe('1:01');
+    expect(formatElapsedMs(60_000)).toBe('1:00');
   });
 
-  it('valores inválidos/negativos tratados como 00:00', () => {
-    expect(formatElapsedMs(-500)).toBe('00:00');
-    expect(formatElapsedMs(Number.NaN)).toBe('00:00');
-    expect(formatElapsedMs(Number.POSITIVE_INFINITY)).toBe('00:00');
+  it('valores inválidos/negativos tratados como 0:00', () => {
+    expect(formatElapsedMs(-500)).toBe('0:00');
+    expect(formatElapsedMs(Number.NaN)).toBe('0:00');
+    expect(formatElapsedMs(Number.POSITIVE_INFINITY)).toBe('0:00');
   });
 });
 

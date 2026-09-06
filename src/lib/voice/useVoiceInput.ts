@@ -15,12 +15,12 @@ import {
   type VoiceControllerOptions,
 } from './voiceController';
 
-// VOZ-012.2 — Formatação do cronômetro de gravação (MM:SS, tempo de gravação real).
+// VOZ-012.2 — Formatação do cronômetro de gravação (M:SS, 0:00–0:59 conforme CHAT-UX-004).
 export function formatElapsedMs(ms: number): string {
   const safe = Number.isFinite(ms) && ms > 0 ? ms : 0;
   const totalSeconds = Math.floor(safe / 1000);
   const ss = String(totalSeconds % 60).padStart(2, '0');
-  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const mm = String(Math.floor(totalSeconds / 60));
   return `${mm}:${ss}`;
 }
 
