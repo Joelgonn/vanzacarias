@@ -835,12 +835,28 @@ describe('CHAT-UX-007 — Auto-grow real e waveform flexível', () => {
 
   it('UX7-04 — textarea ocupa a largura disponível e permanece sem borda/outline/ring', () => {
     const pill = getPillRegion();
-    expect(pill).toMatch(/\[grid-area:input\] w-full min-w-0 bg-transparent/);
+    expect(pill).toMatch(/\[grid-area:input\] composer-textarea w-full min-w-0 bg-transparent/);
     expect(pill).toMatch(/border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none/);
     // textarea sem fundo próprio
     const tc = getTextareaClass();
+    expect(tc).toMatch(/composer-textarea/); // classe de integração visual (CHAT-UX-009.1)
     expect(tc).not.toMatch(/bg-white/);
     expect(tc).not.toMatch(/bg-stone/);
+    expect(tc).not.toMatch(/border-stone/);
+    expect(tc).not.toMatch(/shadow(?!-none)/); // shadow-none é reset; nada além disso
+  });
+
+  it('UX7-07 — scrollbar interna do textarea é discreta (CSS dedicado, sem caixa própria)', () => {
+    const cssPath = path.join(process.cwd(), 'src/app/globals.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+    expect(css).toMatch(/\.composer-textarea \{/);
+    expect(css).toMatch(/appearance: none/);
+    expect(css).toMatch(/\.composer-textarea:focus[\s\S]*?outline: none/);
+    expect(css).toMatch(/\.composer-textarea::-webkit-scrollbar \{/);
+    expect(css).toMatch(/\.composer-textarea::-webkit-scrollbar-thumb \{/);
+    expect(css).toMatch(/\.composer-textarea \{[\s\S]*?scrollbar-width: thin/);
+    // garante que o textarea não reintroduz borda/sombra via CSS dedicado
+    expect(css).not.toMatch(/\.composer-textarea \{[\s\S]*?border: 1px/);
   });
 
   it('UX7-05 — waveform elástico: barras flex-1 max-w-[3px], sem largura fixa/artificial', () => {

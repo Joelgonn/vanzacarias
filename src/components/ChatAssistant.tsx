@@ -1108,7 +1108,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                       maxLength={MAX_MESSAGE_LENGTH}
                       placeholder={isRoleAdmin ? "Pesquise por pacientes..." : "Digite sua dúvida..."}
                       aria-label={isRoleAdmin ? "Mensagem para o assistente" : "Digite sua dúvida para a assistente"}
-                      className="[grid-area:input] w-full min-w-0 bg-transparent border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none px-2 py-2 text-[15px] leading-[1.6] text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto min-h-[44px] max-h-[200px] disabled:opacity-60"
+                      className="[grid-area:input] composer-textarea w-full min-w-0 bg-transparent border-0 focus:border-0 focus:ring-0 focus:outline-none ring-0 outline-none shadow-none px-2 py-2 text-[15px] leading-[1.6] text-stone-800 placeholder:text-stone-400 font-medium resize-none overflow-y-auto min-h-[44px] max-h-[200px] disabled:opacity-60"
                       disabled={state.isLoading}
                     />
 
