@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Circle green background - appears 0-200ms -->
+    <group
+        android:name="circle"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0"
+        android:scaleY="0">
+        <path
+            android:fillColor="#76A962"
+            android:pathData="M54,54m-28,0a28,28 0 1,0 56,0a28,28 0 1,0 -56,0" />
+    </group>
+    <!-- Stem and leaf - appears 200-500ms -->
+    <group
+        android:name="stem_leaf"
+        android:pivotX="54"
+        android:pivotY="38"
+        android:scaleX="0"
+        android:scaleY="0">
+        <!-- stem -->
+        <path
+            android:fillColor="#6D4C41"
+            android:pathData="M53,28 L55,28 L55,42 L53,42 Z" />
+        <!-- leaf -->
+        <path
+            android:fillColor="#81C784"
+            android:strokeColor="#66BB6A"
+            android:strokeWidth="1"
+            android:pathData="M55,32 C62,28 68,34 55,38 C48,34 50,30 55,32 Z" />
+    </group>
+    <!-- Apple - appears 500-750ms -->
+    <group
+        android:name="apple"
+        android:pivotX="54"
+        android:pivotY="58"
+        android:scaleX="0"
+        android:scaleY="0">
+        <path
+            android:fillColor="#E53935"
+            android:pathData="M54,42 C46,42 38,48 40,58 C42,68 50,72 54,72 C58,72 66,68 68,58 C70,48 62,42 54,42 Z" />
+        <!-- highlight -->
+        <path
+            android:fillColor="#FFCDD2"
+            android:alpha="0.6"
+            android:pathData="M46,48 C44,50 44,54 48,56 C50,54 48,48 46,48 Z" />
+    </group>
+    <!-- Seeds - appears 750-1000ms -->
+    <group
+        android:name="seeds"
+        android:pivotX="54"
+        android:pivotY="63"
+        android:scaleX="0"
+        android:scaleY="0">
+        <path
+            android:fillColor="#3E2723"
+            android:pathData="M50,60 C50,60 51,62 50,63 C48,62 49,60 50,60 Z M58,60 C58,60 59,62 58,63 C56,62 57,60 58,60 Z M54,66 C54,66 55,68 54,69 C52,68 53,66 54,66 Z" />
+    </group>
+</vector>

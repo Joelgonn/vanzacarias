@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splashBackground">#FFFFFF</color>
+    <color name="splashCircleGreen">#76A962</color>
+    <color name="brandPrimary">#1B3A2E</color>
+    <color name="brandNutri">#5A7A3B</color>
+    <color name="brandSlogan">#6B8F71</color>
+    <color name="brandDivider">#C8DCC8</color>
+</resources>

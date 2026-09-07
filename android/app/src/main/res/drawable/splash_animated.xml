@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_vector">
+    <target
+        android:name="circle"
+        android:animation="@animator/circle_enter" />
+    <target
+        android:name="stem_leaf"
+        android:animation="@animator/stem_leaf_enter" />
+    <target
+        android:name="apple"
+        android:animation="@animator/apple_enter" />
+    <target
+        android:name="seeds"
+        android:animation="@animator/seeds_enter" />
+</animated-vector>
