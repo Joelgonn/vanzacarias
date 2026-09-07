@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { 
   Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, 
-  MessageCircle, LogIn, Instagram, Linkedin, Facebook 
+  MessageCircle, LogIn, Instagram, Linkedin, Facebook, Download
 } from 'lucide-react';
 
 // ==========================================
@@ -192,6 +192,26 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* 4.5 DOWNLOAD APP ANDROID */}
+      <section className="w-full bg-nutri-50 py-16 md:py-20 px-6 lg:px-8 border-t border-stone-100">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-2xl md:text-4xl font-bold text-stone-900 tracking-tight mb-3">
+            Tenha sua saúde sempre com você
+          </h2>
+          <p className="text-stone-500 font-light leading-relaxed text-sm md:text-lg max-w-2xl mx-auto mb-8">
+            Baixe o aplicativo Vanusa Zacarias Nutri para acompanhar seu plano e sua evolução pelo celular.
+          </p>
+          <a
+            href="/downloads/vanzacarias-nutri-1.0.apk"
+            download
+            className="inline-flex items-center gap-2 bg-nutri-900 hover:bg-nutri-800 text-white font-medium py-4 px-8 rounded-2xl md:rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 active:scale-[0.98] hover:-translate-y-0.5"
+          >
+            <Download size={18} />
+            Baixar aplicativo Android
+          </a>
         </div>
       </section>
 
