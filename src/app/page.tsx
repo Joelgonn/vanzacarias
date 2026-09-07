@@ -2,7 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { 
   Sparkles, Leaf, Zap, Brain, Scale, ArrowRight, 
-  MessageCircle, LogIn, Instagram, Linkedin, Facebook, Download
+  MessageCircle, LogIn, Instagram, Linkedin, Facebook, Download,
+  ClipboardList, CalendarHeart, TrendingUp, Smartphone
 } from 'lucide-react';
 
 // ==========================================
@@ -195,23 +196,150 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4.5 DOWNLOAD APP ANDROID */}
-      <section className="w-full bg-nutri-50 py-16 md:py-20 px-6 lg:px-8 border-t border-stone-100">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl md:text-4xl font-bold text-stone-900 tracking-tight mb-3">
-            Tenha sua saúde sempre com você
-          </h2>
-          <p className="text-stone-500 font-light leading-relaxed text-sm md:text-lg max-w-2xl mx-auto mb-8">
-            Baixe o aplicativo Vanusa Zacarias Nutri para acompanhar seu plano e sua evolução pelo celular.
-          </p>
-          <a
-            href="/downloads/vanzacarias-nutri-1.0.apk"
-            download
-            className="inline-flex items-center gap-2 bg-nutri-900 hover:bg-nutri-800 text-white font-medium py-4 px-8 rounded-2xl md:rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 active:scale-[0.98] hover:-translate-y-0.5"
-          >
-            <Download size={18} />
-            Baixar aplicativo Android
-          </a>
+      {/* 4.5 APLICATIVO ANDROID — APRESENTAÇÃO DO PRODUTO */}
+      <section className="w-full bg-nutri-50 py-16 md:py-24 px-6 lg:px-8 border-t border-stone-100">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight mb-3">
+              Seu cuidado nutricional, sempre com você.
+            </h2>
+            <p className="text-stone-500 font-light leading-relaxed text-sm md:text-lg">
+              Plano alimentar, rotina e evolução em um só lugar.
+            </p>
+          </div>
+
+          {/* Showcase editorial premium — 5 aparelhos */}
+          <div className="mb-12 md:mb-14">
+            {/* DESKTOP: composição editorial com hierarquia — 3 famílias de dispositivos + hover sutil */}
+            <div className="hidden md:block relative max-w-[980px] mx-auto">
+              <div className="relative mx-auto h-[520px] max-w-[880px]">
+                {/* FAMÍLIA C - complementar esquerda - hoje - grafite claro */}
+                <div className="absolute left-[3%] top-[24%] w-[155px] -rotate-[2.8deg] opacity-90 bg-transparent group cursor-default transition-all duration-300 ease-out motion-reduce:transition-none hover:z-20 hover:scale-[1.05] hover:-translate-y-1.5 hover:opacity-100">
+                  <div className="bg-zinc-800 rounded-[1.65rem] p-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.13)] relative group-hover:shadow-[0_16px_48px_rgba(0,0,0,0.18)] transition-shadow duration-300 motion-reduce:transition-none">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1.5 bg-zinc-700 rounded-full opacity-60" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/hoje.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando o plano alimentar" width={330} height={710} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white border border-stone-200 rounded-full px-2.5 py-1 text-[10px] font-medium text-stone-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 motion-reduce:transition-none pointer-events-none whitespace-nowrap">Hoje</div>
+                </div>
+                {/* FAMÍLIA B - secundária esquerda - nutricao-do-dia - grafite médio, bezel médio, notch pill discreto */}
+                <div className="absolute left-[14%] top-[6%] w-[190px] -rotate-[1.6deg] z-[2] bg-transparent group cursor-default transition-all duration-300 ease-out motion-reduce:transition-none hover:z-20 hover:scale-[1.05] hover:-translate-y-2">
+                  <div className="bg-zinc-900 rounded-[2rem] p-2 shadow-[0_18px_50px_rgba(0,0,0,0.16)] relative group-hover:shadow-[0_22px_60px_rgba(0,0,0,0.20)] transition-shadow duration-300 motion-reduce:transition-none">
+                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-14 h-3 bg-zinc-800 rounded-b-lg opacity-80" />
+                    <div className="bg-white rounded-[1.45rem] overflow-hidden">
+                      <Image src="/images/app/nutricao-do-dia.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a nutrição do dia" width={380} height={820} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white border border-stone-200 rounded-full px-2.5 py-1 text-[10px] font-medium text-stone-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 motion-reduce:transition-none pointer-events-none whitespace-nowrap">Nutrição do Dia</div>
+                </div>
+                {/* FAMÍLIA A - protagonista centro - meu-dia - moldura escura, bezel fino, notch entalhe, frontal */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-0 w-[232px] z-10 bg-transparent group cursor-default transition-all duration-300 ease-out motion-reduce:transition-none hover:z-20 hover:scale-[1.03] hover:-translate-y-1.5">
+                  <div className="bg-stone-900 rounded-[2.4rem] p-[8px] shadow-[0_28px_80px_rgba(0,0,0,0.22)] relative border border-stone-800 group-hover:shadow-[0_32px_90px_rgba(0,0,0,0.26)] transition-shadow duration-300 motion-reduce:transition-none">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[72px] h-[13px] bg-stone-900 rounded-b-[8px] z-10 border-x border-b border-stone-800" />
+                    <div className="bg-white rounded-[1.9rem] overflow-hidden">
+                      <Image src="/images/app/meu-dia.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando o acompanhamento do dia" width={440} height={920} className="w-full h-auto object-cover" priority={false} />
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white border border-stone-200 rounded-full px-2.5 py-1 text-[10px] font-medium text-stone-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 motion-reduce:transition-none pointer-events-none whitespace-nowrap">Meu Dia</div>
+                </div>
+                {/* FAMÍLIA B - secundária direita - nutri-van - mesma família B, variação sutil câmera */}
+                <div className="absolute right-[14%] top-[6%] w-[190px] rotate-[1.6deg] z-[2] bg-transparent group cursor-default transition-all duration-300 ease-out motion-reduce:transition-none hover:z-20 hover:scale-[1.05] hover:-translate-y-2">
+                  <div className="bg-zinc-900 rounded-[1.95rem] p-[7px] shadow-[0_18px_50px_rgba(0,0,0,0.16)] relative group-hover:shadow-[0_22px_60px_rgba(0,0,0,0.20)] transition-shadow duration-300 motion-reduce:transition-none">
+                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-zinc-700 rounded-full border border-zinc-600 opacity-90" />
+                    <div className="absolute top-1.5 left-1/2 translate-x-3 w-8 h-1 bg-zinc-700 rounded-full opacity-50" />
+                    <div className="bg-white rounded-[1.45rem] overflow-hidden">
+                      <Image src="/images/app/nutri-van.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a assistente Nutri Van" width={380} height={820} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white border border-stone-200 rounded-full px-2.5 py-1 text-[10px] font-medium text-stone-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 motion-reduce:transition-none pointer-events-none whitespace-nowrap">Nutri Van</div>
+                </div>
+                {/* FAMÍLIA C - complementar direita - evolucao - grafite */}
+                <div className="absolute right-[3%] top-[24%] w-[155px] rotate-[2.8deg] opacity-90 bg-transparent group cursor-default transition-all duration-300 ease-out motion-reduce:transition-none hover:z-20 hover:scale-[1.05] hover:-translate-y-1.5 hover:opacity-100">
+                  <div className="bg-neutral-800 rounded-[1.65rem] p-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.13)] relative group-hover:shadow-[0_16px_48px_rgba(0,0,0,0.18)] transition-shadow duration-300 motion-reduce:transition-none">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-8 h-1.5 bg-neutral-700 rounded-full opacity-60" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/evolucao.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a evolução" width={330} height={710} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white border border-stone-200 rounded-full px-2.5 py-1 text-[10px] font-medium text-stone-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 motion-reduce:transition-none pointer-events-none whitespace-nowrap">Evolução</div>
+                </div>
+              </div>
+            </div>
+
+            {/* MOBILE: hierarquia preservada com carrossel */}
+            <div className="md:hidden -mx-6 px-6">
+              <div className="flex justify-center mb-6">
+                <div className="w-[72%] max-w-[280px] bg-transparent">
+                  <div className="bg-stone-900 rounded-[2rem] p-[8px] shadow-[0_20px_60px_rgba(0,0,0,0.20)] relative border border-stone-800">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[64px] h-[12px] bg-stone-900 rounded-b-[7px] z-10" />
+                    <div className="bg-white rounded-[1.5rem] overflow-hidden">
+                      <Image src="/images/app/meu-dia.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando o acompanhamento do dia" width={380} height={820} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3.5 overflow-x-auto snap-x snap-mandatory pb-4 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <div className="snap-center shrink-0 w-[52%] max-w-[200px] bg-transparent">
+                  <div className="bg-zinc-900 rounded-[1.6rem] p-2 shadow-[0_12px_36px_rgba(0,0,0,0.14)] relative">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-12 h-2.5 bg-zinc-800 rounded-b-md opacity-80" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/nutricao-do-dia.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a nutrição do dia" width={320} height={690} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </div>
+                <div className="snap-center shrink-0 w-[52%] max-w-[200px] bg-transparent">
+                  <div className="bg-zinc-900 rounded-[1.6rem] p-[7px] shadow-[0_12px_36px_rgba(0,0,0,0.14)] relative">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-zinc-700 rounded-full border border-zinc-600" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/nutri-van.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a assistente Nutri Van" width={320} height={690} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </div>
+                <div className="snap-center shrink-0 w-[52%] max-w-[200px] bg-transparent">
+                  <div className="bg-zinc-800 rounded-[1.6rem] p-1.5 shadow-[0_12px_36px_rgba(0,0,0,0.14)] relative">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-8 h-1 bg-zinc-700 rounded-full opacity-60" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/evolucao.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando a evolução" width={320} height={690} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </div>
+                <div className="snap-center shrink-0 w-[52%] max-w-[200px] bg-transparent">
+                  <div className="bg-neutral-800 rounded-[1.6rem] p-1.5 shadow-[0_12px_36px_rgba(0,0,0,0.14)] relative">
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 w-7 h-1 bg-neutral-700 rounded-full opacity-60" />
+                    <div className="bg-white rounded-[1.2rem] overflow-hidden">
+                      <Image src="/images/app/hoje.jpeg" alt="Aplicativo Vanusa Zacarias Nutri mostrando o plano alimentar" width={320} height={690} className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-center text-[11px] text-stone-400 font-light mt-1 tracking-wide">Deslize para ver mais telas →</p>
+            </div>
+          </div>
+
+          <div className="max-w-4xl mx-auto bg-white border border-stone-100 rounded-[2rem] p-8 md:p-10 shadow-sm flex flex-col md:flex-row items-center md:items-center justify-between gap-8">
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                <Smartphone size={18} className="text-nutri-800" />
+                <span className="text-xs font-bold tracking-[0.18em] uppercase text-nutri-800">Aplicativo Android</span>
+              </div>
+              <p className="text-stone-700 font-medium leading-snug text-base md:text-lg">Leve seu acompanhamento nutricional com você.</p>
+              <p className="text-stone-400 text-xs md:text-sm font-light mt-2">Grátis para pacientes Vanusa Zacarias Nutri</p>
+            </div>
+            <div className="flex flex-col items-center md:items-end gap-3 w-full md:w-auto">
+              <a
+                href="/downloads/vanzacarias-nutri-1.0.apk"
+                download
+                className="w-full md:w-auto inline-flex items-center justify-center gap-2 bg-nutri-900 hover:bg-nutri-800 text-white font-medium py-4 px-8 rounded-2xl md:rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 active:scale-[0.98] hover:-translate-y-0.5"
+              >
+                <Download size={18} />
+                Baixar aplicativo Android
+              </a>
+              <p className="text-[11px] text-stone-400 font-light text-center md:text-right max-w-[320px] leading-relaxed">
+                Como instalar: baixe o aplicativo, abra o arquivo no celular e autorize a instalação quando solicitado.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
