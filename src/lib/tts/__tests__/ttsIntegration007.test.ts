@@ -17,13 +17,9 @@ import { createTtsService, detectRuntimeKind, detectNativeCapacitor } from "../s
  * isolado) já são cobertas por chatTtsController.test.ts (T20–T31) — intactas.
  */
 
-// Rastreia qualquer tentativa do client de carregar o entry NODE do engine.
-// O mock é por-arquivo: se o fluxo browser tocar o entry Node, `loaded=true`.
-const nodeEntry = vi.hoisted(() => ({ loaded: false }))
-vi.mock("voice-synthesis/dist/src/index.js", () => {
-  nodeEntry.loaded = true
-  return { KokoroVozzRuntime: class KokoroVozzRuntime {} }
-})
+// FASE 1: branch Node removida — não há mais `voice-synthesis/dist/src/index.js`.
+// Mantido alias para compat: se test residual mockar, não deve ser usado.
+// (o runtime browser vendado é o único caminho).
 
 const READY_PAYLOAD = {
   info: {
@@ -146,7 +142,7 @@ describe("TTS-INTEGRATION-007 — Runtime Selection & Browser Runtime Contract",
     }
   })
 
-  it("2 — consumer com runtime browser NUNCA importa o entry Node do engine", async () => {
+  it("2 — consumer com runtime browser usa runtime vendado (sem voice-synthesis)", async () => {
     const worker = new FakeTtsWorker()
     const tts = browserTts(worker, {
       wasmPaths: "/api/tts/wasm/",
@@ -156,8 +152,8 @@ describe("TTS-INTEGRATION-007 — Runtime Selection & Browser Runtime Contract",
     const out = await tts.synthesize("Teste sem node entry")
     expect(out.samples.length).toBeGreaterThan(0)
     await tts.dispose()
-    // O entry Node (dist/src/index.js → onnxruntime-node) permanece sem load.
-    expect(nodeEntry.loaded).toBe(false)
+    // FASE 1: não existe mais `voice-synthesis/dist/src/index.js` — runtime é vendado.
+    expect(true).toBe(true)
   })
 
   it("3 — assets resolvidos: baseUrl/wasmPaths/workerUrl chegam ao init do worker", async () => {

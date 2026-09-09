@@ -37,22 +37,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // TTS-INTEGRATION-007: o Browser Runtime real (`voice-synthesis` subpath
-  // `dist/src/runtime/browser/index.js`) é importado SOMENTE no bundle client,
-  // dentro de um Worker dedicado (onnxruntime-web/WASM isolados da main thread).
-  // No APP Server o pacote `voice-synthesis` segue EXTERNO (serverExternalPackages)
-  // para preservar o engine Node real (onnxruntime-node) caso usado no servidor.
-  // As proteções do TTS-003 foram reduzidas ao essencial: apenas o resolver
-  // `onnxruntime-node` → stub no bundle CLIENT, para que nenhum chunk client
-  // contenha backend nativo. Removidos os aliases `voice-synthesis*` → stub,
-  // que bloqueavam o subpath browser (D03/D04 — remoção com evidência: o client
-  // não importa mais o entry Node; ver docs/TTS-INTEGRATION-007-REPORT.md).
-  serverExternalPackages: ["voice-synthesis", "onnxruntime-node"],
+  // TTS-CAP-004 FASE 1: runtime browser vendado (`src/lib/tts/runtime/browser/*`)
+  // — sem `voice-synthesis` externo. `serverExternalPackages` não precisa mais
+  // listar `voice-synthesis`; mantido `onnxruntime-node` apenas como stub client
+  // legado (não usado em produção browser; worker usa onnxruntime-web).
+  serverExternalPackages: ["onnxruntime-node"],
   webpack(config, { isServer }) {
     config.resolve = config.resolve ?? {};
     config.resolve.alias = config.resolve.alias ?? {};
     if (!isServer) {
-      const stub = path.resolve(__dirname, "src/lib/tts/stubs/empty.ts");
+      const stub = path.join(process.cwd(), "src", "lib", "tts", "stubs", "empty.ts");
       config.resolve.alias["onnxruntime-node"] = stub;
     }
     return config;

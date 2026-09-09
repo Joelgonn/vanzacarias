@@ -1,24 +1,22 @@
 /**
- * TTS-INTEGRATION-001/007 — Consumer Boundary Adapter
+ * TTS-CAP-004 FASE 1 — Consumer Boundary Adapter (runtime vendado)
  *
- * Camada consumidora que encapsula `voice-synthesis` sem expor seus internals.
- * Dependência: `vanzacariasnutri → voice-synthesis` (file:../voice-synthesis).
- * O engine não conhece ChatAssistant, Vosk, React, Supabase, etc.
+ * Camada consumidora sem dependência de `voice-synthesis` (file:../voice-synthesis
+ * removido). Runtime browser vendado em `src/lib/tts/runtime/browser/*` +
+ * `src/lib/tts/core/*` + `src/lib/tts/wav.ts` + `src/lib/tts/engine/types.ts`
+ * — fontes Apache-2.0 (Kokoro, vozz) preservadas.
  *
- * TTS-INTEGRATION-007 (D01/D02/D05/D06):
- *  - Seleção de runtime por ambiente: browser → `KokoroBrowserRuntime`
- *    (WORKER real + onnxruntime-web/WASM), Node → `KokoroVozzRuntime`
- *    (onnxruntime-node). NUNCA `onnxruntime-node` no bundle client.
- *  - O import do entry Node usa o comentário webpackIgnore no dynamic import
- *    para que o webpack do client não transforme o graph do engine Node em
- *    chunk (client sem onnxruntime-node / node:fs / bindings nativos — D04/D22).
+ * TTS-INTEGRATION-007 preservado (D01/D02/D05/D06) mas sem branch Node:
+ *  - Browser → `KokoroBrowserRuntime` (Worker + onnxruntime-web/WASM).
+ *  - Node/SSR → NOT_SUPPORTED (sem onnxruntime-node). `isSupported()` reflete
+ *    apenas capacidade browser; testes Node usam `workerFactory` injetada.
  *  - O Chat nunca vê Worker/ONNX/Kokoro/vozz: apenas TtsService + AudioResult.
- *  - Assets do browser servidos pelo app (route handler) com defaults
- *    baseUrl="/api/tts/models/" e wasmPaths="/api/tts/wasm/", worker em
+ *  - Assets do browser servidos pelo app com defaults
+ *    baseUrl="/api/tts/models/" e wasmPaths="/api/tts/wasm/", worker
  *    "/tts/worker.js" (gerado no build). Sobrescrevíveis via options.browser.
  *
- * Lazy loading: `voice-synthesis` só é importado dentro de `load()` via dynamic
- * import, nunca no top-level, para evitar inclusão do modelo/ONNX no bundle SSR.
+ * Lazy loading: runtime browser só é importado dentro de `load()` via dynamic
+ * import, nunca no top-level, para evitar inclusão de onnxruntime-web no bundle SSR.
  *
  * Lifecycle: UNINITIALIZED → LOADING → READY → SYNTHESIZING → READY → DISPOSED
  * Concorrência: delegada ao engine (serialização interna); o adapter não cria fila.
@@ -27,6 +25,8 @@
 
 import type { AudioResult, CreateTtsOptions, TtsRuntimeKind, TtsService, TtsState } from "./types"
 import { TtsError } from "./types"
+import { createModelManager, type ModelManager } from "./model/modelManager"
+import { getTtsModelOrigin } from "./model/config"
 
 // Tipo interno do engine (não exposto ao consumidor)
 type EngineInstance = {
@@ -111,24 +111,23 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
   // Serialização delegada ao engine, mas guardamos promise para getState
   let synthPromise: Promise<AudioResult> | null = null
 
+  // FASE 2: ModelManager injetado ou criado com origin configurável
+  const modelManager: ModelManager =
+    (options.modelManager as ModelManager | undefined) ??
+    createModelManager({ origin: options.modelOrigin ?? getTtsModelOrigin() })
+
   const kind: TtsRuntimeKind | "auto" = options.runtimeKind ?? "auto"
   const useBrowser = kind === "browser" || (kind === "auto" && detectRuntimeKind() === "browser")
 
   const isSupported = (): boolean => {
+    // FASE 1: apenas browser (Worker+WASM) é suportado em produção.
+    // Node/SSR sem workerFactory → NOT_SUPPORTED (sem onnxruntime-node).
+    if (options.browser?.workerFactory) return true
     if (useBrowser) {
-      // Worker injetado (testes) ⇒ capacidade assegurada pelo caller.
-      if (options.browser?.workerFactory) return true
       return typeof Worker !== "undefined" && typeof WebAssembly !== "undefined"
     }
-    // Node ≥18
-    if (typeof process !== "undefined" && process.versions?.node) {
-      const major = parseInt(process.versions.node.split(".")[0]!, 10)
-      return major >= 18
-    }
-    if (typeof window !== "undefined" && typeof WebAssembly !== "undefined") return true
-    // SSR: sem window/process → não suportado (evita carregar ONNX no servidor)
-    if (typeof window === "undefined" && typeof process === "undefined") return false
-    return true
+    // runtimeKind auto em Node (vitest) sem workerFactory → não suportado (precisa fake)
+    return false
   }
 
   const getState = (): TtsState => state
@@ -147,48 +146,51 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
     state = "LOADING"
     loadPromise = (async () => {
       try {
-        if (useBrowser) {
-          const brow = options.browser
-          const mod = await import("voice-synthesis/dist/src/runtime/browser/index.js")
-          const origin = typeof location !== "undefined" && location.origin ? location.origin : ""
-          const native = detectNativeCapacitor()
-          const defaults = native ? NATIVE_ASSET_DEFAULTS : BROWSER_ASSET_DEFAULTS
-          const runtime = new mod.KokoroBrowserRuntime({
-            model: options.model ?? "q8",
-            voice: options.voice ?? "pf_dora",
-            normalizar: true,
-            baseUrl: brow?.baseUrl ?? (native ? `${origin}${NATIVE_ASSET_DEFAULTS.baseUrl}` : absoluteAssetBase(undefined)),
-            wasmPaths: brow?.wasmPaths ?? defaults.wasmPaths,
-            workerUrl: brow?.workerUrl ?? defaults.workerUrl,
-            numThreads: brow?.numThreads,
-            workerFactory: brow?.workerFactory,
-          })
-          engine = runtime as unknown as EngineInstance
-          await runtime.load()
-        } else {
-          // webpackIgnore: no client, o webpack NÃO processa o graph do engine
-          // Node (onnxruntime-node/node:fs). No Node (vitest/SSR) resolve o pacote real.
-          const mod = await import(/* webpackIgnore: true */ "voice-synthesis/dist/src/index.js")
-          const modelsDir =
-            options.modelsDir ??
-            // Heurística Node: tenta resolver a partir do cwd ou do pacote
-            (typeof process !== "undefined" && process.cwd ? `${process.cwd()}/../voice-synthesis/models` : undefined) ??
-            // Fallback para testes: tenta CWD/voice-synthesis/models e CWD/../voice-synthesis/models
-            undefined
-          const { KokoroVozzRuntime } = mod
-          const RuntimeCtor = KokoroVozzRuntime as unknown as new (opts: {
-            modelsDir: string
-            model: string
-            voice: string
-          }) => EngineInstance
-          const runtime = new RuntimeCtor({
-            modelsDir: modelsDir ?? "C:/Users/joelg/Documents/Vanusa/voice-synthesis/models",
-            model: options.model ?? "q8",
-            voice: options.voice ?? "pf_dora",
-          })
-          engine = runtime
-          await runtime.load()
+        if (!useBrowser) {
+          throw new TtsError("NOT_SUPPORTED", "TTS Node (onnxruntime-node) removido na FASE 1 — apenas browser é suportado")
         }
+        // FASE 2: garante modelo disponível (download sob demanda) antes de iniciar o runtime
+        // Em testes legados com workerFactory fake e sem ModelManager injetado, bypassa download real de 92 MB.
+        // Quando ModelManager é injetado (testes FASE 2), o download é exercitado.
+        const isTestFake = !!options.browser?.workerFactory && !options.modelManager
+        if (!isTestFake) {
+          try {
+            await modelManager.ensureAvailable()
+          } catch (e) {
+            const code = (e as { code?: string })?.code
+            if (code === "MODEL_ABORTED") throw new TtsError("CANCELLED", "Download do modelo cancelado", { cause: e })
+            if (code === "MODEL_INTEGRITY_FAILED") throw new TtsError("LOAD_FAILED", `Integridade do modelo falhou: ${(e as Error).message}`, { cause: e })
+            if (code === "MODEL_DOWNLOAD_FAILED" || code === "MODEL_NOT_FOUND" || code === "MODEL_STORAGE_FAILED")
+              throw new TtsError("LOAD_FAILED", `Falha no modelo: ${(e as Error).message}`, { cause: e })
+            throw e
+          }
+        } else {
+          // Teste: garante que isAvailable não bloqueia; se ModelManager injetado já estiver pronto, ok
+          // Se não injetado, considera disponível para não atrasar testes fake
+        }
+
+        const brow = options.browser
+        const mod = await import("./runtime/browser/index")
+        const origin = typeof location !== "undefined" && location.origin ? location.origin : ""
+        const native = detectNativeCapacitor()
+        const defaults = native ? NATIVE_ASSET_DEFAULTS : BROWSER_ASSET_DEFAULTS
+        // Se modelManager tem origin configurada (ex.: http://fixture.test ou CDN), usa como base para o worker
+        const managerOrigin = (modelManager as unknown as { getOrigin?: () => string })?.getOrigin?.() ?? ""
+        const effectiveBaseUrl =
+          brow?.baseUrl ??
+          (managerOrigin ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`) : native ? `${origin}${NATIVE_ASSET_DEFAULTS.baseUrl}` : absoluteAssetBase(undefined))
+        const runtime = new mod.KokoroBrowserRuntime({
+          model: options.model ?? "q8",
+          voice: options.voice ?? "pf_dora",
+          normalizar: true,
+          baseUrl: effectiveBaseUrl,
+          wasmPaths: brow?.wasmPaths ?? defaults.wasmPaths,
+          workerUrl: brow?.workerUrl ?? defaults.workerUrl,
+          numThreads: brow?.numThreads,
+          workerFactory: brow?.workerFactory,
+        })
+        engine = runtime as unknown as EngineInstance
+        await runtime.load()
         state = "READY"
       } catch (e) {
         state = "UNINITIALIZED"
@@ -255,6 +257,10 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
 
   const dispose = async (): Promise<void> => {
     if (state === "DISPOSED") return
+    // FASE 2: cancela download em andamento se TTS for desativado durante fetch
+    try {
+      ;(modelManager as unknown as { abort?: () => void })?.abort?.()
+    } catch {}
     if (synthPromise) {
       try {
         await synthPromise

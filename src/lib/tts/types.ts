@@ -61,6 +61,10 @@ export interface CreateTtsOptions {
   readonly runtimeKind?: "browser" | "node"
   /** Passthrough para KokoroBrowserRuntime quando o runtime é o browser. */
   readonly browser?: TtsBrowserRuntimeOptions
+  /** ModelManager injetado (testes); se omitido, cria default com origin configurável. */
+  readonly modelManager?: unknown
+  /** Origem HTTPS do pacote do modelo (ex.: https://cdn.example/tts); se omitido usa NEXT_PUBLIC_TTS_ASSETS_ORIGIN ou same-origin. */
+  readonly modelOrigin?: string
 }
 
 /**

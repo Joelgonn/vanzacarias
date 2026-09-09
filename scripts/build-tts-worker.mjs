@@ -3,21 +3,21 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 /**
- * TTS-INTEGRATION-007 (D05/D06) — Gera o bundle standalone do Worker do
- * Browser Runtime em `public/tts/worker.js`.
+ * TTS-CAP-004 FASE 1 — Gera o bundle standalone do Worker do Browser Runtime
+ * em `public/tts/worker.js`.
  *
  * O chunk roda em um `Worker({ type: "module" })` com onnxruntime-web
  * (variant extern-wasm) embutido — o main thread nunca importa onnxruntime-web.
- * Fonte: `voice-synthesis/src/runtime/browser/worker.ts` (file:../voice-synthesis).
+ * Fonte: runtime vendado interno `src/lib/tts/runtime/browser/worker.ts`
+ * (sem dependência de `voice-synthesis` / file:../voice-synthesis).
  *
  * Executado via `predev`/`prebuild`.
  */
 const appRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const vsRoot = path.join(appRoot, "node_modules", "voice-synthesis")
 const outfile = path.join(appRoot, "public", "tts", "worker.js")
 
 await esbuild.build({
-  entryPoints: [path.join(vsRoot, "src", "runtime", "browser", "worker.ts")],
+  entryPoints: [path.join(appRoot, "src", "lib", "tts", "runtime", "browser", "worker.ts")],
   outfile,
   bundle: true,
   format: "esm",
