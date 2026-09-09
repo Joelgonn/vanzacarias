@@ -70,6 +70,24 @@ Nenhuma alteração. Regra sequencial mantida (`Vosk → libera → Chat → Kok
 2. Criar credencial de teste (ou usar conta controlada) e executar o fluxo real no RMX3461: login → `/api/poc/whoami` → Chat streaming → TTS local → Vosk sequencial.
 3. Build local mínimo dedicado (login+Chat) para o shell Capacitor, mantendo o deploy web intacto.
 
+## COMMIT E DEPLOY
+
+- Commit: `9fa1b4b feat: testando pela primeira vez audio no chat` (contém CAP-PROD-003: serverAuth Bearer+cookie, CORS restrito https://localhost, API_BASE, chatApiFetch, /api/poc/whoami, hybridApi.test.ts) — working tree clean, já existente em origin/main antes desta operação
+- Branch: `main`
+- Push: PASS — `git push origin main` → Everything up-to-date (origin/main = 9fa1b4b)
+- Deploy: BLOCKED — mecanismo oficial é Git integration Vercel (projeto `vanzacarias` → `https://vanzacarias-mu.vercel.app`, `capacitor.config.ts:8`). Vercel CLI sem credenciais (`vercel ls` → No existing credentials); Git push já realizado mas backend publicado NÃO contém o código do CAP-PROD-003 (evidência § abaixo); sem token não há como forçar redeploy nesta sessão; não criado novo mecanismo
+- URL: `https://vanzacarias-mu.vercel.app`
+- GET /api/poc/whoami: FAIL — esperado 401, obtido **404** (Next 404 page, `X-Matched-Path: /404`) — rota PoC não existe no backend publicado
+- OPTIONS CORS: FAIL — `OPTIONS /api/poc/whoami` com `Origin: https://localhost` → **204** mas **sem `Access-Control-Allow-Origin`** (headers: Content-Disposition, Strict-Transport-Security, X-Matched-Path:/404, X-Vercel-Cache:BYPASS, sem ACAO; esperado `Access-Control-Allow-Origin: https://localhost` + `Authorization, Content-Type`)
+- Bearer: NOT EXECUTED — credential unavailable — sem credencial de teste no ambiente, não simulado (regra §6.3)
+
+Validação local desta operação (2026-09-09 09:21 UTC):
+- `npm test` → 575 passed (575) — PASS
+- `npm run typecheck` → PASS (tsc --noEmit sem erros)
+- `npm run build` → PASS (Next 16.1.6 webpack, 7 workers, rota /api/poc/whoami presente no build local)
+
+Evidência deploy: `GET /api/poc/whoami` 404 + `OPTIONS` 204 sem ACAO confirma backend publicado stale (commit 9fa1b4b não deployado). `GET /api/nutri-assistant/patient` → 405 MethodNotAllowed confirma que outras rotas /api existem, mas a PoC não.
+
 ---
 
-**GATE: PASS COM RESSALVAS** — arquitetura implementada corretamente no código (Bearer + CORS restrito + API_BASE + transporte do Chat + rota PoC), versão web íntegra (typecheck/testes/build verdes) e motores locais preservados. Ressalva explícita: o teste físico ponta-a-ponta depende de pré-condições externas (credencial de teste + redeploy do backend) — **registrado, sem simulação**. **STOP.**
+**GATE: PASS COM RESSALVAS (código) / BLOCKED (deploy)** — arquitetura implementada corretamente no código (Bearer + CORS restrito + API_BASE + transporte do Chat + rota PoC), versão web íntegra (typecheck/testes/build verdes) e motores locais preservados. Ressalva explícita: o teste físico ponta-a-ponta depende de pré-condições externas (credencial de teste + redeploy do backend) — **registrado, sem simulação**. Deploy BLOCKED nesta sessão por falta de credenciais Vercel / Git integration não publicou o commit. **STOP.**
