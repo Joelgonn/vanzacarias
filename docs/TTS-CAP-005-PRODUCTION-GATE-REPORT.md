@@ -2,6 +2,20 @@
 
 > Data: 2026-09-09 · Branch `main` b055937 · Vercel READY (vanzacarias) · APK 91,4 MB (95 875 195 B) · Device RMX3461 Android 11 SDK 30 arm64-v8a WebView 151.0.7922.199 · Origin `https://raw.githubusercontent.com/Joelgonn/vanzacarias/tts-assets-v1/`
 
+## Execução do Production Release (db2494a) — 2026-09-09
+
+Registro desta rodada (não altera os resultados históricos abaixo):
+
+- **Commit publicado:** `db2494a feat(tts): release on-demand Android TTS` (3 docs de gate) — push para `origin/main` OK (`b055937..db2494a main -> main`; branch `main` = `[origin/main]`).
+- **Regressão final:** `npm test` **588/588 PASS** · `npm run typecheck` PASS · `npm run build` PASS.
+- **Produção web:** `https://vanzacarias-mu.vercel.app` → **200**.
+- **Backend de produção (CAP-PROD-003 deployado):** `GET /api/poc/whoami` sem auth → **401** (rota presente); `OPTIONS /api/poc/whoami` com `Origin: https://localhost` → **204** com `Access-Control-Allow-Origin: https://localhost` (sem `*`) + `Allow-Methods/Headers`; `GET /tts/worker.js` → **200** (494 008).
+- **Assets HTTPS (raw, branch `tts-assets-v1`):** `model_quantized.onnx` → 200 (92 361 116) · `tokenizer.json` → 200 (3 497) · `voices/pf_dora.bin` → 200 (522 240).
+- **APK (inspeção zip, build limpo 95 856 556 B):** ausentes `model_quantized.onnx`, `tokenizer.json`, `pf_dora.bin`, `voices/pf_dora`, `onnxruntime-node`, `voice-synthesis` — modelo fora do APK, obtido sob demanda.
+- **Origem:** `NEXT_PUBLIC_TTS_ASSETS_ORIGIN` presente no `.env.local`; `DEFAULT_TTS_ASSETS_ORIGIN` (raw) hardcoded no código; dashboard Vercel não acessível (verificado indiretamente por probes).
+
+---
+
 ## 1. Objetivo
 
 Validar o último gate antes da produção: Vercel READY + Chat real + Vosk ↔ TTS + persistência + performance + regressão, sem redesenhar arquitetura FASE 3/4.
