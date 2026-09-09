@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { createAudioPlayer, createFakeAudioPlayer } from "../player"
+import { createMockDomAudio } from "./helpers/mockAudioContext"
 import type { AudioResult } from "../types"
 
 function fakeAudio(durationSec = 1): AudioResult {
@@ -206,6 +207,122 @@ describe("Audio Player — transporte TTS-INTEGRATION-003", () => {
       const player = createFakeAudioPlayer()
       player.dispose()
       expect(player.isPlaying()).toBe(false)
+    })
+  })
+
+  describe("unlock TTS-PROD-FIX-001 (autoplay / AudioContext)", () => {
+    it("FIX-P1 — unlock com contexto running → ok, sem chamar resume", async () => {
+      const dom = createMockDomAudio({ state: "running" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const r = await player.unlock()
+      expect(r).toEqual({ ok: true, state: "running" })
+      expect(dom.resumeCalls.length).toBe(0)
+    })
+
+    it("FIX-P2 — unlock com contexto suspended + resume ok → running", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "ok" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const r = await player.unlock()
+      expect(r).toEqual({ ok: true, state: "running" })
+      expect(dom.resumeCalls.length).toBe(1)
+      expect(dom.getState()).toBe("running")
+    })
+
+    it("FIX-P3 — unlock: resume() rejeita (sem gesto) → ok:false + erro real, não engole", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "reject" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const r = await player.unlock()
+      expect(r.ok).toBe(false)
+      expect(r.state).toBe("suspended")
+      expect(r.error).toContain("NotAllowedError")
+    })
+
+    it("FIX-P4 — unlock: resume() resolve mas contexto segue suspended → ok:false informativo", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "stay-suspended" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const r = await player.unlock()
+      expect(r.ok).toBe(false)
+      expect(r.state).toBe("suspended")
+      expect(r.error).toContain("resume() não deixou o contexto running")
+    })
+
+    it("FIX-P5 — unlock idempotente e recupera após desbloqueio real", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "reject" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const blocked = await player.unlock()
+      expect(blocked.ok).toBe(false)
+      // Gesto do usuário chega: contexto volta a running
+      dom.setResumeMode("ok")
+      dom.setState("suspended")
+      const recovered = await player.unlock()
+      expect(recovered).toEqual({ ok: true, state: "running" })
+      // Idempotente: novo unlock com running não chama resume de novo
+      const again = await player.unlock()
+      expect(again).toEqual({ ok: true, state: "running" })
+      expect(dom.resumeCalls.length).toBe(2)
+    })
+
+    it("FIX-P6 — contexto fechado: unlock ok:false e play não inicia source", async () => {
+      const dom = createMockDomAudio({ state: "closed" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const r = await player.unlock()
+      expect(r.ok).toBe(false)
+      expect(r.state).toBe("closed")
+      await expect(player.play(fakeAudio(1))).rejects.toThrow(/AudioContext não está running/)
+      expect(dom.sources.length).toBe(0)
+      expect(player.isPlaying()).toBe(false)
+    })
+
+    it("FIX-P7 — play com contexto bloqueado REJEITA e não cria falso PLAYING/source", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "reject" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      await expect(player.play(fakeAudio(2))).rejects.toThrow(
+        /AudioContext não está running \(suspended: NotAllowedError/
+      )
+      expect(dom.sources.length).toBe(0)
+      expect(player.isPlaying()).toBe(false)
+      expect(player.isPaused()).toBe(false)
+    })
+
+    it("FIX-P8 — play com contexto running mantém fast-path síncrono (regressão)", () => {
+      const dom = createMockDomAudio({ state: "running" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const p = player.play(fakeAudio(2))
+      // Sem espera: source criado imediatamente no caminho já desbloqueado
+      expect(dom.sources.length).toBe(1)
+      expect(player.isPlaying()).toBe(true)
+      dom.sources[0]!.onended?.()
+      return p
+    })
+
+    it("FIX-P9 — resume bloqueado mantém PAUSED sem recriar source", async () => {
+      const dom = createMockDomAudio({ state: "running" })
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const p = player.play(fakeAudio(10))
+      dom.sources[0]!.onended = () => {}
+      dom.setTime(1.5)
+      player.pause()
+      expect(player.isPaused()).toBe(true)
+      // Navegador suspende o contexto enquanto pausado (ex.: troca de aba)
+      dom.setState("suspended")
+      dom.setResumeMode("reject")
+      await player.resume()
+      // Permanece PAUSED; nenhum source novo foi criado no silêncio
+      expect(player.isPaused()).toBe(true)
+      expect(player.isPlaying()).toBe(false)
+      expect(dom.sources.length).toBe(1)
+      void p
+    })
+
+    it("FIX-P10 — contexto sem suporte (createAudioContext lança): unlock ok:false state none", async () => {
+      const player = createAudioPlayer({
+        createAudioContext: () => {
+          throw new Error("AudioContext não suportado neste ambiente")
+        },
+      })
+      const r = await player.unlock()
+      expect(r).toMatchObject({ ok: false, state: "none" })
+      expect(r.error).toContain("não suportado")
     })
   })
 })

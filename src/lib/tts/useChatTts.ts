@@ -64,6 +64,10 @@ export function useChatTts(options: UseChatTtsOptions = {}) {
   const setEnabled = useCallback((enabled: boolean) => controller.setEnabled(enabled), [controller]);
   const noteResponse = useCallback((markdown: string) => controller.noteResponse(markdown), [controller]);
   const invalidate = useCallback(() => controller.invalidate(), [controller]);
+  /** TTS-PROD-FIX-001: desbloqueia o AudioContext dentro do gesto (send/toggle). */
+  const unlock = useCallback(() => {
+    void controller.unlock();
+  }, [controller]);
 
-  return { ui, toggle, replay, stop, setEnabled, noteResponse, invalidate };
+  return { ui, toggle, replay, stop, setEnabled, noteResponse, invalidate, unlock };
 }

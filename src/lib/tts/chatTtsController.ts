@@ -30,6 +30,7 @@
  */
 
 import type { TtsOrchestrator, TtsOrchestratorState } from "./orchestrator"
+import type { AudioUnlockResult } from "./player"
 import { buildSpeakable } from "./speakable"
 import { getTtsEnabled, setTtsEnabled, subscribeTts } from "./preference"
 
@@ -60,6 +61,12 @@ export interface ChatTtsController {
   noteResponse(markdown: string): void
   /** Nova interação do usuário iniciou — interrompe TTS. */
   invalidate(): void
+  /**
+   * TTS-PROD-FIX-001: desbloqueia o AudioContext dentro do gesto do usuário
+   * (antes de a resposta do Chat disparar o autoplay). Best-effort: se falhar,
+   * o estado de erro permanece observável via phase=error no speak seguinte.
+   */
+  unlock(): Promise<AudioUnlockResult | null>
   /** Ação do controle único do Chat (ciclo OFF→ON→Play→Pause→Resume→Replay→OFF). */
   toggleAction(): void
   /** Ação explícita de replay (acessível fora do ciclo). */
@@ -225,6 +232,24 @@ export function createChatTtsController(options: CreateChatTtsOptions = {}): Cha
     } catch {}
   }
 
+  /**
+   * TTS-PROD-FIX-001: cria (se preciso) o orchestrator e chama player.unlock().
+   * Retorna o resultado real — não engole a falha do resume().
+   */
+  const unlock = async (): Promise<AudioUnlockResult | null> => {
+    if (disposed) return null
+    try {
+      const o = await ensureOrch()
+      return await o.unlock()
+    } catch (e) {
+      return {
+        ok: false,
+        state: "none",
+        error: e instanceof Error ? e.message : String(e),
+      }
+    }
+  }
+
   const replay = (): void => {
     if (disposed) return
     if (!target?.eligible) return
@@ -321,6 +346,7 @@ export function createChatTtsController(options: CreateChatTtsOptions = {}): Cha
     subscribe,
     noteResponse,
     invalidate,
+    unlock,
     toggleAction,
     replay,
     stop,

@@ -14,11 +14,21 @@
 
 import type { AudioResult } from "./types"
 
+/** Resultado do unlock do AudioContext (TTS-PROD-FIX-001). */
+export interface AudioUnlockResult {
+  /** true apenas quando o contexto está efetivamente `running`. */
+  ok: boolean
+  state: AudioContextState | "none"
+  error?: string
+}
+
 export interface AudioPlayer {
   play(audio: AudioResult): Promise<void>
   pause(): void
   resume(): Promise<void>
   replay(): Promise<void>
+  /** Desbloqueia/prepara o AudioContext (chamar dentro do gesto do usuário). */
+  unlock(): Promise<AudioUnlockResult>
   stop(): void
   dispose(): void
   isPlaying(): boolean
@@ -83,6 +93,59 @@ export function createAudioPlayer(options: AudioPlayerOptions = {}): AudioPlayer
     if (reject) reject(e)
   }
 
+  /**
+   * TTS-PROD-FIX-001 — verifica/desbloqueia o AudioContext.
+   * - Contexto já `running` → resultado SÍNCRONO (fast path, sem suspensão:
+   *   preserva o comportamento determinístico do play/resume).
+   * - Contexto `suspended` → tenta `resume()` e retorna o estado REAL após a
+   *   promessa (nunca engole a falha).
+   * - Nunca trata `source.start()` como "tocando" sem o contexto running.
+   */
+  const resolveUnlocked = (): AudioUnlockResult | Promise<AudioUnlockResult> => {
+    let ctx: AudioContext
+    try {
+      ctx = getContext()
+    } catch (e) {
+      return { ok: false, state: "none", error: e instanceof Error ? e.message : String(e) }
+    }
+    if (ctx.state === "running") return { ok: true, state: "running" }
+    if (ctx.state === "suspended") {
+      return ctx
+        .resume()
+        .then((): AudioUnlockResult => {
+          if (ctx.state === "running") return { ok: true, state: "running" }
+          return {
+            ok: false,
+            state: ctx.state,
+            error: `resume() não deixou o contexto running (estado: ${ctx.state})`,
+          }
+        })
+        .catch((e: unknown): AudioUnlockResult => {
+          return {
+            ok: false,
+            state: ctx.state,
+            error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+          }
+        })
+    }
+    return {
+      ok: false,
+      state: ctx.state,
+      error: `AudioContext em estado não reproduzível: ${ctx.state}`,
+    }
+  }
+
+  /** API pública de unlock: sempre Promise, idempotente. */
+  const ensureUnlocked = async (): Promise<AudioUnlockResult> => {
+    const r = resolveUnlocked()
+    return r instanceof Promise ? r : r
+  }
+
+  const unlockError = (u: AudioUnlockResult): Error =>
+    new Error(
+      `AudioContext não está running (${u.state}${u.error ? `: ${u.error}` : ""}). Interaja com o app (toque/enviar) para desbloquear o áudio.`
+    )
+
   const startSource = (audio: AudioResult, offsetSec: number): void => {
     const ctx = audioContext as AudioContext
     const buffer = ctx.createBuffer(1, audio.samples.length, audio.sampleRate)
@@ -123,12 +186,16 @@ export function createAudioPlayer(options: AudioPlayerOptions = {}): AudioPlayer
 
     currentAudio = audio
 
-    const ctx = getContext()
-    // Resume se suspenso (requer gesto do usuário no browser)
-    if (ctx.state === "suspended") {
-      try {
-        await ctx.resume()
-      } catch {}
+    // TTS-PROD-FIX-001: só reproduz com AudioContext efetivamente running.
+    // Se o resume() for bloqueado (autoplay sem gesto), NÃO inicia source no
+    // silêncio: play() REJEITA com a falha real → estado de erro observável
+    // (phase=error), sem falso PLAYING/ENDED.
+    const unlocked = resolveUnlocked()
+    if (unlocked instanceof Promise) {
+      const result = await unlocked
+      if (!result.ok) throw unlockError(result)
+    } else if (!unlocked.ok) {
+      throw unlockError(unlocked)
     }
 
     sessionActive = true
@@ -158,11 +225,14 @@ export function createAudioPlayer(options: AudioPlayerOptions = {}): AudioPlayer
 
   const resume = async (): Promise<void> => {
     if (!paused || !currentAudio || !sessionActive) return
-    const ctx = getContext()
-    if (ctx.state === "suspended") {
-      try {
-        await ctx.resume()
-      } catch {}
+    // TTS-PROD-FIX-001: só continua do ponto pausado com contexto running.
+    // Falha → mantém PAUSED (sem falso PLAYING, sem source no silêncio).
+    const unlocked = resolveUnlocked()
+    if (unlocked instanceof Promise) {
+      const result = await unlocked
+      if (!result.ok) return
+    } else if (!unlocked.ok) {
+      return
     }
     // A promise da sessão continua pendente; apenas recria o source no offset exato.
     startSource(currentAudio, startOffset)
@@ -207,8 +277,9 @@ export function createAudioPlayer(options: AudioPlayerOptions = {}): AudioPlayer
   const isPlaying = (): boolean => playing
   const isPaused = (): boolean => paused
   const getCurrentAudio = (): AudioResult | null => currentAudio
+  const unlock = (): Promise<AudioUnlockResult> => ensureUnlocked()
 
-  return { play, pause, resume, replay, stop, dispose, isPlaying, isPaused, getCurrentAudio }
+  return { play, pause, resume, replay, unlock, stop, dispose, isPlaying, isPaused, getCurrentAudio }
 }
 
 export type FakeAudioPlayer = AudioPlayer & {
@@ -327,6 +398,7 @@ export function createFakeAudioPlayer(): FakeAudioPlayer {
   const getPlayed = () => [...played]
   const getSessionElapsedMs = () =>
     Math.min(sessionTotalMs, elapsedMs + (playing ? Math.max(0, Date.now() - sessionStartWall) : 0))
+  const unlock = async (): Promise<AudioUnlockResult> => ({ ok: true, state: "running" })
 
-  return { play, pause, resume, replay, stop, dispose, isPlaying, isPaused, getCurrentAudio, getPlayed, getSessionElapsedMs }
+  return { play, pause, resume, replay, unlock, stop, dispose, isPlaying, isPaused, getCurrentAudio, getPlayed, getSessionElapsedMs }
 }

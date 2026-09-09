@@ -1,6 +1,7 @@
-﻿import { describe, it, expect } from "vitest"
+import { describe, it, expect } from "vitest"
 import { createTtsOrchestrator } from "../orchestrator"
-import { createFakeAudioPlayer } from "../player"
+import { createAudioPlayer, createFakeAudioPlayer } from "../player"
+import { createMockDomAudio } from "./helpers/mockAudioContext"
 import type { TtsService, TtsState, AudioResult } from "../types"
 import { TtsError } from "../types"
 
@@ -156,6 +157,7 @@ describe("TTS Orchestrator — TTS-INTEGRATION-002", () => {
       play: async () => {
         throw new Error("speaker disconnected")
       },
+      unlock: async () => ({ ok: true, state: "running" as const }),
       stop: () => {},
       dispose: () => {},
       isPlaying: () => false,
@@ -297,6 +299,29 @@ describe("TTS Orchestrator — TTS-INTEGRATION-002", () => {
       await orch.speak("fim")
       expect(orch.getState()).toBe("ENDED")
       orch.stop()
+      expect(orch.getState()).toBe("IDLE")
+    })
+  })
+
+  describe("unlock TTS-PROD-FIX-001", () => {
+    it("FIX-O1 — unlock() delega ao player e reporta ok quando running", async () => {
+      const tts = createFakeTts()
+      const player = createFakeAudioPlayer()
+      const orch = createTtsOrchestrator({ tts, player })
+      const r = await orch.unlock()
+      expect(r).toEqual({ ok: true, state: "running" })
+    })
+
+    it("FIX-O2 — unlock bloqueado não é engolido: ok:false com estado real", async () => {
+      const dom = createMockDomAudio({ state: "suspended", resumeMode: "reject" })
+      const tts = createFakeTts()
+      const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+      const orch = createTtsOrchestrator({ tts, player })
+      const r = await orch.unlock()
+      expect(r.ok).toBe(false)
+      expect(r.state).toBe("suspended")
+      expect(r.error).toContain("NotAllowedError")
+      // Falha do unlock NÃO derruba o orchestrator (estado preservado)
       expect(orch.getState()).toBe("IDLE")
     })
   })

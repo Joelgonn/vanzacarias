@@ -20,7 +20,7 @@
 
 import type { AudioResult, TtsService } from "./types"
 import { TtsError } from "./types"
-import type { AudioPlayer } from "./player"
+import type { AudioPlayer, AudioUnlockResult } from "./player"
 
 export type TtsOrchestratorState =
   | "IDLE"
@@ -49,6 +49,11 @@ export interface TtsOrchestrator {
   pause(): void
   resume(): void
   replay(): Promise<void>
+  /**
+   * TTS-PROD-FIX-001: desbloqueia o AudioContext dentro do gesto do usuário.
+   * Idempotente; resolve quando o contexto estiver running.
+   */
+  unlock(): Promise<AudioUnlockResult>
   stop(): void
   subscribe(listener: () => void): () => void
   dispose(): Promise<void>
@@ -84,6 +89,22 @@ export function createTtsOrchestrator(options: CreateOrchestratorOptions): TtsOr
   }
 
   const getState = (): TtsOrchestratorState => state
+
+  /** TTS-PROD-FIX-001: delega ao player (idempotente, não engole falha). */
+  const unlock = async (): Promise<AudioUnlockResult> => {
+    if (disposed || state === "DISPOSED") {
+      return { ok: false, state: "none", error: "Orchestrator descartado" }
+    }
+    try {
+      return await player.unlock()
+    } catch (e) {
+      return {
+        ok: false,
+        state: "none",
+        error: e instanceof Error ? e.message : String(e),
+      }
+    }
+  }
 
   const getTransport = (): TtsTransport => {
     switch (state) {
@@ -274,5 +295,5 @@ export function createTtsOrchestrator(options: CreateOrchestratorOptions): TtsOr
     }
   }
 
-  return { getState, getTransport, speak, pause, resume, replay, stop, subscribe, dispose }
+  return { getState, getTransport, speak, pause, resume, replay, unlock, stop, subscribe, dispose }
 }

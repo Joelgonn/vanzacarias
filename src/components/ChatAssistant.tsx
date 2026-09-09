@@ -227,7 +227,7 @@ function useChatState() {
 function useChatPatient(
   state: ReturnType<typeof useChatState>,
   isActive: boolean,
-  tts: { noteResponse: (markdown: string) => void; invalidate: () => void },
+  tts: { noteResponse: (markdown: string) => void; invalidate: () => void; unlock: () => void },
 ) {
   const checkTodayMood = async () => {
     if (!isActive) return;
@@ -308,6 +308,9 @@ function useChatPatient(
 
     // TTS-INTEGRATION-003 §11 — nova interação do usuário interrompe o TTS atual.
     tts.invalidate();
+    // TTS-PROD-FIX-001 — gesto (A): desbloqueia o AudioContext ANTES de a
+    // resposta disparar o autoplay; não depende da conclusão da resposta.
+    tts.unlock();
 
     // 🔥 PATCH 3: History limpa (sem HTML). Balões de erro (isError) nunca
     // entram no histórico enviado ao Gemini (consistência do histórico).
@@ -446,7 +449,7 @@ function useChatAdmin(
   state: ReturnType<typeof useChatState>,
   adminContext: AdminContext | undefined,
   isActive: boolean,
-  tts: { noteResponse: (markdown: string) => void; invalidate: () => void },
+  tts: { noteResponse: (markdown: string) => void; invalidate: () => void; unlock: () => void },
 ) {
   useEffect(() => {
     if (isActive) state.setAvatarMood('feliz');
@@ -474,6 +477,8 @@ function useChatAdmin(
 
     // TTS-INTEGRATION-003 §11 — nova interação do usuário interrompe o TTS atual.
     tts.invalidate();
+    // TTS-PROD-FIX-001 — gesto (A): desbloqueia o AudioContext no envio (admin).
+    tts.unlock();
 
     if (sanitizedMessage.length > MAX_MESSAGE_LENGTH) {
       state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
@@ -572,10 +577,12 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   const patientLogic = useChatPatient(state, !isRoleAdmin, {
     noteResponse: (md) => tts.noteResponse(md),
     invalidate: () => tts.invalidate(),
+    unlock: () => tts.unlock(),
   });
   const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin, {
     noteResponse: (md) => tts.noteResponse(md),
     invalidate: () => tts.invalidate(),
+    unlock: () => tts.unlock(),
   });
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -986,7 +993,7 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                 {/* TTS-INTEGRATION-003 — Controle único de TTS (D23–D27): ciclo
                     OFF → ON (+autoplay) / Play / Pause / Resume / Replay. */}
                 {!isRoleAdmin && (() => {
-                  const { ui, toggle } = tts;
+                  const { ui, toggle, unlock } = tts;
                   const busy = ui.phase === 'loading' || ui.phase === 'synthesizing';
                   const label = !ui.enabled
                     ? 'Ativar leitura das respostas'
@@ -1004,7 +1011,12 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                   return (
                     <button
                       type="button"
-                      onClick={toggle}
+                      onClick={() => {
+                        // TTS-PROD-FIX-001 — gesto (B): ao ATIVAR a leitura, o
+                        // clique desbloqueia o AudioContext (autoplay seguinte ok).
+                        if (!ui.enabled) unlock();
+                        toggle();
+                      }}
                       disabled={busy}
                       title={label}
                       aria-label={label}

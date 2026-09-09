@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { createChatTtsController } from "../chatTtsController"
 import { createTtsOrchestrator } from "../orchestrator"
-import { createFakeAudioPlayer } from "../player"
+import { createAudioPlayer, createFakeAudioPlayer } from "../player"
+import { createMockDomAudio } from "./helpers/mockAudioContext"
 import type { TtsService, TtsState, AudioResult } from "../types"
 import { ttsPreferenceDebugReset } from "../preference"
 
@@ -58,6 +59,16 @@ function makeEnv() {
   const orch = createTtsOrchestrator({ tts: tts as unknown as TtsService, player })
   const controller = createChatTtsController({ orchestrator: orch })
   return { tts, player, orch, controller }
+}
+
+/** Ambiente com player real (AudioContext falso) bloqueado pela política de autoplay. */
+function makeBlockedEnv() {
+  const dom = createMockDomAudio({ state: "suspended", resumeMode: "reject" })
+  const tts = createFakeTts()
+  const player = createAudioPlayer({ createAudioContext: () => dom.ctx })
+  const orch = createTtsOrchestrator({ tts: tts as unknown as TtsService, player })
+  const controller = createChatTtsController({ orchestrator: orch })
+  return { tts, player, orch, controller, dom }
 }
 
 const GOOD_RESPONSE = "## Plano de hoje\n\n- Beba água\n- Caminhe 30 min\n\nFonte: ver https://exemplo.com/dieta"
@@ -230,5 +241,66 @@ describe("Chat TTS Controller — TTS-INTEGRATION-003", () => {
     const snap = controller.getUiSnapshot()
     expect(snap).not.toBeNull()
     expect(snap.enabled).toBe(true)
+  })
+
+  describe("unlock TTS-PROD-FIX-001 (controller/integração)", () => {
+    it("FIX-C1 — unlock no gesto independe da resposta e habilita autoplay posterior", async () => {
+      const { controller, player } = makeEnv()
+      // Gesto do usuário: unlock ANTES de a resposta chegar (sem depender dela)
+      const r = await controller.unlock()
+      expect(r).toEqual({ ok: true, state: "running" })
+      // Resposta chega depois → autoplay funciona
+      controller.setEnabled(true)
+      controller.noteResponse(GOOD_RESPONSE)
+      await waitFor(() => controller.getUiState().phase === "ended")
+      expect(player.getPlayed().length).toBe(1)
+    })
+
+    it("FIX-C2 — contexto bloqueado: unlock reporta a falha real e o Chat segue funcional (observável)", async () => {
+      const { controller, orch } = makeBlockedEnv()
+      const r = await controller.unlock()
+      expect(r).not.toBeNull()
+      expect(r!.ok).toBe(false)
+      expect(r!.state).toBe("suspended")
+      expect(r!.error).toContain("NotAllowedError")
+
+      // Autoplay sem gesto → falha controlada: phase=error, TTS NÃO desativa
+      controller.setEnabled(true)
+      controller.noteResponse(GOOD_RESPONSE)
+      await waitFor(() => controller.getUiState().phase === "error")
+      const ui = controller.getUiState()
+      expect(ui.enabled).toBe(true) // chat/TTS continuam utilizáveis
+      expect(ui.phase).toBe("error")
+      expect(ui.message).toContain("AudioContext não está running")
+      // Orchestrator em ERROR (não falso PLAYING/ENDED)
+      expect(orch.getState()).toBe("ERROR")
+    })
+
+    it("FIX-C3 — após desbloquear no gesto, a leitura retoma (recuperação observável)", async () => {
+      const { controller, orch, dom } = makeBlockedEnv()
+      // Primeiro autoplay sem gesto → erro observável
+      controller.setEnabled(true)
+      controller.noteResponse(GOOD_RESPONSE)
+      await waitFor(() => controller.getUiState().phase === "error")
+      expect(orch.getState()).toBe("ERROR")
+
+      // Gesto do usuário chega: resume agora é permitido → unlock ok
+      dom.setResumeMode("ok")
+      dom.setState("suspended")
+      const r = await controller.unlock()
+      expect(r).toEqual({ ok: true, state: "running" })
+
+      // Ouvir novamente (replay do alvo) agora reproduz de verdade
+      controller.replay()
+      await waitFor(() => orch.getState() === "PLAYING")
+      // Source realmente iniciado (nada de silêncio)
+      expect(dom.sources.length).toBeGreaterThanOrEqual(1)
+      // Fim natural do áudio → ENDED (erro anterior limpo)
+      dom.sources[dom.sources.length - 1]!.onended?.()
+      await waitFor(() => orch.getState() === "ENDED")
+      const ui = controller.getUiState()
+      expect(ui.phase).toBe("ended")
+      expect(ui.enabled).toBe(true)
+    })
   })
 })
