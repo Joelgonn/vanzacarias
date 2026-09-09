@@ -45,3 +45,10 @@ public/sw.js
 public/sw.js.map
 .vercel
 .env*.local
+
+# TTS-INTEGRATION-007 — bundle gerado do Worker do Browser Runtime (build)
+/public/tts/
+
+# TTS-CAP-002 — assets TTS locais do Capacitor/Android (copiados no sync;
+# gitignored → NÃO vão ao deploy web/Vercel; Web/PWA intactos)
+/public/assets/tts/

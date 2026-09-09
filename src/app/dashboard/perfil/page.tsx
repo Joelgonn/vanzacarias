@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, Save, UserCircle, 
-  User, Phone, ChevronDown, Calendar, ShieldCheck 
+  User, Phone, ChevronDown, Calendar, ShieldCheck, Volume2, VolumeX 
 } from 'lucide-react';
 import BackButton from '@/components/ui/BackButton';
 import { PatientPageShell, PageNavigation, PageContent } from '@/components/layout/PatientPageShell';
 import { toast } from 'sonner';
+import { setTtsUser, setTtsEnabled, subscribeTts, getTtsSnapshot } from '@/lib/tts/preference';
 
 interface ProfileRow {
   id?: string;
@@ -27,6 +28,14 @@ export default function PerfilPaciente() {
   const supabase = createClient();
   const router = useRouter();
 
+  // TTS-INTEGRATION-003 — mesma fonte de verdade do Chat (D04): localStorage
+  // por usuário. O toggle aqui reflete instantaneamente o valor usado no Chat.
+  const ttsEnabled = useSyncExternalStore(
+    useCallback((onStoreChange: () => void) => subscribeTts(onStoreChange), []),
+    () => getTtsSnapshot(),
+    () => getTtsSnapshot(),
+  );
+
   useEffect(() => {
     async function loadProfile() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -35,6 +44,9 @@ export default function PerfilPaciente() {
         return;
       }
       
+      // TTS-INTEGRATION-003 — isola a preferência por paciente (D06)
+      setTtsUser(session.user.id);
+
       const { data } = await supabase
         .from('profiles')
         .select('*')
@@ -229,6 +241,50 @@ export default function PerfilPaciente() {
 
           </form>
 
+        </div>
+
+        {/* TTS-INTEGRATION-003 — Preferências de voz: mesma fonte de verdade do Chat */}
+        <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-stone-100 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200 mt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="bg-nutri-50 text-nutri-700 p-2 rounded-xl">
+                  <Volume2 size={20} strokeWidth={2} />
+                </span>
+                <h2 className="text-lg font-black text-stone-900 tracking-tight">Leitura das respostas (voz)</h2>
+              </div>
+              <p className="text-stone-500 text-sm font-medium max-w-md">
+                O Chat pode ler em voz alta as respostas da nutricionista para você.
+                O mesmo ajuste vale dentro da conversa.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ttsEnabled}
+              aria-label={ttsEnabled ? 'Desativar leitura das respostas' : 'Ativar leitura das respostas'}
+              onClick={() => setTtsEnabled(!ttsEnabled)}
+              className={`relative h-9 w-16 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nutri-100 ${
+                ttsEnabled ? 'bg-nutri-600' : 'bg-stone-200'
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow-sm transition-transform ${
+                  ttsEnabled ? 'translate-x-8' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <div className="mt-4 flex items-center gap-2 text-stone-400">
+            {ttsEnabled ? (
+              <Volume2 size={14} />
+            ) : (
+              <VolumeX size={14} />
+            )}
+            <span className="text-[11px] font-medium uppercase tracking-wider">
+              {ttsEnabled ? 'Voz ativada' : 'Voz desativada'}
+            </span>
+          </div>
         </div>
         </PageContent>
     </PatientPageShell>

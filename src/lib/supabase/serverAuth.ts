@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createClient as createAnonClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -8,6 +9,11 @@ import type { NextRequest } from 'next/server';
 // AUTH SERVER-SIDE PARA API ROUTES (Next.js App Router)
 // Valida a sessão via cookie (same-origin fetch) e NUNCA confia no userId
 // enviado pelo cliente. Previne ataques IDOR.
+//
+// CAP-PROD-003 — frontend local (Capacitor, origem https://localhost):
+//   aceita também `Authorization: Bearer <access_token>` (validado pelo
+//   Supabase). O cookie continua sendo o caminho da web; o Bearer é o caminho
+//   do shell local. Autorização/roles permanecem centralizadas aqui.
 // =========================================================================
 
 export const ADMIN_ROLES = ['admin', 'nutricionista'];
@@ -16,7 +22,32 @@ export type AuthOk = { user: User; error: null };
 export type AuthFail = { user: null; error: NextResponse };
 export type AuthResult = AuthOk | AuthFail;
 
+/** Extrai um token Bearer do header de Authorization (função pura, testável). */
+export function getBearerToken(authorizationHeader: string | null): string | null {
+  if (!authorizationHeader) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(authorizationHeader.trim());
+  return match ? match[1]!.trim() : null;
+}
+
+/** Resolve o usuário autenticado: Bearer (Capacitor) OU cookie (web). */
 export async function getAuthenticatedUser(request: NextRequest) {
+  // Caminho Capacitor: Authorization: Bearer <access_token> (validado pelo Supabase)
+  const bearer = getBearerToken(request.headers.get('authorization'));
+  if (bearer) {
+    const supabase = createAnonClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(bearer);
+    if (!error && user) return user;
+    return null;
+  }
+
+  // Caminho web: cookie de sessão (same-origin)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

@@ -3,6 +3,18 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { getUserRole, isAdminRole } from '@/lib/supabase/serverAuth';
 
+// CAP-PROD-003 — CORS restrito para o shell local do Capacitor (origem
+// https://localhost). Aplica-se APENAS a /api/* quando o Origin está na
+// allowlist — nunca `*`. Web same-origin continua intocada.
+const CAPACITOR_ALLOWED_ORIGINS: readonly string[] = ['https://localhost'];
+const CORS_ALLOW_METHODS = 'GET, POST, OPTIONS';
+const CORS_ALLOW_HEADERS = 'Authorization, Content-Type';
+
+function isAllowedCapacitorOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return CAPACITOR_ALLOWED_ORIGINS.includes(origin);
+}
+
 // =========================================================================
 // PROXY DE PROTEÇÃO DE ROTAS (Next.js 16 - substitui o antigo middleware)
 // Bloqueia o acesso a rotas privadas (/dashboard, /admin, /paciente)
@@ -11,6 +23,28 @@ import { getUserRole, isAdminRole } from '@/lib/supabase/serverAuth';
 // =========================================================================
 
 export async function proxy(request: NextRequest) {
+  const apiPathname = request.nextUrl.pathname;
+
+  // CAP-PROD-003 — CORS restrito para APIs consumidas pelo frontend local.
+  if (apiPathname.startsWith('/api/')) {
+    const origin = request.headers.get('origin');
+    if (isAllowedCapacitorOrigin(origin)) {
+      const headers = {
+        'Access-Control-Allow-Origin': origin as string,
+        Vary: 'Origin',
+        'Access-Control-Allow-Methods': CORS_ALLOW_METHODS,
+        'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+        'Access-Control-Max-Age': '86400',
+      };
+      if (request.method === 'OPTIONS') {
+        return new NextResponse(null, { status: 204, headers });
+      }
+      return NextResponse.next({ request, headers });
+    }
+    // Não é o Capacitor: comportamento web original (sem headers CORS).
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -58,6 +92,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Apenas rotas privadas passam pelo proxy; estáticos (_next) são ignorados pelo Next
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/paciente/:path*'],
+  // Rotas privadas de PÁGINA + APIs (as APIs passam apenas pelo ramo CORS
+  // restrito do Capacitor; nada de redirect/auth de página é aplicado a /api).
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/paciente/:path*', '/api/:path*'],
 };

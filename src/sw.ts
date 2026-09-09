@@ -8,6 +8,13 @@ import {
   VOSK_MODEL_CACHE_MAX_ENTRIES,
   isVoskModelRequest,
 } from "./lib/voice/pwa/modelCache";
+import {
+  TTS_CACHE_MAX_AGE_S,
+  TTS_CACHE_MAX_ENTRIES,
+  TTS_CACHE_NAME,
+  isTtsAssetRequest,
+  pruneOldTtsCaches,
+} from "./lib/tts/pwa/modelCache";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -42,12 +49,36 @@ const VOSK_MODEL_RUNTIME_CACHING = {
   }),
 } as const;
 
+// TTS-PWA-001 (D02/D03/D07/D10/D11) — CacheFirst dedicado para TODOS os assets
+// do TTS Browser Runtime (modelo Q8 ~92 MB + tokenizer + voz + worker + WASM do
+// onnxruntime-web). Regra ANTES do defaultCache (first-match wins). Decisão:
+// runtime cache sob demanda (NÃO precache) — ver docs/TTS-PWA-001-REPORT.md.
+// O próprio Worker baixa os assets no primeiro load on-demand; cada resposta
+// 200 completa entra neste cache versionado e passa a ser servida localmente
+// (offline incluso). Versão nova → TTS_CACHE_VERSION novo → cache novo;
+// activate() remove caches antigos preservando a versão anterior utilizável.
+const TTS_ASSETS_RUNTIME_CACHING = {
+  matcher: ({ sameOrigin, url }: { sameOrigin: boolean; url: URL }) =>
+    sameOrigin && isTtsAssetRequest(url),
+  method: "GET",
+  handler: new CacheFirst({
+    cacheName: TTS_CACHE_NAME,
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: TTS_CACHE_MAX_ENTRIES,
+        maxAgeSeconds: TTS_CACHE_MAX_AGE_S,
+        maxAgeFrom: "last-used",
+      }),
+    ],
+  }),
+} as const;
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: [VOSK_MODEL_RUNTIME_CACHING, ...defaultCache],
+  runtimeCaching: [VOSK_MODEL_RUNTIME_CACHING, TTS_ASSETS_RUNTIME_CACHING, ...defaultCache],
 });
 
 // 1. Ouvinte para receber a Notificação Push
@@ -92,3 +123,9 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 serwist.addEventListeners();
+
+// TTS-PWA-001 — limpeza de caches antigos do TTS no activate (mantém a versão
+// atual + uma anterior utilizável — D08). Não cria segundo service worker.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(pruneOldTtsCaches(2));
+});

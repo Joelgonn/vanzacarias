@@ -1,0 +1,1340 @@
+[
+  {
+    "t": 1788910592991,
+    "type": "marker",
+    "round": "online"
+  },
+  {
+    "t": 1788910594504,
+    "type": "event",
+    "phase": "ready",
+    "mode": "suite",
+    "ua": "Mozilla/5.0 (Linux; Android 11; RMX3461 Build/RKQ1.210614.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/151.0.7922.199 Mobile Safari/537.36"
+  },
+  {
+    "t": 1788910594517,
+    "type": "event",
+    "phase": "suite-start"
+  },
+  {
+    "t": 1788910594549,
+    "type": "event",
+    "phase": "probe-env",
+    "ua": "Mozilla/5.0 (Linux; Android 11; RMX3461 Build/RKQ1.210614.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/151.0.7922.199 Mobile Safari/537.36",
+    "worker": true,
+    "wasm": true,
+    "caches": true,
+    "indexedDB": true,
+    "sw": "registered",
+    "crossOriginIsolated": false,
+    "cores": 8,
+    "swScope": "https://localhost/",
+    "cachesKeys": [],
+    "persisted": false,
+    "storage": {
+      "usage": 412,
+      "quota": 10737418652
+    }
+  },
+  {
+    "t": 1788910594821,
+    "type": "meminfo",
+    "label": "ready",
+    "pss": 171759,
+    "totalPssLabel": 171759,
+    "native": 17262,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910594950,
+    "type": "meminfo",
+    "label": "suite-start",
+    "pss": 177540,
+    "totalPssLabel": 177540,
+    "native": 16794,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910595082,
+    "type": "meminfo",
+    "label": "probe-env",
+    "pss": 186072,
+    "totalPssLabel": 186072,
+    "native": 16794,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910617338,
+    "type": "event",
+    "phase": "ended",
+    "id": "T01-curta",
+    "text": "Olá! Como posso ajudar você hoje?",
+    "ok": true,
+    "started": true,
+    "totalMs": 22757,
+    "samplesDelta": 57600,
+    "playedSec": 2.4,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910617692,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 224969,
+    "totalPssLabel": 224969,
+    "native": 16990,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910638635,
+    "type": "event",
+    "phase": "ended",
+    "id": "T02-kcal",
+    "text": "Você consumiu 500 quilocalorias hoje.",
+    "ok": true,
+    "started": true,
+    "totalMs": 21259,
+    "samplesDelta": 75000,
+    "playedSec": 3.125,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910638991,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 153490,
+    "totalPssLabel": 153490,
+    "native": 16833,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910655664,
+    "type": "event",
+    "phase": "ended",
+    "id": "T03-ml",
+    "text": "Beba 500 mililitros de água.",
+    "ok": true,
+    "started": true,
+    "totalMs": 16996,
+    "samplesDelta": 59400,
+    "playedSec": 2.475,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910656000,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 153337,
+    "totalPssLabel": 153337,
+    "native": 16833,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910673437,
+    "type": "event",
+    "phase": "ended",
+    "id": "T04-hora",
+    "text": "Seu próximo lanche é às 10 e 30.",
+    "ok": true,
+    "started": true,
+    "totalMs": 17738,
+    "samplesDelta": 62400,
+    "playedSec": 2.6,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910673789,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 156044,
+    "totalPssLabel": 156044,
+    "native": 15669,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910700229,
+    "type": "event",
+    "phase": "ended",
+    "id": "T05-kg",
+    "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+    "ok": true,
+    "started": true,
+    "totalMs": 26758,
+    "samplesDelta": 94200,
+    "playedSec": 3.925,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910700586,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 155478,
+    "totalPssLabel": 155478,
+    "native": 15669,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910760857,
+    "type": "event",
+    "phase": "ended",
+    "id": "T06-longo",
+    "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+    "ok": true,
+    "started": true,
+    "totalMs": 60594,
+    "samplesDelta": 213600,
+    "playedSec": 8.9,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910760880,
+    "type": "event",
+    "phase": "speak-done",
+    "results": [
+      {
+        "id": "T01-curta",
+        "text": "Olá! Como posso ajudar você hoje?",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 22757,
+        "samplesDelta": 57600,
+        "playedSec": 2.4,
+        "synthDelta": 1
+      },
+      {
+        "id": "T02-kcal",
+        "text": "Você consumiu 500 quilocalorias hoje.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 21259,
+        "samplesDelta": 75000,
+        "playedSec": 3.125,
+        "synthDelta": 1
+      },
+      {
+        "id": "T03-ml",
+        "text": "Beba 500 mililitros de água.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 16996,
+        "samplesDelta": 59400,
+        "playedSec": 2.475,
+        "synthDelta": 1
+      },
+      {
+        "id": "T04-hora",
+        "text": "Seu próximo lanche é às 10 e 30.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 17738,
+        "samplesDelta": 62400,
+        "playedSec": 2.6,
+        "synthDelta": 1
+      },
+      {
+        "id": "T05-kg",
+        "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 26758,
+        "samplesDelta": 94200,
+        "playedSec": 3.925,
+        "synthDelta": 1
+      },
+      {
+        "id": "T06-longo",
+        "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 60594,
+        "samplesDelta": 213600,
+        "playedSec": 8.9,
+        "synthDelta": 1
+      }
+    ]
+  },
+  {
+    "t": 1788910760908,
+    "type": "event",
+    "phase": "suite-done",
+    "results": [
+      {
+        "id": "T01-curta",
+        "text": "Olá! Como posso ajudar você hoje?",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 22757,
+        "samplesDelta": 57600,
+        "playedSec": 2.4,
+        "synthDelta": 1
+      },
+      {
+        "id": "T02-kcal",
+        "text": "Você consumiu 500 quilocalorias hoje.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 21259,
+        "samplesDelta": 75000,
+        "playedSec": 3.125,
+        "synthDelta": 1
+      },
+      {
+        "id": "T03-ml",
+        "text": "Beba 500 mililitros de água.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 16996,
+        "samplesDelta": 59400,
+        "playedSec": 2.475,
+        "synthDelta": 1
+      },
+      {
+        "id": "T04-hora",
+        "text": "Seu próximo lanche é às 10 e 30.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 17738,
+        "samplesDelta": 62400,
+        "playedSec": 2.6,
+        "synthDelta": 1
+      },
+      {
+        "id": "T05-kg",
+        "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 26758,
+        "samplesDelta": 94200,
+        "playedSec": 3.925,
+        "synthDelta": 1
+      },
+      {
+        "id": "T06-longo",
+        "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 60594,
+        "samplesDelta": 213600,
+        "playedSec": 8.9,
+        "synthDelta": 1
+      }
+    ]
+  },
+  {
+    "t": 1788910760955,
+    "type": "event",
+    "phase": "cycle1-begin"
+  },
+  {
+    "t": 1788910761270,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 167612,
+    "totalPssLabel": 167612,
+    "native": 16113,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910761452,
+    "type": "meminfo",
+    "label": "speak-done",
+    "pss": 185595,
+    "totalPssLabel": 185595,
+    "native": 16109,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910761627,
+    "type": "meminfo",
+    "label": "suite-done",
+    "pss": 197203,
+    "totalPssLabel": 197203,
+    "native": 16077,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910761810,
+    "type": "meminfo",
+    "label": "cycle1-begin",
+    "pss": 208591,
+    "totalPssLabel": 208591,
+    "native": 16077,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910765312,
+    "type": "event",
+    "phase": "cycle1-loaded",
+    "loadMs": 4339
+  },
+  {
+    "t": 1788910765658,
+    "type": "meminfo",
+    "label": "cycle1-loaded",
+    "pss": 212830,
+    "totalPssLabel": 212830,
+    "native": 16077,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910779434,
+    "type": "event",
+    "phase": "cycle1-synthesized",
+    "synthMs": 14093,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788910779497,
+    "type": "event",
+    "phase": "cycle1-disposed"
+  },
+  {
+    "t": 1788910779507,
+    "type": "event",
+    "phase": "cycle2-begin"
+  },
+  {
+    "t": 1788910779789,
+    "type": "meminfo",
+    "label": "cycle1-synthesized",
+    "pss": 153336,
+    "totalPssLabel": 153336,
+    "native": 17089,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910779941,
+    "type": "meminfo",
+    "label": "cycle1-disposed",
+    "pss": 162667,
+    "totalPssLabel": 162667,
+    "native": 17089,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910780112,
+    "type": "meminfo",
+    "label": "cycle2-begin",
+    "pss": 174807,
+    "totalPssLabel": 174807,
+    "native": 17077,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910783534,
+    "type": "event",
+    "phase": "cycle2-loaded",
+    "loadMs": 3989
+  },
+  {
+    "t": 1788910783883,
+    "type": "meminfo",
+    "label": "cycle2-loaded",
+    "pss": 212519,
+    "totalPssLabel": 212519,
+    "native": 16972,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910798158,
+    "type": "event",
+    "phase": "cycle2-synthesized",
+    "synthMs": 14590,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788910798206,
+    "type": "event",
+    "phase": "cycle2-disposed"
+  },
+  {
+    "t": 1788910798221,
+    "type": "event",
+    "phase": "cycle3-begin"
+  },
+  {
+    "t": 1788910798516,
+    "type": "meminfo",
+    "label": "cycle2-synthesized",
+    "pss": 150406,
+    "totalPssLabel": 150406,
+    "native": 14285,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910798680,
+    "type": "meminfo",
+    "label": "cycle2-disposed",
+    "pss": 162006,
+    "totalPssLabel": 162006,
+    "native": 15065,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910798875,
+    "type": "meminfo",
+    "label": "cycle3-begin",
+    "pss": 173577,
+    "totalPssLabel": 173577,
+    "native": 15065,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910802225,
+    "type": "event",
+    "phase": "cycle3-loaded",
+    "loadMs": 3987
+  },
+  {
+    "t": 1788910802617,
+    "type": "meminfo",
+    "label": "cycle3-loaded",
+    "pss": 209196,
+    "totalPssLabel": 209196,
+    "native": 15142,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910816461,
+    "type": "event",
+    "phase": "cycle3-synthesized",
+    "synthMs": 14210,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788910816509,
+    "type": "event",
+    "phase": "cycle3-disposed"
+  },
+  {
+    "t": 1788910816533,
+    "type": "event",
+    "phase": "reload-begin"
+  },
+  {
+    "t": 1788910816813,
+    "type": "meminfo",
+    "label": "cycle3-synthesized",
+    "pss": 149345,
+    "totalPssLabel": 149345,
+    "native": 15385,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910816994,
+    "type": "meminfo",
+    "label": "cycle3-disposed",
+    "pss": 156675,
+    "totalPssLabel": 156675,
+    "native": 15380,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910817168,
+    "type": "meminfo",
+    "label": "reload-begin",
+    "pss": 167461,
+    "totalPssLabel": 167461,
+    "native": 15380,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910834118,
+    "type": "event",
+    "phase": "reload-done",
+    "loadMs": 3436,
+    "synthMs": 14122,
+    "samples": 57600
+  },
+  {
+    "t": 1788910834169,
+    "type": "event",
+    "phase": "cycles-done",
+    "cycles": [
+      {
+        "cycle": 1,
+        "loadMs": 4339,
+        "synthMs": 14093,
+        "samples": 57600,
+        "durationSec": 2.4
+      },
+      {
+        "cycle": 2,
+        "loadMs": 3989,
+        "synthMs": 14590,
+        "samples": 57600,
+        "durationSec": 2.4
+      },
+      {
+        "cycle": 3,
+        "loadMs": 3987,
+        "synthMs": 14210,
+        "samples": 57600,
+        "durationSec": 2.4
+      }
+    ],
+    "reload": {
+      "loadMs": 3436,
+      "synthMs": 14122
+    }
+  },
+  {
+    "t": 1788910834184,
+    "type": "event",
+    "phase": "all-done"
+  },
+  {
+    "t": 1788910834515,
+    "type": "meminfo",
+    "label": "reload-done",
+    "pss": 204082,
+    "totalPssLabel": 204082,
+    "native": 6655,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910834666,
+    "type": "meminfo",
+    "label": "cycles-done",
+    "pss": 133014,
+    "totalPssLabel": 133014,
+    "native": 6655,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910834827,
+    "type": "meminfo",
+    "label": "all-done",
+    "pss": 133006,
+    "totalPssLabel": 133006,
+    "native": 6655,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910836363,
+    "type": "meminfo",
+    "label": "after-online",
+    "pss": 132687,
+    "totalPssLabel": 132687,
+    "native": 6655,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910836363,
+    "type": "marker",
+    "round": "offline"
+  },
+  {
+    "t": 1788910841351,
+    "type": "event",
+    "phase": "ready",
+    "mode": "suite",
+    "ua": "Mozilla/5.0 (Linux; Android 11; RMX3461 Build/RKQ1.210614.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/151.0.7922.199 Mobile Safari/537.36"
+  },
+  {
+    "t": 1788910841359,
+    "type": "event",
+    "phase": "suite-start"
+  },
+  {
+    "t": 1788910841374,
+    "type": "event",
+    "phase": "probe-env",
+    "ua": "Mozilla/5.0 (Linux; Android 11; RMX3461 Build/RKQ1.210614.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/151.0.7922.199 Mobile Safari/537.36",
+    "worker": true,
+    "wasm": true,
+    "caches": true,
+    "indexedDB": true,
+    "sw": "registered",
+    "crossOriginIsolated": false,
+    "cores": 8,
+    "swScope": "https://localhost/",
+    "cachesKeys": [],
+    "persisted": false,
+    "storage": {
+      "usage": 412,
+      "quota": 10737418652
+    }
+  },
+  {
+    "t": 1788910841650,
+    "type": "meminfo",
+    "label": "ready",
+    "pss": 163448,
+    "totalPssLabel": 163448,
+    "native": 13370,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910841783,
+    "type": "meminfo",
+    "label": "suite-start",
+    "pss": 169142,
+    "totalPssLabel": 169142,
+    "native": 12932,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910841908,
+    "type": "meminfo",
+    "label": "probe-env",
+    "pss": 176912,
+    "totalPssLabel": 176912,
+    "native": 12932,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910863510,
+    "type": "event",
+    "phase": "ended",
+    "id": "T01-curta",
+    "text": "Olá! Como posso ajudar você hoje?",
+    "ok": true,
+    "started": true,
+    "totalMs": 22109,
+    "samplesDelta": 57600,
+    "playedSec": 2.4,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910863872,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 218789,
+    "totalPssLabel": 218789,
+    "native": 13046,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910884792,
+    "type": "event",
+    "phase": "ended",
+    "id": "T02-kcal",
+    "text": "Você consumiu 500 quilocalorias hoje.",
+    "ok": true,
+    "started": true,
+    "totalMs": 21249,
+    "samplesDelta": 75000,
+    "playedSec": 3.125,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910885129,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 150923,
+    "totalPssLabel": 150923,
+    "native": 13105,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910901822,
+    "type": "event",
+    "phase": "ended",
+    "id": "T03-ml",
+    "text": "Beba 500 mililitros de água.",
+    "ok": true,
+    "started": true,
+    "totalMs": 16995,
+    "samplesDelta": 59400,
+    "playedSec": 2.475,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910902168,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 146306,
+    "totalPssLabel": 146306,
+    "native": 13017,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910919585,
+    "type": "event",
+    "phase": "ended",
+    "id": "T04-hora",
+    "text": "Seu próximo lanche é às 10 e 30.",
+    "ok": true,
+    "started": true,
+    "totalMs": 17732,
+    "samplesDelta": 62400,
+    "playedSec": 2.6,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910919920,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 146226,
+    "totalPssLabel": 146226,
+    "native": 13049,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788910946372,
+    "type": "event",
+    "phase": "ended",
+    "id": "T05-kg",
+    "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+    "ok": true,
+    "started": true,
+    "totalMs": 26752,
+    "samplesDelta": 94200,
+    "playedSec": 3.925,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788910946731,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 146117,
+    "totalPssLabel": 146117,
+    "native": 12969,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911007235,
+    "type": "event",
+    "phase": "ended",
+    "id": "T06-longo",
+    "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+    "ok": true,
+    "started": true,
+    "totalMs": 60828,
+    "samplesDelta": 213600,
+    "playedSec": 8.9,
+    "synthDelta": 1
+  },
+  {
+    "t": 1788911007260,
+    "type": "event",
+    "phase": "speak-done",
+    "results": [
+      {
+        "id": "T01-curta",
+        "text": "Olá! Como posso ajudar você hoje?",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 22109,
+        "samplesDelta": 57600,
+        "playedSec": 2.4,
+        "synthDelta": 1
+      },
+      {
+        "id": "T02-kcal",
+        "text": "Você consumiu 500 quilocalorias hoje.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 21249,
+        "samplesDelta": 75000,
+        "playedSec": 3.125,
+        "synthDelta": 1
+      },
+      {
+        "id": "T03-ml",
+        "text": "Beba 500 mililitros de água.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 16995,
+        "samplesDelta": 59400,
+        "playedSec": 2.475,
+        "synthDelta": 1
+      },
+      {
+        "id": "T04-hora",
+        "text": "Seu próximo lanche é às 10 e 30.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 17732,
+        "samplesDelta": 62400,
+        "playedSec": 2.6,
+        "synthDelta": 1
+      },
+      {
+        "id": "T05-kg",
+        "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 26752,
+        "samplesDelta": 94200,
+        "playedSec": 3.925,
+        "synthDelta": 1
+      },
+      {
+        "id": "T06-longo",
+        "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 60828,
+        "samplesDelta": 213600,
+        "playedSec": 8.9,
+        "synthDelta": 1
+      }
+    ]
+  },
+  {
+    "t": 1788911007293,
+    "type": "event",
+    "phase": "suite-done",
+    "results": [
+      {
+        "id": "T01-curta",
+        "text": "Olá! Como posso ajudar você hoje?",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 22109,
+        "samplesDelta": 57600,
+        "playedSec": 2.4,
+        "synthDelta": 1
+      },
+      {
+        "id": "T02-kcal",
+        "text": "Você consumiu 500 quilocalorias hoje.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 21249,
+        "samplesDelta": 75000,
+        "playedSec": 3.125,
+        "synthDelta": 1
+      },
+      {
+        "id": "T03-ml",
+        "text": "Beba 500 mililitros de água.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 16995,
+        "samplesDelta": 59400,
+        "playedSec": 2.475,
+        "synthDelta": 1
+      },
+      {
+        "id": "T04-hora",
+        "text": "Seu próximo lanche é às 10 e 30.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 17732,
+        "samplesDelta": 62400,
+        "playedSec": 2.6,
+        "synthDelta": 1
+      },
+      {
+        "id": "T05-kg",
+        "text": "Sua meta é reduzir 82 vírgula 5 quilogramas.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 26752,
+        "samplesDelta": 94200,
+        "playedSec": 3.925,
+        "synthDelta": 1
+      },
+      {
+        "id": "T06-longo",
+        "text": "Uma alimentação equilibrada ajuda a melhorar sua saúde e sua qualidade de vida. Beba água e mantenha horários regulares para as suas refeições.",
+        "ok": true,
+        "phase": "ended",
+        "started": true,
+        "totalMs": 60828,
+        "samplesDelta": 213600,
+        "playedSec": 8.9,
+        "synthDelta": 1
+      }
+    ]
+  },
+  {
+    "t": 1788911007316,
+    "type": "event",
+    "phase": "cycle1-begin"
+  },
+  {
+    "t": 1788911007583,
+    "type": "meminfo",
+    "label": "ended",
+    "pss": 155927,
+    "totalPssLabel": 155927,
+    "native": 13205,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911007768,
+    "type": "meminfo",
+    "label": "speak-done",
+    "pss": 168277,
+    "totalPssLabel": 168277,
+    "native": 13181,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911007933,
+    "type": "meminfo",
+    "label": "suite-done",
+    "pss": 181325,
+    "totalPssLabel": 181325,
+    "native": 13181,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911008091,
+    "type": "meminfo",
+    "label": "cycle1-begin",
+    "pss": 191629,
+    "totalPssLabel": 191629,
+    "native": 13181,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911010666,
+    "type": "event",
+    "phase": "cycle1-loaded",
+    "loadMs": 3309
+  },
+  {
+    "t": 1788911011018,
+    "type": "meminfo",
+    "label": "cycle1-loaded",
+    "pss": 218214,
+    "totalPssLabel": 218214,
+    "native": 13429,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911024827,
+    "type": "event",
+    "phase": "cycle1-synthesized",
+    "synthMs": 14140,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788911024885,
+    "type": "event",
+    "phase": "cycle1-disposed"
+  },
+  {
+    "t": 1788911024908,
+    "type": "event",
+    "phase": "cycle2-begin"
+  },
+  {
+    "t": 1788911025168,
+    "type": "meminfo",
+    "label": "cycle1-synthesized",
+    "pss": 157849,
+    "totalPssLabel": 157849,
+    "native": 13569,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911025341,
+    "type": "meminfo",
+    "label": "cycle1-disposed",
+    "pss": 168761,
+    "totalPssLabel": 168761,
+    "native": 13569,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911025513,
+    "type": "meminfo",
+    "label": "cycle2-begin",
+    "pss": 180141,
+    "totalPssLabel": 180141,
+    "native": 13569,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911028430,
+    "type": "event",
+    "phase": "cycle2-loaded",
+    "loadMs": 3504
+  },
+  {
+    "t": 1788911028811,
+    "type": "meminfo",
+    "label": "cycle2-loaded",
+    "pss": 220620,
+    "totalPssLabel": 220620,
+    "native": 13685,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911043005,
+    "type": "event",
+    "phase": "cycle2-synthesized",
+    "synthMs": 14544,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788911043050,
+    "type": "event",
+    "phase": "cycle2-disposed"
+  },
+  {
+    "t": 1788911043060,
+    "type": "event",
+    "phase": "cycle3-begin"
+  },
+  {
+    "t": 1788911043349,
+    "type": "meminfo",
+    "label": "cycle2-synthesized",
+    "pss": 146212,
+    "totalPssLabel": 146212,
+    "native": 5576,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911043520,
+    "type": "meminfo",
+    "label": "cycle2-disposed",
+    "pss": 156928,
+    "totalPssLabel": 156928,
+    "native": 5576,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911043688,
+    "type": "meminfo",
+    "label": "cycle3-begin",
+    "pss": 168240,
+    "totalPssLabel": 168240,
+    "native": 5576,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911047049,
+    "type": "event",
+    "phase": "cycle3-loaded",
+    "loadMs": 3977
+  },
+  {
+    "t": 1788911047391,
+    "type": "meminfo",
+    "label": "cycle3-loaded",
+    "pss": 202244,
+    "totalPssLabel": 202244,
+    "native": 5846,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911061332,
+    "type": "event",
+    "phase": "cycle3-synthesized",
+    "synthMs": 14269,
+    "samples": 57600,
+    "durationSec": 2.4,
+    "sampleRate": 24000,
+    "noNaN": true
+  },
+  {
+    "t": 1788911061373,
+    "type": "event",
+    "phase": "cycle3-disposed"
+  },
+  {
+    "t": 1788911061390,
+    "type": "event",
+    "phase": "reload-begin"
+  },
+  {
+    "t": 1788911061695,
+    "type": "meminfo",
+    "label": "cycle3-synthesized",
+    "pss": 142368,
+    "totalPssLabel": 142368,
+    "native": 6102,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911061854,
+    "type": "meminfo",
+    "label": "cycle3-disposed",
+    "pss": 154436,
+    "totalPssLabel": 154436,
+    "native": 6106,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911062014,
+    "type": "meminfo",
+    "label": "reload-begin",
+    "pss": 164793,
+    "totalPssLabel": 164793,
+    "native": 6106,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911078999,
+    "type": "event",
+    "phase": "reload-done",
+    "loadMs": 3359,
+    "synthMs": 14216,
+    "samples": 57600
+  },
+  {
+    "t": 1788911079043,
+    "type": "event",
+    "phase": "cycles-done",
+    "cycles": [
+      {
+        "cycle": 1,
+        "loadMs": 3309,
+        "synthMs": 14140,
+        "samples": 57600,
+        "durationSec": 2.4
+      },
+      {
+        "cycle": 2,
+        "loadMs": 3504,
+        "synthMs": 14544,
+        "samples": 57600,
+        "durationSec": 2.4
+      },
+      {
+        "cycle": 3,
+        "loadMs": 3977,
+        "synthMs": 14269,
+        "samples": 57600,
+        "durationSec": 2.4
+      }
+    ],
+    "reload": {
+      "loadMs": 3359,
+      "synthMs": 14216
+    }
+  },
+  {
+    "t": 1788911079064,
+    "type": "event",
+    "phase": "all-done"
+  },
+  {
+    "t": 1788911079361,
+    "type": "meminfo",
+    "label": "reload-done",
+    "pss": 201087,
+    "totalPssLabel": 201087,
+    "native": 5881,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911079533,
+    "type": "meminfo",
+    "label": "cycles-done",
+    "pss": 130003,
+    "totalPssLabel": 130003,
+    "native": 5881,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911079698,
+    "type": "meminfo",
+    "label": "all-done",
+    "pss": 129995,
+    "totalPssLabel": 129995,
+    "native": 5881,
+    "java": null,
+    "code": null
+  },
+  {
+    "t": 1788911081098,
+    "type": "meminfo",
+    "label": "after-offline",
+    "pss": 129561,
+    "totalPssLabel": 129561,
+    "native": 5881,
+    "java": null,
+    "code": null
+  }
+]

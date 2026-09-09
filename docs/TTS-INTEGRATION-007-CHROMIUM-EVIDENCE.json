@@ -1,0 +1,215 @@
+{
+  "status": "done-ok",
+  "result": {
+    "precheck": {
+      "assetSizes": {
+        "model_quantized.onnx": 92361116,
+        "tokenizer.json": 3497,
+        "voices/pf_dora.bin": 522240
+      },
+      "worker": {
+        "kind": "ready"
+      },
+      "moduleMain": {
+        "ort-wasm-simd-threaded.jsep.mjs": "ok",
+        "ort-wasm-simd-threaded.mjs": "ok"
+      }
+    },
+    "probe": {
+      "attempt": 1,
+      "info": {
+        "name": "kokoro-browser",
+        "modelId": "q8",
+        "voiceId": "pf_dora",
+        "device": "wasm",
+        "onnxRuntime": "1.29.0",
+        "sampleRate": 24000
+      },
+      "initMs": 2882.554999999702,
+      "synthMs": 7669.140000000596,
+      "ortMs": 7643.25,
+      "text": "Olá! Como posso ajudar você hoje?",
+      "samples": 57600,
+      "sampleRate": 24000,
+      "channels": 1,
+      "durationSec": 2.4,
+      "wavBytes": 115244,
+      "isFloat32": true,
+      "noNaN": true,
+      "maxAbs": 0.5213590264320374
+    },
+    "scenarios": {
+      "A": {
+        "pass": true,
+        "phase": "off",
+        "workersDelta": 0
+      },
+      "B": {
+        "pass": true,
+        "phase": "ended",
+        "message": null,
+        "synthDelta": 1,
+        "workers": 2,
+        "workerUrls": [
+          "/tts/worker.js",
+          "/tts/worker.js"
+        ],
+        "audioCtx": {
+          "created": 1,
+          "copyCalls": 1,
+          "samplesCopied": 57600,
+          "sourceStarts": 1
+        }
+      },
+      "G": {
+        "pass": true,
+        "phase": "ended",
+        "synthDeltaOnReplay": 0,
+        "message": null
+      },
+      "E/F": {
+        "pass": true,
+        "e": true,
+        "f": true,
+        "phase": "ended",
+        "ctxAtPause": {
+          "samplesCopied": 302400,
+          "sourceStarts": 4
+        },
+        "message": null
+      },
+      "D": {
+        "pass": true,
+        "phase": "idle",
+        "stopsDelta": 1
+      },
+      "H": {
+        "pass": true,
+        "phase": "ended",
+        "synthA": 1,
+        "synthB": 1,
+        "message": null
+      },
+      "I": {
+        "pass": true,
+        "phase": "off",
+        "stopsDelta": 1
+      },
+      "C": {
+        "pass": true,
+        "duringStreamOk": true,
+        "duringStreamNoSynth": true,
+        "finalPhase": "ended",
+        "message": null
+      }
+    },
+    "workerStats": {
+      "workerCreated": 9,
+      "workerUrls": [
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js",
+        "/tts/worker.js"
+      ],
+      "init": 9,
+      "synth": 9,
+      "dispose": 1
+    },
+    "audioContextEvidence": {
+      "created": 7,
+      "copyCalls": 10,
+      "samplesCopied": 904200,
+      "sourceStarts": 10,
+      "sourceStops": 3
+    },
+    "pageErrors": [],
+    "log": [
+      {
+        "t": "21:49:26.910",
+        "phase": "runtime",
+        "msg": "precheck: {\"assetSizes\":{\"model_quantized.onnx\":92361116,\"tokenizer.json\":3497,\"voices/pf_dora.bin\":522240},\"worker\":{\"kind\":\"ready\"},\"moduleMain\":{\"ort-wasm-simd-threaded.jsep.mjs\":\"ok\",\"ort-wasm-simd-threaded.mjs\":\"ok\"}}"
+      },
+      {
+        "t": "21:49:28.417",
+        "phase": "playback",
+        "msg": "A: PASS ({\"phase\":\"off\",\"workersDelta\":0})"
+      },
+      {
+        "t": "21:49:44.338",
+        "phase": "playback",
+        "msg": "B: PASS ({\"phase\":\"ended\",\"message\":null,\"synthDelta\":1,\"workers\":2,\"workerUrls\":[\"/tts/worker.js\",\"/tts/worker.js\"],\"audioCtx\":{\"created\":1,\"copyCalls\":1,\"samplesCopied\":57600,\"sourceStarts\":1}})"
+      },
+      {
+        "t": "21:50:04.149",
+        "phase": "playback",
+        "msg": "G: PASS ({\"phase\":\"ended\",\"synthDeltaOnReplay\":0,\"message\":null})"
+      },
+      {
+        "t": "21:50:37.784",
+        "phase": "playback",
+        "msg": "E/F: PASS ({\"e\":true,\"f\":true,\"phase\":\"ended\",\"ctxAtPause\":{\"samplesCopied\":302400,\"sourceStarts\":4},\"message\":null})"
+      },
+      {
+        "t": "21:51:05.311",
+        "phase": "playback",
+        "msg": "D: PASS ({\"phase\":\"idle\",\"stopsDelta\":1})"
+      },
+      {
+        "t": "21:51:47.075",
+        "phase": "playback",
+        "msg": "H: PASS ({\"phase\":\"ended\",\"synthA\":1,\"synthB\":1,\"message\":null})"
+      },
+      {
+        "t": "21:52:08.516",
+        "phase": "playback",
+        "msg": "I: PASS ({\"phase\":\"off\",\"stopsDelta\":1})"
+      },
+      {
+        "t": "21:52:22.961",
+        "phase": "playback",
+        "msg": "C: PASS ({\"duringStreamOk\":true,\"duringStreamNoSynth\":true,\"finalPhase\":\"ended\",\"message\":null})"
+      },
+      {
+        "t": "21:52:22.961",
+        "phase": "runtime",
+        "msg": "iniciando probe independente KokoroBrowserRuntime (Q8 + pf_dora)"
+      },
+      {
+        "t": "21:52:33.520",
+        "phase": "runtime",
+        "msg": "probe ready: ort=1.29.0 init=2883ms"
+      },
+      {
+        "t": "21:52:33.521",
+        "phase": "worker",
+        "msg": "worker real 9x urls=/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js,/tts/worker.js init=9 synth=9"
+      },
+      {
+        "t": "21:52:33.521",
+        "phase": "inference",
+        "msg": "synth=7669ms ort=7643ms amostras=57600"
+      },
+      {
+        "t": "21:52:33.521",
+        "phase": "AudioResult",
+        "msg": "samples=57600 rate=24000 dur=2.400s noNaN=true maxAbs=0.521 wav=115244B"
+      },
+      {
+        "t": "21:52:33.549",
+        "phase": "playback",
+        "msg": "A–I: TODOS PASS | ctx=7 samplesCopied=904200 sourceStart=10 sourceStop=3"
+      }
+    ],
+    "status": "ok",
+    "crossOriginIsolated": true,
+    "preference": {
+      "enabled": true,
+      "key": "tts_enabled:harness-007"
+    }
+  }
+}

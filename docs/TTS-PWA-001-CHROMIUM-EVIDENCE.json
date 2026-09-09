@@ -1,0 +1,368 @@
+{
+  "results": [
+    {
+      "label": "init-online",
+      "ms": 61,
+      "value": {
+        "sw": "controlled",
+        "online": true
+      }
+    },
+    {
+      "label": "A-primeiro-acesso-online (P1: download+synth)",
+      "ms": 21382,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 21374,
+        "synthDelta": 1,
+        "samplesDelta": 57600,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 1,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "A-assets-cacheados",
+      "ms": 507,
+      "value": {
+        "cache": "tts-assets-v1",
+        "ready": true,
+        "entries": [
+          {
+            "path": "/api/tts/models/model_quantized.onnx",
+            "bytes": 92361116
+          },
+          {
+            "path": "/api/tts/models/tokenizer.json",
+            "bytes": 3497
+          },
+          {
+            "path": "/api/tts/models/voices/pf_dora.bin",
+            "bytes": 522240
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.mjs",
+            "bytes": 46676
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.wasm",
+            "bytes": 27797172
+          },
+          {
+            "path": "/tts/worker.js",
+            "bytes": 493679
+          }
+        ],
+        "totalBytes": 121224380,
+        "online": true
+      }
+    },
+    {
+      "label": "B-online-2a-fala-cache-quente (P2)",
+      "ms": 17471,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 17468,
+        "synthDelta": 1,
+        "samplesDelta": 94800,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 2,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "C-reload-online: init",
+      "ms": 8,
+      "value": {
+        "sw": "controlled",
+        "online": true
+      }
+    },
+    {
+      "label": "C-assets-persistem",
+      "ms": 496,
+      "value": {
+        "cache": "tts-assets-v1",
+        "ready": true,
+        "entries": [
+          {
+            "path": "/api/tts/models/model_quantized.onnx",
+            "bytes": 92361116
+          },
+          {
+            "path": "/api/tts/models/tokenizer.json",
+            "bytes": 3497
+          },
+          {
+            "path": "/api/tts/models/voices/pf_dora.bin",
+            "bytes": 522240
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.mjs",
+            "bytes": 46676
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.wasm",
+            "bytes": 27797172
+          },
+          {
+            "path": "/tts/worker.js",
+            "bytes": 493679
+          }
+        ],
+        "totalBytes": 121224380,
+        "online": true
+      }
+    },
+    {
+      "label": "C-online-2o-load (P1)",
+      "ms": 12723,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 12720,
+        "synthDelta": 1,
+        "samplesDelta": 57600,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 1,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "D-offline-fresh-load: init",
+      "ms": 10,
+      "value": {
+        "sw": "controlled",
+        "online": true
+      }
+    },
+    {
+      "label": "D-offline-fresh-load-fala (P2)",
+      "ms": 24613,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 24610,
+        "synthDelta": 1,
+        "samplesDelta": 94800,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 1,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "D-offline-assets-servidos-do-cache",
+      "ms": 643,
+      "value": {
+        "cache": "tts-assets-v1",
+        "ready": true,
+        "entries": [
+          {
+            "path": "/api/tts/models/model_quantized.onnx",
+            "bytes": 92361116
+          },
+          {
+            "path": "/api/tts/models/tokenizer.json",
+            "bytes": 3497
+          },
+          {
+            "path": "/api/tts/models/voices/pf_dora.bin",
+            "bytes": 522240
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.mjs",
+            "bytes": 46676
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.wasm",
+            "bytes": 27797172
+          },
+          {
+            "path": "/tts/worker.js",
+            "bytes": 493679
+          }
+        ],
+        "totalBytes": 121224380,
+        "online": true
+      }
+    },
+    {
+      "label": "E-offline-nova-resposta (P3)",
+      "ms": 22643,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 22639,
+        "synthDelta": 1,
+        "samplesDelta": 97800,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 2,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "F-offline-replay",
+      "ms": 4155,
+      "value": {
+        "ok": true,
+        "started": true,
+        "phase": "ended",
+        "message": null,
+        "ms": 4144,
+        "synthDelta": 0,
+        "samplesDelta": 97800,
+        "online": true,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "G-offline-nova-resposta (P1)",
+      "ms": 11782,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 11779,
+        "synthDelta": 1,
+        "samplesDelta": 57600,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 3,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "H-offline-TTS-off/on",
+      "ms": 3215,
+      "value": {
+        "offPhase": "off",
+        "ok": true,
+        "started": true,
+        "phase": "ended",
+        "message": null,
+        "ms": 2598,
+        "synthDelta": 0,
+        "samplesDelta": 57600,
+        "online": true,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "D13-drop-cache",
+      "ms": 9,
+      "value": {
+        "dropped": true,
+        "online": true
+      }
+    },
+    {
+      "label": "D13-offline-sem-cache-fresh-load: init",
+      "ms": 5,
+      "value": {
+        "sw": "controlled",
+        "online": true
+      }
+    },
+    {
+      "label": "D13-fala-offline-sem-cache (P3, espera erro)",
+      "ms": 90171,
+      "value": {
+        "ok": false,
+        "phase": "error",
+        "message": "Falha ao carregar TTS: Erro do worker: desconhecido",
+        "started": false,
+        "ms": 90166,
+        "synthDelta": 0,
+        "samplesDelta": 0,
+        "sourceStartDelta": 0,
+        "online": true,
+        "workerSynthTotal": 0,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "D13-chat-vivo",
+      "ms": 5,
+      "value": 2
+    },
+    {
+      "label": "D13-recupera-online: init",
+      "ms": 6,
+      "value": {
+        "sw": "controlled",
+        "online": true
+      }
+    },
+    {
+      "label": "D13-fala-online-repovoa-cache (P3)",
+      "ms": 24406,
+      "value": {
+        "ok": true,
+        "phase": "ended",
+        "message": null,
+        "started": true,
+        "ms": 24402,
+        "synthDelta": 1,
+        "samplesDelta": 97800,
+        "sourceStartDelta": 1,
+        "online": true,
+        "workerSynthTotal": 1,
+        "pageErrors": []
+      }
+    },
+    {
+      "label": "D13-cache-repopulado",
+      "ms": 467,
+      "value": {
+        "cache": "tts-assets-v1",
+        "ready": true,
+        "entries": [
+          {
+            "path": "/api/tts/models/model_quantized.onnx",
+            "bytes": 92361116
+          },
+          {
+            "path": "/api/tts/models/tokenizer.json",
+            "bytes": 3497
+          },
+          {
+            "path": "/api/tts/models/voices/pf_dora.bin",
+            "bytes": 522240
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.mjs",
+            "bytes": 46676
+          },
+          {
+            "path": "/api/tts/wasm/ort-wasm-simd-threaded.jsep.wasm",
+            "bytes": 27797172
+          },
+          {
+            "path": "/tts/worker.js",
+            "bytes": 493679
+          }
+        ],
+        "totalBytes": 121224380,
+        "online": true
+      }
+    }
+  ]
+}
