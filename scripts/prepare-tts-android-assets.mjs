@@ -27,32 +27,19 @@ const ORT_DIST_PROJECT = join(ROOT, "node_modules", "onnxruntime-web", "dist");
 const WASM_SRC_DIR = existsSync(ORT_DIST) ? ORT_DIST : ORT_DIST_PROJECT;
 const DEST = join(ROOT, "public", "assets", "tts");
 
-// FASE 3: somente runtime (sem modelo). WASM + worker são obrigatórios no APK.
+// KO-000.0: restaura PoC — assets locais completos (modelo + voz + tokenizer + worker + wasm)
+// Elimina caminho Base64/Filesystem. Modelo ~92 MB volta ao APK (evidência PoC 12/12 OK RMX3461).
+const MODEL_SRC = join(VS, "models", "kokoro");
 const FILES = [
+  [join(MODEL_SRC, "model_quantized.onnx"), join(DEST, "model_quantized.onnx")],
+  [join(MODEL_SRC, "tokenizer.json"), join(DEST, "tokenizer.json")],
+  [join(MODEL_SRC, "voices", "pf_dora.bin"), join(DEST, "voices", "pf_dora.bin")],
   [join(ROOT, "public", "tts", "worker.js"), join(DEST, "worker.js")],
   [join(WASM_SRC_DIR, "ort-wasm-simd-threaded.mjs"), join(DEST, "wasm", "ort-wasm-simd-threaded.mjs")],
   [join(WASM_SRC_DIR, "ort-wasm-simd-threaded.wasm"), join(DEST, "wasm", "ort-wasm-simd-threaded.wasm")],
   [join(WASM_SRC_DIR, "ort-wasm-simd-threaded.jsep.mjs"), join(DEST, "wasm", "ort-wasm-simd-threaded.jsep.mjs")],
   [join(WASM_SRC_DIR, "ort-wasm-simd-threaded.jsep.wasm"), join(DEST, "wasm", "ort-wasm-simd-threaded.jsep.wasm")],
 ];
-
-// Remove legados grandes do APK (se migrando de FASE 2)
-const LEGACY_LARGE = [
-  join(DEST, "model_quantized.onnx"),
-  join(DEST, "model.onnx"),
-  join(DEST, "tokenizer.json"),
-  join(DEST, "voices", "pf_dora.bin"),
-];
-for (const p of LEGACY_LARGE) {
-  await rm(p, { force: true }).catch(() => undefined);
-}
-// Limpa voices se vazio
-try {
-  const { readdir } = await import("node:fs/promises");
-  const voicesDir = join(DEST, "voices");
-  const entries = await readdir(voicesDir).catch(() => []);
-  if (entries.length === 0) await rm(voicesDir, { recursive: true, force: true }).catch(() => undefined);
-} catch {}
 
 await mkdir(join(DEST, "wasm"), { recursive: true });
 let total = 0;
@@ -61,5 +48,5 @@ for (const [src, dst] of FILES) {
   await copyFile(src, dst);
   total += (await stat(dst)).size;
 }
-console.log(`[TTS-CAP-004 FASE 3] assets TTS Android em ${DEST} — ${FILES.length} arquivos (somente runtime, sem modelo), ${(total / 1048576).toFixed(1)} MB`);
-console.log(`Modelo (92 MB) NÃO está no APK — será baixado sob demanda via ModelManager (HTTPS → Filesystem Directory.Data)`);
+console.log(`[KO-000.0] assets TTS Android em ${DEST} — ${FILES.length} arquivos (INCLUI modelo local PoC), ${(total / 1048576).toFixed(1)} MB`);
+console.log(`Modelo Kokoro Q8 local: ${DEST}/model_quantized.onnx — sem Base64/Filesystem`);

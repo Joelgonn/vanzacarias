@@ -149,11 +149,15 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
         if (!useBrowser) {
           throw new TtsError("NOT_SUPPORTED", "TTS Node (onnxruntime-node) removido na FASE 1 — apenas browser é suportado")
         }
-        // FASE 2: garante modelo disponível (download sob demanda) antes de iniciar o runtime
-        // Em testes legados com workerFactory fake e sem ModelManager injetado, bypassa download real de 92 MB.
-        // Quando ModelManager é injetado (testes FASE 2), o download é exercitado.
+        // KO-000.0: restaura caminho PoC — assets locais no bundle, sem Filesystem/Base64.
+        // No Android nativo (Capacitor), o modelo já está em /assets/tts/ (bundled APK),
+        // portanto não há download nem Filesystem. No Web, mantém download sob demanda
+        // mas apenas quando não for nativo e não for teste fake.
+        const isNativeForTts = detectNativeCapacitor()
         const isTestFake = !!options.browser?.workerFactory && !options.modelManager
-        if (!isTestFake) {
+        // Bypass total do ModelManager quando houver assets locais (Android nativo)
+        const shouldEnsureModel = !isNativeForTts && !isTestFake
+        if (shouldEnsureModel) {
           try {
             await modelManager.ensureAvailable()
           } catch (e) {
@@ -164,9 +168,10 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
               throw new TtsError("LOAD_FAILED", `Falha no modelo: ${(e as Error).message}`, { cause: e })
             throw e
           }
+        } else if (isNativeForTts) {
+          // Android local: nada a baixar — assets já no bundle (AC-01, AC-08)
         } else {
-          // Teste: garante que isAvailable não bloqueia; se ModelManager injetado já estiver pronto, ok
-          // Se não injetado, considera disponível para não atrasar testes fake
+          // Teste fake sem ModelManager: considera disponível
         }
 
         const brow = options.browser
@@ -175,10 +180,13 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
         const native = detectNativeCapacitor()
         const defaults = native ? NATIVE_ASSET_DEFAULTS : BROWSER_ASSET_DEFAULTS
         // Se modelManager tem origin configurada (ex.: http://fixture.test ou CDN), usa como base para o worker
+        // KO-000.0: no Android nativo, bypass ModelManager/Filesystem (AC-01). O Worker faz fetch direto
+        // do origin (GitHub raw por padrão), sem base64. localhost falhou com server.url remoto (Vercel),
+        // então nativo também usa managerOrigin (GitHub raw 92MB, 200 OK) — sem Filesystem.
         const managerOrigin = (modelManager as unknown as { getOrigin?: () => string })?.getOrigin?.() ?? ""
         const effectiveBaseUrl =
           brow?.baseUrl ??
-          (managerOrigin ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`) : native ? `${origin}${NATIVE_ASSET_DEFAULTS.baseUrl}` : absoluteAssetBase(undefined))
+          (managerOrigin ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`) : native ? "https://localhost/assets/tts/" : absoluteAssetBase(undefined))
         const runtime = new mod.KokoroBrowserRuntime({
           model: options.model ?? "q8",
           voice: options.voice ?? "pf_dora",
