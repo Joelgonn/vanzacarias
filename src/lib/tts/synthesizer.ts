@@ -179,14 +179,12 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
         const origin = typeof location !== "undefined" && location.origin ? location.origin : ""
         const native = detectNativeCapacitor()
         const defaults = native ? NATIVE_ASSET_DEFAULTS : BROWSER_ASSET_DEFAULTS
-        // KO-006.0: Android com server.url remoto não consegue fetch https://localhost (Failed to fetch).
-        // Correção: usar origem remota https://vanzacarias-mu.vercel.app/assets/tts/ (public/assets/tts servido pela Vercel)
-        // O APK continua com o modelo em assets/public/assets/tts para fallback offline, mas o fetch vai para Vercel quando há internet.
+        // KO-006.0: Android nativo usa sempre https://localhost/assets/tts/ (APK local), independente de managerOrigin/NEXT_PUBLIC_TTS_ASSETS_ORIGIN.
         const managerOrigin = (modelManager as unknown as { getOrigin?: () => string })?.getOrigin?.() ?? ""
         const effectiveBaseUrl =
           brow?.baseUrl ??
           (native
-            ? `${origin}/assets/tts/`
+            ? "https://localhost/assets/tts/"
             : managerOrigin
               ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`)
               : absoluteAssetBase(undefined))
