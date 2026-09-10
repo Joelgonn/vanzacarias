@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-09-09T17:55:10.675Z",
+  "chromeFlag": "nenhum (política padrão de autoplay)",
+  "metodo": "cada cenário bloqueado em origin 127.0.0.N sem interações prévias; gestos reais via CDP Input.dispatchMouseEvent",
+  "scenarios": {
+    "A_sem_gesto": {
+      "unlock": null,
+      "playEnded": false,
+      "playing": false,
+      "paused": false
+    },
+    "A_pass": true,
+    "B_gesto_unlock": {
+      "done": true,
+      "r1": {
+        "ok": true,
+        "state": "running",
+        "error": null
+      },
+      "r2": {
+        "ok": true,
+        "state": "running",
+        "error": null
+      }
+    },
+    "B_pass": true,
+    "C_play_sem_gesto": {
+      "playEnded": false,
+      "playErr": null,
+      "playing": false,
+      "paused": false,
+      "unlockOk": true,
+      "endedAposUnlock": true
+    },
+    "C_pass": true,
+    "D_unlock_no_gesto_autoplay": {
+      "unlockOk": true,
+      "ended": true
+    },
+    "D_pass": true,
+    "E_controller": {
+      "bloqueadoSemGesto": {
+        "phase": "playing",
+        "enabled": true,
+        "message": null,
+        "orchState": "PLAYING",
+        "playerPlaying": false,
+        "playerPaused": false,
+        "hasAudio": true
+      },
+      "unlockOk": true,
+      "aposRecuperacao": {
+        "phase": "ended",
+        "enabled": true,
+        "message": null,
+        "orchState": "ENDED",
+        "playerPlaying": false
+      },
+      "ended": true
+    },
+    "E_pass": true
+  },
+  "summary": {
+    "A": true,
+    "B": true,
+    "C": true,
+    "D": true,
+    "E": true
+  },
+  "allPass": true
+}

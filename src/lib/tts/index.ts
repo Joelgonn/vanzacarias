@@ -5,7 +5,6 @@
  * independente e não conhece Chat, Vosk, React, etc.
  */
 
-export { createTtsService, detectRuntimeKind } from "./synthesizer"
 export type { TtsService, AudioResult, TtsState, TtsErrorCode, CreateTtsOptions, TtsBrowserRuntimeOptions, TtsRuntimeKind } from "./types"
 export { TtsError } from "./types"
 

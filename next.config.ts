@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
 
@@ -36,20 +35,6 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
-  },
-  // TTS-CAP-004 FASE 1: runtime browser vendado (`src/lib/tts/runtime/browser/*`)
-  // — sem `voice-synthesis` externo. `serverExternalPackages` não precisa mais
-  // listar `voice-synthesis`; mantido `onnxruntime-node` apenas como stub client
-  // legado (não usado em produção browser; worker usa onnxruntime-web).
-  serverExternalPackages: ["onnxruntime-node"],
-  webpack(config, { isServer }) {
-    config.resolve = config.resolve ?? {};
-    config.resolve.alias = config.resolve.alias ?? {};
-    if (!isServer) {
-      const stub = path.join(process.cwd(), "src", "lib", "tts", "stubs", "empty.ts");
-      config.resolve.alias["onnxruntime-node"] = stub;
-    }
-    return config;
   },
 };
 

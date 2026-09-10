@@ -3,7 +3,19 @@
 // WEB: base vazia → chamadas relativas (comportamento atual, cookie + SSR).
 // CAPACITOR (shell local): base remota (produção) → Bearer via chatApi.
 // Ponto único de verdade para evitar URLs espalhadas.
-import { detectNativeCapacitor } from './tts/synthesizer';
+type CapacitorLike = { isNativePlatform?: () => boolean; getPlatform?: () => string } | undefined
+function detectNativeCapacitor(): boolean {
+  if (typeof window === "undefined") return false
+  const cap = (window as unknown as { Capacitor?: CapacitorLike }).Capacitor
+  if (!cap) return false
+  if (typeof cap.isNativePlatform === "function") {
+    try {
+      if (cap.isNativePlatform() === true) return true
+    } catch {}
+  }
+  const platform = typeof cap.getPlatform === "function" ? cap.getPlatform() : "web"
+  return platform !== "web" && platform !== ""
+}
 
 /** URL do backend remoto usada pelo shell local (config canônica do projeto). */
 const REMOTE_BACKEND_URL =

@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-09-09T18:02:36.483Z",
+  "app": "br.com.vanusazacarias.nutri",
+  "metodo": "origin fresco example.com via CDP; gesto real Input.dispatchMouseEvent; sem flag",
+  "probe": {
+    "origin": "https://example.com",
+    "ctxCriadoSemGesto": {
+      "state": "running",
+      "sampleRate": 48000
+    },
+    "resumeSemGesto": {
+      "settled": true,
+      "state": "running",
+      "ms": 0
+    },
+    "resumeAposGesto": {
+      "ok": true,
+      "state": "running"
+    }
+  }
+}

@@ -7,8 +7,6 @@ import { createClient } from '@/lib/supabase/client';
 import { useVoiceInput, formatElapsedMs } from '@/lib/voice/useVoiceInput';
 import { isVoiceDebugEnabled, voiceDebugLog } from '@/lib/voice/debug';
 import { autoGrowHeight } from './composerAutoGrow';
-import { useChatTts } from '@/lib/tts/useChatTts';
-import { setTtsUser } from '@/lib/tts/preference';
 import { chatApiFetch } from '@/lib/chatApi';
 import {
   selectSuggestions,
@@ -227,7 +225,6 @@ function useChatState() {
 function useChatPatient(
   state: ReturnType<typeof useChatState>,
   isActive: boolean,
-  tts: { noteResponse: (markdown: string) => void; invalidate: () => void; unlock: () => void },
 ) {
   const checkTodayMood = async () => {
     if (!isActive) return;
@@ -305,12 +302,6 @@ function useChatPatient(
       state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
       return;
     }
-
-    // TTS-INTEGRATION-003 §11 — nova interação do usuário interrompe o TTS atual.
-    tts.invalidate();
-    // TTS-PROD-FIX-001 — gesto (A): desbloqueia o AudioContext ANTES de a
-    // resposta disparar o autoplay; não depende da conclusão da resposta.
-    tts.unlock();
 
     // 🔥 PATCH 3: History limpa (sem HTML). Balões de erro (isError) nunca
     // entram no histórico enviado ao Gemini (consistência do histórico).
@@ -402,8 +393,6 @@ function useChatPatient(
               state.setStreamingText('');
               state.setMessages(prev => [...prev, { role: 'assistant', content: finalReply }]);
               state.setRetryCandidate(null);
-              // TTS-INTEGRATION-003 §10 — resposta concluída → autoplay se ativado.
-              tts.noteResponse(finalReply);
               break;
             } else if (frame.t === 'error') {
               receivedDone = true;
@@ -425,8 +414,6 @@ function useChatPatient(
 
         if (data.reply) {
           state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-          // TTS-INTEGRATION-003 §10 — resposta concluída (não-stream) → autoplay se ativado.
-          tts.noteResponse(data.reply);
         }
       }
     } catch (error) {
@@ -449,7 +436,6 @@ function useChatAdmin(
   state: ReturnType<typeof useChatState>,
   adminContext: AdminContext | undefined,
   isActive: boolean,
-  tts: { noteResponse: (markdown: string) => void; invalidate: () => void; unlock: () => void },
 ) {
   useEffect(() => {
     if (isActive) state.setAvatarMood('feliz');
@@ -474,11 +460,6 @@ function useChatAdmin(
 
     // 🔥 PATCH 2: Sanitizar input
     const sanitizedMessage = sanitizeInput(finalMessage);
-
-    // TTS-INTEGRATION-003 §11 — nova interação do usuário interrompe o TTS atual.
-    tts.invalidate();
-    // TTS-PROD-FIX-001 — gesto (A): desbloqueia o AudioContext no envio (admin).
-    tts.unlock();
 
     if (sanitizedMessage.length > MAX_MESSAGE_LENGTH) {
       state.setMessages(prev => [...prev, { role: 'assistant', content: 'Mensagem muito longa. Envie em partes menores, por favor.' }]);
@@ -537,8 +518,6 @@ function useChatAdmin(
       
       if (data.reply) {
         state.setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-        // TTS-INTEGRATION-003 §10 — resposta concluída (admin) → autoplay se ativado.
-        tts.noteResponse(data.reply);
       }
     } catch (error) {
       const errorMessage = (error as { message?: string }).message || 'Ops, erro ao consultar os dados administrativos.';
@@ -573,17 +552,8 @@ export default function ChatAssistant(props: ChatAssistantProps) {
 
   // TTS-INTEGRATION-003 — controle único de TTS do Chat (mesma fonte de
   // verdade do Settings via preference.ts; escopo de transporte por instância).
-  const tts = useChatTts();
-  const patientLogic = useChatPatient(state, !isRoleAdmin, {
-    noteResponse: (md) => tts.noteResponse(md),
-    invalidate: () => tts.invalidate(),
-    unlock: () => tts.unlock(),
-  });
-  const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin, {
-    noteResponse: (md) => tts.noteResponse(md),
-    invalidate: () => tts.invalidate(),
-    unlock: () => tts.unlock(),
-  });
+  const patientLogic = useChatPatient(state, !isRoleAdmin);
+  const adminLogic = useChatAdmin(state, adminContext, isRoleAdmin);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -612,29 +582,6 @@ export default function ChatAssistant(props: ChatAssistantProps) {
   });
 
   const micDisabled = state.isLoading || (voice.isBusy && !voice.isRecording);
-
-  // TTS-INTEGRATION-003 — Vincula a sessão (userId) à chave de preferência
-  // (tts_enabled:userId) para isolamento por paciente (D06).
-  useEffect(() => {
-    let cancelled = false;
-    createClient()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (!cancelled) setTtsUser(data.session?.user?.id ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setTtsUser(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // TTS-INTEGRATION-003 §12 — ao fechar o chat, a reprodução do áudio é
-  // interrompida imediatamente.
-  useEffect(() => {
-    if (!state.isOpen) tts.stop();
-  }, [state.isOpen]);
 
   // Mantém o scroll do chat no fim da conversa (inclui geração em streaming)
   useEffect(() => {
@@ -989,56 +936,6 @@ export default function ChatAssistant(props: ChatAssistantProps) {
                     <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">WhatsApp</span>
                   </a>
                 )}
-
-                {/* TTS-INTEGRATION-003 — Controle único de TTS (D23–D27): ciclo
-                    OFF → ON (+autoplay) / Play / Pause / Resume / Replay. */}
-                {!isRoleAdmin && (() => {
-                  const { ui, toggle, unlock } = tts;
-                  const busy = ui.phase === 'loading' || ui.phase === 'synthesizing';
-                  const label = !ui.enabled
-                    ? 'Ativar leitura das respostas'
-                    : ui.phase === 'playing'
-                      ? 'Pausar leitura'
-                      : ui.phase === 'paused'
-                        ? 'Continuar leitura'
-                        : ui.phase === 'ended'
-                          ? 'Ouvir novamente'
-                          : busy
-                            ? 'Preparando áudio...'
-                            : ui.hasTarget
-                              ? 'Ouvir resposta'
-                              : 'Desativar leitura';
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // TTS-PROD-FIX-001 — gesto (B): ao ATIVAR a leitura, o
-                        // clique desbloqueia o AudioContext (autoplay seguinte ok).
-                        if (!ui.enabled) unlock();
-                        toggle();
-                      }}
-                      disabled={busy}
-                      title={label}
-                      aria-label={label}
-                      aria-pressed={ui.enabled}
-                      className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center bg-white/10 hover:bg-white/15 text-white border border-white/10 hover:border-white/20 rounded-xl transition-all active:scale-95 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {!ui.enabled ? (
-                        <VolumeX size={16} strokeWidth={2.5} />
-                      ) : ui.phase === 'playing' ? (
-                        <Pause size={16} strokeWidth={2.5} />
-                      ) : ui.phase === 'paused' ? (
-                        <Play size={16} strokeWidth={2.5} />
-                      ) : ui.phase === 'ended' ? (
-                        <RotateCcw size={16} strokeWidth={2.5} />
-                      ) : busy ? (
-                        <Loader2 size={16} className="animate-spin" strokeWidth={2.5} />
-                      ) : (
-                        <Volume2 size={16} strokeWidth={2.5} />
-                      )}
-                    </button>
-                  );
-                })()}
 
                 <button
                   onClick={() => state.setIsOpen(false)}
