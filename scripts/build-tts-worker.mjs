@@ -52,3 +52,15 @@ for (const f of wasmFiles) {
   try { await copyFile(path.join(wasmSrcDir, f), path.join(wasmDestDirAssets, f)) } catch {}
 }
 console.log("TTS wasm static ->", wasmDestDir, "and", wasmDestDirAssets)
+
+// KO-006.0: garante que /assets/tts/* (modelo) esteja disponível na Vercel (public/assets/tts é gitignored, mas prebuild gera)
+// Necessário porque Android com server.url remoto busca https://vanzacarias-mu.vercel.app/assets/tts/... (não https://localhost)
+const modelSrcDir = path.join(vsRoot, "models", "kokoro")
+const assetsDestDir = path.join(appRoot, "public", "assets", "tts")
+const voicesDestDir = path.join(assetsDestDir, "voices")
+await mkdir(assetsDestDir, { recursive: true })
+await mkdir(voicesDestDir, { recursive: true })
+try { await copyFile(path.join(modelSrcDir, "model_quantized.onnx"), path.join(assetsDestDir, "model_quantized.onnx")) } catch {}
+try { await copyFile(path.join(modelSrcDir, "tokenizer.json"), path.join(assetsDestDir, "tokenizer.json")) } catch {}
+try { await copyFile(path.join(modelSrcDir, "voices", "pf_dora.bin"), path.join(voicesDestDir, "pf_dora.bin")) } catch {}
+console.log("TTS assets static ->", assetsDestDir)
