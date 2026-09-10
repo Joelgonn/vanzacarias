@@ -71,7 +71,7 @@ const BROWSER_ASSET_DEFAULTS = {
 // gitignored → não vão ao deploy web). Web/PWA mantém os defaults acima.
 const NATIVE_ASSET_DEFAULTS = {
   baseUrl: "/assets/tts/",
-  wasmPaths: "/tts/wasm/",
+  wasmPaths: "/assets/tts/wasm/",
   workerUrl: "/tts/worker.js",
 } as const
 

@@ -38,7 +38,9 @@ const ortDistVS = path.join(vsRoot, "node_modules", "onnxruntime-web", "dist")
 const ortDistProj = path.join(appRoot, "node_modules", "onnxruntime-web", "dist")
 const wasmSrcDir = existsSync(ortDistVS) ? ortDistVS : ortDistProj
 const wasmDestDir = path.join(appRoot, "public", "tts", "wasm")
+const wasmDestDirAssets = path.join(appRoot, "public", "assets", "tts", "wasm")
 await mkdir(wasmDestDir, { recursive: true })
+await mkdir(wasmDestDirAssets, { recursive: true })
 const wasmFiles = [
   "ort-wasm-simd-threaded.mjs",
   "ort-wasm-simd-threaded.wasm",
@@ -47,5 +49,6 @@ const wasmFiles = [
 ]
 for (const f of wasmFiles) {
   try { await copyFile(path.join(wasmSrcDir, f), path.join(wasmDestDir, f)) } catch {}
+  try { await copyFile(path.join(wasmSrcDir, f), path.join(wasmDestDirAssets, f)) } catch {}
 }
-console.log("TTS wasm static ->", wasmDestDir)
+console.log("TTS wasm static ->", wasmDestDir, "and", wasmDestDirAssets)
