@@ -179,14 +179,15 @@ export function createTtsService(options: CreateTtsOptions = {}): TtsService {
         const origin = typeof location !== "undefined" && location.origin ? location.origin : ""
         const native = detectNativeCapacitor()
         const defaults = native ? NATIVE_ASSET_DEFAULTS : BROWSER_ASSET_DEFAULTS
-        // Se modelManager tem origin configurada (ex.: http://fixture.test ou CDN), usa como base para o worker
-        // KO-000.0: no Android nativo, bypass ModelManager/Filesystem (AC-01). O Worker faz fetch direto
-        // do origin (GitHub raw por padrão), sem base64. localhost falhou com server.url remoto (Vercel),
-        // então nativo também usa managerOrigin (GitHub raw 92MB, 200 OK) — sem Filesystem.
+        // KO-004.0: Android nativo usa sempre https://localhost/assets/tts/ (APK local), independente de managerOrigin/NEXT_PUBLIC_TTS_ASSETS_ORIGIN.
         const managerOrigin = (modelManager as unknown as { getOrigin?: () => string })?.getOrigin?.() ?? ""
         const effectiveBaseUrl =
           brow?.baseUrl ??
-          (managerOrigin ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`) : native ? "https://localhost/assets/tts/" : absoluteAssetBase(undefined))
+          (native
+            ? "https://localhost/assets/tts/"
+            : managerOrigin
+              ? (managerOrigin.endsWith("/") ? managerOrigin : `${managerOrigin}/`)
+              : absoluteAssetBase(undefined))
         const runtime = new mod.KokoroBrowserRuntime({
           model: options.model ?? "q8",
           voice: options.voice ?? "pf_dora",
