@@ -284,8 +284,8 @@ describe("TTS-INTEGRATION-007 — Runtime Selection & Browser Runtime Contract",
       const init = worker.posted[0] as unknown as {
         payload: { assetUrls: { modelUrl: string; voiceUrl: string }; wasmPaths?: string }
       }
-      expect(init.payload.assetUrls.modelUrl).toBe("https://localhost/assets/tts/model_quantized.onnx")
-      expect(init.payload.assetUrls.voiceUrl).toBe("https://localhost/assets/tts/voices/pf_dora.bin")
+      expect(init.payload.assetUrls.modelUrl).toBe("https://vanzacarias-mu.vercel.app/assets/tts/model_quantized.onnx")
+      expect(init.payload.assetUrls.voiceUrl).toBe("https://vanzacarias-mu.vercel.app/assets/tts/voices/pf_dora.bin")
       expect(init.payload.wasmPaths).toBe("/assets/tts/wasm/")
     } finally {
       delete w.window
