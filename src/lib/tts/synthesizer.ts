@@ -62,7 +62,7 @@ export function detectRuntimeKind(): TtsRuntimeKind {
 // wasmPaths/workerUrl são caminhos (não passam por new URL) e seguem relativos.
 const BROWSER_ASSET_DEFAULTS = {
   baseUrl: "/api/tts/models/",
-  wasmPaths: "/api/tts/wasm/",
+  wasmPaths: "/tts/wasm/",
   workerUrl: "/tts/worker.js",
 } as const
 

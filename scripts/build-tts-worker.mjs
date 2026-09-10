@@ -28,3 +28,24 @@ await esbuild.build({
 })
 
 console.log("TTS worker bundle ->", outfile)
+
+// KO-000.0: também disponibiliza WASM estático para Web (evita depender de /api/tts/wasm que 404 na Vercel)
+// Copia os 4 arquivos wasm para public/tts/wasm (gitignored, mas gerado no prebuild da Vercel)
+import { copyFile, mkdir } from "node:fs/promises"
+import { existsSync } from "node:fs"
+const vsRoot = path.join(appRoot, "..", "voice-synthesis")
+const ortDistVS = path.join(vsRoot, "node_modules", "onnxruntime-web", "dist")
+const ortDistProj = path.join(appRoot, "node_modules", "onnxruntime-web", "dist")
+const wasmSrcDir = existsSync(ortDistVS) ? ortDistVS : ortDistProj
+const wasmDestDir = path.join(appRoot, "public", "tts", "wasm")
+await mkdir(wasmDestDir, { recursive: true })
+const wasmFiles = [
+  "ort-wasm-simd-threaded.mjs",
+  "ort-wasm-simd-threaded.wasm",
+  "ort-wasm-simd-threaded.jsep.mjs",
+  "ort-wasm-simd-threaded.jsep.wasm",
+]
+for (const f of wasmFiles) {
+  try { await copyFile(path.join(wasmSrcDir, f), path.join(wasmDestDir, f)) } catch {}
+}
+console.log("TTS wasm static ->", wasmDestDir)
