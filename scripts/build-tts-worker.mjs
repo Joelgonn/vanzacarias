@@ -53,14 +53,33 @@ for (const f of wasmFiles) {
 }
 console.log("TTS wasm static ->", wasmDestDir, "and", wasmDestDirAssets)
 
-// KO-006.0: garante que /assets/tts/* (modelo) esteja disponível na Vercel (public/assets/tts é gitignored, mas prebuild gera)
-// Necessário porque Android com server.url remoto busca https://vanzacarias-mu.vercel.app/assets/tts/... (não https://localhost)
+// KO-007.0: garante que /assets/tts/* esteja disponível na Vercel (public/assets/tts é gitignored, mas prebuild gera)
+import { writeFile } from "node:fs/promises"
 const modelSrcDir = path.join(vsRoot, "models", "kokoro")
 const assetsDestDir = path.join(appRoot, "public", "assets", "tts")
 const voicesDestDir = path.join(assetsDestDir, "voices")
 await mkdir(assetsDestDir, { recursive: true })
 await mkdir(voicesDestDir, { recursive: true })
-try { await copyFile(path.join(modelSrcDir, "model_quantized.onnx"), path.join(assetsDestDir, "model_quantized.onnx")) } catch {}
-try { await copyFile(path.join(modelSrcDir, "tokenizer.json"), path.join(assetsDestDir, "tokenizer.json")) } catch {}
-try { await copyFile(path.join(modelSrcDir, "voices", "pf_dora.bin"), path.join(voicesDestDir, "pf_dora.bin")) } catch {}
+const assetsToCopy = [
+  [path.join(modelSrcDir, "model_quantized.onnx"), path.join(assetsDestDir, "model_quantized.onnx"), "https://raw.githubusercontent.com/Joelgonn/vanzacarias/tts-assets-v1/model_quantized.onnx"],
+  [path.join(modelSrcDir, "tokenizer.json"), path.join(assetsDestDir, "tokenizer.json"), "https://raw.githubusercontent.com/Joelgonn/vanzacarias/tts-assets-v1/tokenizer.json"],
+  [path.join(modelSrcDir, "voices", "pf_dora.bin"), path.join(voicesDestDir, "pf_dora.bin"), "https://raw.githubusercontent.com/Joelgonn/vanzacarias/tts-assets-v1/voices/pf_dora.bin"],
+]
+for (const [src, dest, url] of assetsToCopy) {
+  try {
+    await copyFile(src, dest)
+  } catch {
+    // Vercel não tem voice-synthesis: baixa do GitHub Raw
+    try {
+      console.log(`Downloading ${url} -> ${dest} ...`)
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const buf = Buffer.from(await res.arrayBuffer())
+      await writeFile(dest, buf)
+      console.log(`Downloaded ${dest} ${buf.length}`)
+    } catch (e) {
+      console.warn(`Failed to fetch ${url}:`, e.message)
+    }
+  }
+}
 console.log("TTS assets static ->", assetsDestDir)
