@@ -80,6 +80,7 @@ export interface Patient {
   height?: number | null;
   bf?: number | null;
   leanMass?: number | null;      // 👈 PADRONIZADO: só leanMass
+  protocol?: string | null; // F3.3 — protocolo da última medição (jp3/jp7/petroski4 | null)
   food_restrictions?: FoodRestriction[];
   last_adesao?: number | null;
   last_humor?: number | null;
@@ -267,6 +268,14 @@ export function useAdminDashboard() {
         .select('*')
         .order('measurement_date', { ascending: false });
 
+      // F3.6 — buscar body_compositions oficiais (N+1 evitado: 1 query)
+      const { data: bodyComps } = await supabase
+        .from('body_compositions')
+        .select('*')
+        .eq('is_official', true);
+      const bodyCompMap = new Map<string, any>();
+      (bodyComps || []).forEach((b: any) => bodyCompMap.set(b.skinfold_id, b));
+
       // 🚨 CORREÇÃO 2: Mapa O(n) em vez de filter O(n²)
       const skinfoldMap = new Map();
       skinfolds?.forEach(s => {
@@ -275,27 +284,45 @@ export function useAdminDashboard() {
         }
       });
 
-      // 4. PROCESSAR CADA PACIENTE
+      // 4. PROCESSAR CADA PACIENTE — F3.6 prioriza body_compositions oficial
       const processedPatients: Patient[] = (dashboardData || []).map(rawPatient => {
         const normalized = normalizePatientFromView(rawPatient);
         
         // Buscar última dobra cutânea via MAPA (O(1))
-        const latestSkin = skinfoldMap.get(normalized.id);
+        const latestSkin = skinfoldMap.get(normalized.id) as any;
+        const official = latestSkin ? bodyCompMap.get(latestSkin.id) as any : null;
+        let bf: number | null = null;
+        let leanMass: number | null = null;
+        let protocol: string | null = null;
+        if (official) {
+          // Conjunto indivisível do oficial
+          bf = official.bf;
+          leanMass = official.lean_mass;
+          protocol = official.protocol;
+        } else {
+          const rawProtocol = (latestSkin as any)?.protocol ?? null;
+          const isValidProtocol = rawProtocol === 'jp3' || rawProtocol === 'jp7' || rawProtocol === 'petroski4';
+          protocol = isValidProtocol ? rawProtocol : null;
+          if (isValidProtocol) {
+            const weight = normalized.weight || normalized.peso || null;
+            const composition = buildBodyComposition({
+              skin: latestSkin,
+              weight: weight,
+              birthDate: normalized.data_nascimento,
+              gender: normalized.sexo,
+              measurementDate: latestSkin?.measurement_date ?? null,
+              protocol: rawProtocol as any,
+            });
+            bf = composition?.bf || null;
+            leanMass = composition?.leanMass || null;
+          }
+        }
         
-        const weight = normalized.weight || normalized.peso || null;
-        
-        const composition = buildBodyComposition({
-          skin: latestSkin,
-          weight: weight,
-          birthDate: normalized.data_nascimento,
-          gender: normalized.sexo,
-        });
-        
-        // 🚨 CORREÇÃO 4: padronizado
         return {
           ...normalized,
-          bf: composition?.bf || null,
-          leanMass: composition?.leanMass || null,
+          bf,
+          leanMass,
+          protocol,
         };
       });
 
@@ -533,6 +560,8 @@ export function useAdminDashboard() {
       let evolucaoMassaMagra = '';
       if (patient.bf) evolucaoGordura = `${patient.bf}% atualmente`;
       if (patient.leanMass) evolucaoMassaMagra = `${patient.leanMass}kg de massa magra`;
+      const proto = (patient as any).protocol ?? null;
+      const protoLabel = proto === 'jp3' ? 'JP3' : proto === 'jp7' ? 'JP7' : proto === 'petroski4' ? 'Petroski 4' : null;
       return {
         ...patient,
         composicaoCorporal: hasComposition
@@ -543,6 +572,8 @@ export function useAdminDashboard() {
               ultimaAvaliacao: null,
               evolucaoGordura,
               evolucaoMassaMagra,
+              protocolo: proto,
+              protocoloLabel: protoLabel,
             }
           : null,
       };

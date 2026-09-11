@@ -43,7 +43,7 @@ export type UserData = {
     fat: number;
   }>;
 
-  // COMPOSIÇÃO CORPORAL
+  // COMPOSIÇÃO CORPORAL — F3.3 protocolo da medição
   composicaoCorporal?: {
     percentualGordura: number | null;
     massaGorda: number | null;
@@ -51,6 +51,8 @@ export type UserData = {
     ultimaAvaliacao: string | null;
     evolucaoGordura?: string;
     evolucaoMassaMagra?: string;
+    protocolo?: string | null; // jp3/jp7/petroski4 | null (não registrado)
+    protocoloLabel?: string | null;
   };
 
   // BELISCOS DO DIA
@@ -331,9 +333,21 @@ function buildBodyCompositionContext(data: UserData): string {
     return '';
   }
 
+  const proto = comp.protocolo ?? null;
+  const label = comp.protocoloLabel
+    || (proto === 'jp3' ? 'JP3'
+      : proto === 'jp7' ? 'JP7'
+      : proto === 'petroski4' ? 'Petroski 4'
+      : proto ? proto.toUpperCase()
+      : 'protocolo não registrado');
+  const header = proto
+    ? `[COMPOSIÇÃO CORPORAL (${label})]`
+    : `[COMPOSIÇÃO CORPORAL (protocolo não registrado)]`;
+
   let context = `
-[COMPOSIÇÃO CORPORAL (Protocolo Jackson & Pollock - 7 Dobras)]
+${header}
 📊 **ÚLTIMA AVALIAÇÃO:** ${comp.ultimaAvaliacao || 'Data não registrada'}
+- Protocolo: ${label}
 - Percentual de Gordura Corporal: ${comp.percentualGordura}%
 - Massa Gorda: ${comp.massaGorda !== null ? comp.massaGorda + ' kg' : 'N/A'}
 - Massa Magra: ${comp.massaMagra !== null ? comp.massaMagra + ' kg' : 'N/A'}

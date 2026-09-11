@@ -486,7 +486,7 @@ export function PatientCard({
         </div>
 
         <div className="rounded-2xl border border-stone-100 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/30 p-3 md:p-4 mb-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-2 min-[380px]:flex-row min-[380px]:items-start min-[380px]:justify-between min-[380px]:gap-3">
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-stone-400 mb-1">
                 {chargeHandled ? 'Cobrança concluída' : 'Próxima ação'}
@@ -498,33 +498,23 @@ export function PatientCard({
                 {recencyLabel}
               </p>
             </div>
-            <div className="shrink-0 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-2.5 py-2 text-right">
-              <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">Status</p>
-              <p className="text-[11px] font-bold text-stone-800 dark:text-stone-200">{primaryStatusLabel}</p>
+
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-wider text-stone-400 mb-1.5 min-[380px]:text-right">Status</p>
+              <div className="flex flex-wrap items-center gap-1 min-[380px]:justify-end">
+                <span className={cn(ui.badge, ui.textCardBadge, isDietReady ? ui.badgeSuccess : ui.badgeWarning, 'text-[8px] py-0.5 px-1.5')}>
+                  {isDietReady ? <CheckCircle2 size={8} className="shrink-0" /> : <Clock size={8} className="shrink-0" />}
+                  {primaryStatusLabel}
+                </span>
+                <span className={cn(ui.badge, ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
+                  <MessageCircle size={7} className="shrink-0" /> {usage} {usage === 1 ? 'msg' : 'msgs'}
+                </span>
+                <span className={cn(ui.badge, patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0 ? ui.badgeInfo : ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
+                  <Eye size={7} className="shrink-0" /> {evaluationLabel}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          <span className={cn(
-            ui.badge,
-            ui.textCardBadge,
-            'text-[8px] py-0.5 px-1.5 gap-1',
-            isDietReady
-              ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm shadow-emerald-700/30'
-              : 'bg-amber-500 text-white border border-amber-600 shadow-sm shadow-amber-600/30'
-          )}>
-            {isDietReady ? <CheckCircle2 size={8} className="shrink-0" /> : <Clock size={8} className="shrink-0" />}
-            {primaryStatusLabel}
-          </span>
-
-          <span className={cn(ui.badge, ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1 flex items-center gap-0.5')}>
-            <MessageCircle size={7} /> {usage} {usage === 1 ? 'msg' : 'msgs'}
-          </span>
-
-          <span className={cn(ui.badge, patient.evaluation_answers && Object.keys(patient.evaluation_answers).length > 0 ? ui.badgeInfo : ui.badgeNeutral, ui.textCardBadge, 'text-[8px] py-0.5 px-1')}>
-            <Eye size={7} className="inline mr-0.5" /> {evaluationLabel}
-          </span>
         </div>
 
         <button

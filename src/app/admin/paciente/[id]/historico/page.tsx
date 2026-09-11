@@ -21,6 +21,11 @@ import { cn } from '@/ui/system';
 
 import MetabolicSummary from '@/components/admin/MetabolicSummary';
 import CopilotTab from './components/CopilotTab';
+import CheckinsSection from '@/components/admin/historico/CheckinsSection';
+import MedidasSection from '@/components/admin/historico/MedidasSection';
+import DobrasSection from '@/components/admin/historico/DobrasSection';
+// Motor central de composição corporal (DO-000.0) — fonte única JP7
+import { calculateBodyComposition, calculateAge as calculateAgeMotor, normalizeSex } from '@/lib/nutrition/bodyComposition';
 // 🔥 Sprint Z-001: histórico delega o cálculo metabólico ao modelo único (SSOT)
 import { buildMetabolicSnapshot, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 // Validador de QFA (perfil alimentar) — mantido aqui
@@ -43,7 +48,8 @@ interface PatientProfile {
   food_restrictions?: FoodRestriction[];
 }
 
-interface CheckinData {
+// Exportado como fonte de verdade única do tipo (consumido por CheckinsSection).
+export interface CheckinData {
   id: string;
   created_at: string;
   peso: number;
@@ -54,7 +60,8 @@ interface CheckinData {
   comentarios: string;
 }
 
-interface AntroData {
+// Exportado como fonte de verdade única do tipo (consumido por MedidasSection).
+export interface AntroData {
   id: string;
   measurement_date: string;
   weight?: string | number;
@@ -66,7 +73,8 @@ interface AntroData {
   neck?: string | number;
 }
 
-interface SkinfoldsData {
+// Exportado como fonte de verdade única do tipo (consumido por DobrasSection).
+export interface SkinfoldsData {
   id: string;
   measurement_date: string;
   triceps?: string | number;
@@ -78,6 +86,7 @@ interface SkinfoldsData {
   abdominal?: string | number;
   thigh?: string | number;
   calf?: string | number;
+  protocol?: string | null; // F3.1 — protocolo oficial por medição (jp3/jp7/petroski4), NULL = histórico pré-F3.1
 }
 
 interface BioData {
@@ -142,6 +151,7 @@ export default function PacienteHistoricoAdmin() {
   const [bioData, setBioData] = useState<BioData[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [notes, setNotes] = useState<ClinicalNote[]>([]);
+  const [bodyCompsData, setBodyCompsData] = useState<any[]>([]); // F3.6 — body_compositions oficial
   
   // NOVO: Estados para o perfil alimentar e QFA
   const [foodRestrictions, setFoodRestrictions] = useState<FoodRestriction[]>([]);
@@ -202,7 +212,8 @@ export default function PacienteHistoricoAdmin() {
         bioRes,
         notesRes,
         dailyRes,
-        qfaRes // NOVO: Busca do QFA
+        qfaRes, // NOVO: Busca do QFA
+        bodyCompsRes // F3.6 — body_compositions oficial
       ] = await Promise.all([
         supabase.from('checkins').select('*').eq('user_id', pacienteId).order('created_at', { ascending: true }),
         supabase.from('anthropometry').select('*').eq('user_id', pacienteId).order('measurement_date', { ascending: false }),
@@ -210,13 +221,45 @@ export default function PacienteHistoricoAdmin() {
         supabase.from('biochemicals').select('*').eq('user_id', pacienteId).order('exam_date', { ascending: false }),
         supabase.from('clinical_notes').select('*').eq('user_id', pacienteId).order('created_at', { ascending: false }),
         supabase.from('daily_logs').select('*').eq('user_id', pacienteId).order('date', { ascending: false }),
-        supabase.from('qfa_responses').select('answers').eq('user_id', pacienteId).single() // NOVO
+        supabase.from('qfa_responses').select('answers').eq('user_id', pacienteId).single(), // NOVO
+        supabase.from('body_compositions').select('*').eq('user_id', pacienteId).eq('is_official', true) // F3.6
       ]);
       
-      const processedHistory = checkinRes.data?.map(item => ({
-        ...item,
-        imc: item.altura ? (item.peso / (item.altura * item.altura)) : 0
-      })) as CheckinData[] || [];
+      // =======================================================================
+      // Sprint Fase 1.1 (REGRA DEFINITIVA) — ALTURA DE REFERÊNCIA PARA O IMC
+      // Para adultos a altura é medida de referência e não precisa ser
+      // redigitada em cada check-in.
+      // A referência é a altura VÁLIDA MAIS RECENTE do histórico COMPLETO,
+      // portanto a altura registrada em um check-in POSTERIOR pode ser usada
+      // para calcular o IMC de registros ANTERIORES (retropropagação).
+      // `history` já chega em ordem CRONOLÓGICA CRESCENTE
+      // (order('created_at', { ascending: true })), então a mais recente é
+      // simplesmente a ÚLTIMA altura válida encontrada na varredura.
+      // `item.altura` permanece exatamente como foi registrada: a altura
+      // efetiva é apenas referência interna de cálculo. Nada é gravado no banco.
+      // =======================================================================
+      const checkinRows = checkinRes.data || [];
+
+      // 1) Altura de referência do histórico completo (a mais recente válida).
+      let referenceHeight: number | null = null;
+      for (const row of checkinRows) {
+        const height = Number(row.altura);
+        if (Number.isFinite(height) && height > 0) referenceHeight = height;
+      }
+
+      // 2) IMC de cada registro: altura própria quando houver, senão referência.
+      const processedHistory = checkinRows.map(item => {
+        const ownHeight = Number(item.altura);
+        const hasOwnHeight = Number.isFinite(ownHeight) && ownHeight > 0;
+        const effectiveHeight = hasOwnHeight ? ownHeight : referenceHeight;
+
+        // Sem NENHUMA altura válida no histórico: IMC permanece indisponível.
+        const imc = effectiveHeight
+          ? (item.peso / (effectiveHeight * effectiveHeight))
+          : 0;
+
+        return { ...item, imc };
+      }) as CheckinData[];
 
       setProfile(profileData as PatientProfile);
       setHistory(processedHistory);
@@ -225,6 +268,7 @@ export default function PacienteHistoricoAdmin() {
       setBioData(bioRes.data || []);
       setNotes(notesRes.data || []);
       setDailyLogs(dailyRes.data || []);
+      setBodyCompsData((bodyCompsRes as any)?.data || []);
       
       // NOVO: Seta os novos estados
       setFoodRestrictions(profileData.food_restrictions || []);
@@ -283,7 +327,7 @@ export default function PacienteHistoricoAdmin() {
   };
 
   // =========================================================================
-  // FUNÇÕES DE CÁLCULO E INTERPRETAÇÃO
+  // FUNÇÕES DE CÁLCULO E INTERPRETAÇÃO (fora composição — motor já é central)
   // =========================================================================
   const calculateAge = (dob: string | null | undefined): number | null => {
     if (!dob) return null;
@@ -295,34 +339,6 @@ export default function PacienteHistoricoAdmin() {
       age--;
     }
     return age;
-  };
-
-  const calculateBodyComposition = (sum7: number, age: number | null, gender: string | undefined, weight: number) => {
-    if (!sum7 || sum7 === 0 || !weight || age === null) return null; 
-    
-    let bd = 0;
-    const isMale = gender?.toLowerCase() === 'masculino' || gender?.toLowerCase() === 'homem';
-    
-    if (isMale) {
-      bd = 1.112 - (0.00043499 * sum7) + (0.00000055 * (sum7 * sum7)) - (0.00028826 * age);
-    } else {
-      bd = 1.097 - (0.00046971 * sum7) + (0.00000056 * (sum7 * sum7)) - (0.00012828 * age);
-    }
-
-    if (bd === 0) return null;
-    const bf = (4.95 / bd - 4.5) * 100; 
-    const validBF = bf > 0 && bf < 60 ? bf : null;
-
-    if (!validBF) return null;
-
-    const fatMass = weight * (validBF / 100);
-    const leanMass = weight - fatMass;
-
-    return { 
-      bf: validBF.toFixed(1), 
-      fatMass: fatMass.toFixed(1), 
-      leanMass: leanMass.toFixed(1) 
-    };
   };
 
   const interpretBiochemical = (type: string, value: number | null | undefined) => {
@@ -413,6 +429,7 @@ export default function PacienteHistoricoAdmin() {
   // =========================================================================
   // MEMOIZAÇÕES PRINCIPAIS (ALERTS E GRÁFICOS)
   // =========================================================================
+  // Idade exibida no header (idade hoje) — composição histórica usa idade na data da medida
   const patientAge = useMemo(() => calculateAge(profile?.data_nascimento), [profile]);
 
   // NOVO: Extração dos alertas do QFA para gerenciar o Bloqueio Clínico
@@ -596,6 +613,9 @@ export default function PacienteHistoricoAdmin() {
     const defaultHeightRaw = antroData.find(a => a.height)?.height || history.find(h => h.altura)?.altura || profile?.altura || null;
     const defaultHeight = defaultHeightRaw ? parseFloat(defaultHeightRaw.toString()) : null;
 
+    // F3.6 — mapa oficial body_compositions por skinfold_id (evita N+1)
+    const bodyCompMap = new Map((bodyCompsData as any[]).map((b: any) => [b.skinfold_id, b]));
+
     return sortedDates.map(dateStr => {
       const checkin = history.find(h => formatD(h.created_at) === dateStr);
       const antro = antroData.find(a => formatD(a.measurement_date) === dateStr);
@@ -613,22 +633,55 @@ export default function PacienteHistoricoAdmin() {
         imc = parseFloat((currentWeight / (currentHeight * currentHeight)).toFixed(1));
       }
 
+      // F3.6 — prioriza body_compositions is_official, fallback on-the-fly
       let sumFolds: number | null = null;
       let bf: number | null = null;
       let fatMass: number | null = null;
       let leanMass: number | null = null;
+      let protocol: string | null = null;
+      let density: number | null = null;
+      let protocolVersion: string | null = null;
+      let method: string | null = null;
+      let calculatedAt: string | null = null;
       
       if (skin) {
-        const s1 = parseFloat(skin.triceps?.toString()||"0") + parseFloat(skin.biceps?.toString()||"0") + parseFloat(skin.subscapular?.toString()||"0") + parseFloat(skin.axillary_media?.toString()||"0") + parseFloat(skin.pectoral?.toString()||"0") + parseFloat(skin.suprailiac?.toString()||"0") + parseFloat(skin.abdominal?.toString()||"0") + parseFloat(skin.thigh?.toString()||"0") + parseFloat(skin.calf?.toString()||"0");
-        if (s1 > 0) {
-          sumFolds = parseFloat(s1.toFixed(1));
-          if (currentWeight && patientAge !== null) {
-            const comp = calculateBodyComposition(s1, patientAge, profile?.sexo, currentWeight);
-            if (comp) {
-              bf = parseFloat(comp.bf);
-              fatMass = parseFloat(comp.fatMass);
-              leanMass = parseFloat(comp.leanMass);
+        const official = bodyCompMap.get((skin as any).id) as any;
+        if (official) {
+          // Conjunto indivisível do oficial — não recalcular
+          sumFolds = official.sum;
+          bf = official.bf;
+          fatMass = official.fat_mass;
+          leanMass = official.lean_mass;
+          protocol = official.protocol;
+          density = official.density;
+          protocolVersion = official.protocol_version;
+          method = official.method;
+          calculatedAt = official.calculated_at;
+        } else {
+          const rawProtocol = (skin as any).protocol ?? null;
+          const isValidProtocol = rawProtocol === 'jp3' || rawProtocol === 'jp7' || rawProtocol === 'petroski4';
+          protocol = isValidProtocol ? rawProtocol : null;
+          if (protocol) {
+            const ageAtMeasure = skin.measurement_date ? calculateAgeMotor(profile?.data_nascimento, skin.measurement_date) : null;
+            const sexNorm = normalizeSex(profile?.sexo);
+            const comp = calculateBodyComposition({
+              protocol: protocol as any,
+              sex: sexNorm,
+              age: ageAtMeasure,
+              weight: currentWeight,
+              height: currentHeight,
+              skinfolds: skin as unknown as Record<string, unknown>,
+              conversion: 'siri',
+            });
+            if (comp && comp.sum !== null) sumFolds = comp.sum;
+            if (comp && comp.bf !== null) {
+              bf = comp.bf;
+              fatMass = comp.fatMass;
+              leanMass = comp.leanMass;
+              density = (comp as any).density ?? null;
             }
+          } else {
+            sumFolds = null;
           }
         }
       }
@@ -647,12 +700,18 @@ export default function PacienteHistoricoAdmin() {
         bf,
         fatMass,
         leanMass,
+        protocol,
+        density,
+        protocolVersion,
+        method,
+        calculatedAt,
+        skinfoldId: (skin as any)?.id ?? null,
         homair: homa,
         adesao: checkin?.adesao_ao_plano || null,
         hasExam: !!bio, 
       };
     });
-  }, [history, antroData, skinfoldsData, bioData, profile, patientAge]);
+  }, [history, antroData, skinfoldsData, bioData, profile, bodyCompsData]);
 
   const projectionDate = useMemo(() => {
     if (history.length < 3 || !profile?.meta_peso) return null;
@@ -1490,268 +1549,27 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* CHECK-INS SEMANAIS (Tabela Responsiva) */}
+            {/* CHECK-INS SEMANAIS (Timeline responsiva — Sprint Histórico/Fase 1) */}
             {activeTab === 'checkins' && (
-              <div className="animate-in fade-in duration-300">
-                <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-6 text-stone-900 flex items-center gap-2.5 tracking-tight">
-                  <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><CalendarCheck size={18} /></div>
-                  Histórico de Check-ins
-                </h2>
-                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead className="bg-stone-50/80">
-                      <tr>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 whitespace-nowrap">Data</th>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Peso</th>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 text-center">Adesão</th>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 text-center">Humor</th>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Comentários</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {history.length === 0 && (
-                        <tr><td colSpan={5} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhum check-in registrado.</td></tr>
-                      )}
-                      {history.slice().reverse().map((item) => (
-                        <tr key={item.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-4 px-5 font-bold text-stone-800 text-xs md:text-sm whitespace-nowrap">{new Date(item.created_at).toLocaleDateString('pt-BR')}</td>
-                          <td className="py-4 px-5 font-extrabold text-xs md:text-sm text-emerald-600">{item.peso} kg</td>
-                          <td className="py-4 px-5 text-xs text-center">
-                            <span className={`inline-flex px-2 py-1 rounded-lg font-bold tracking-wider border ${item.adesao_ao_plano >= 4 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                              {item.adesao_ao_plano}/5
-                            </span>
-                          </td>
-                          <td className="py-4 px-5 font-bold text-xs text-stone-500 text-center">
-                            {item.humor_semanal}/5
-                          </td>
-                          <td className="py-4 px-5 text-xs text-stone-600 font-medium max-w-[200px] truncate" title={item.comentarios}>{item.comentarios || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <CheckinsSection
+                history={history}
+                getMoodIcon={getMoodIcon}
+              />
             )}
 
-            {/* ANTROPOMETRIA (Tabela Responsiva) */}
+            {/* MEDIDAS (Snapshot + histórico responsivo — Sprint Histórico/Fase 2) */}
             {activeTab === 'antropometria' && (
-              <div className="animate-in fade-in duration-300">
-                <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-6 text-stone-900 flex items-center gap-2.5 tracking-tight">
-                  <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Ruler size={18} /></div>
-                  Circunferências
-                </h2>
-                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
-                  <table className="w-full text-left min-w-[800px]">
-                    <thead className="bg-stone-50/80">
-                      <tr>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Data</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Peso</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Cintura</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Quadril</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Braço</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Pant.</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200">Pesc.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {antroData.length === 0 && (
-                        <tr><td colSpan={7} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhuma medida cadastrada.</td></tr>
-                      )}
-                      {antroData.map(i => (
-                        <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
-                          <td className="py-4 px-5 font-bold text-xs md:text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                          <td className="py-4 px-4 font-extrabold text-xs md:text-sm text-emerald-600">{i.weight ? `${i.weight} kg` : '-'}</td>
-                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.waist ? `${i.waist}` : '-'}</td>
-                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.hip ? `${i.hip}` : '-'}</td>
-                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.arm ? `${i.arm}` : '-'}</td>
-                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.calf ? `${i.calf}` : '-'}</td>
-                          <td className="py-4 px-4 font-medium text-xs md:text-sm text-stone-600">{i.neck ? `${i.neck}` : '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <MedidasSection measurements={antroData} />
             )}
 
-            {/* DOBRAS E COMPOSIÇÃO: Redesenhado Hermético e Comparativo Avançado */}
+            {/* DOBRAS E COMPOSIÇÃO (Snapshot + histórico responsivo — Sprint Histórico/Fase 3) */}
             {activeTab === 'dobras' && (
-              <div className="animate-in fade-in duration-300">
-                {skinfoldsData.length > 0 && timelineData.length > 0 && (
-                  <div className="bg-stone-900 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 mb-6 md:mb-8 text-white flex flex-col gap-5 md:gap-6 shadow-xl relative overflow-hidden border border-stone-800">
-                    <div className="absolute -right-20 -top-20 w-60 h-60 bg-white opacity-5 rounded-full blur-3xl pointer-events-none"></div>
-
-                    <div className="relative z-10">
-                      <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-1 flex items-center gap-1.5">
-                        <Layers size={14}/> Composição Corporal 
-                        <span className="hidden sm:inline">(Jackson & Pollock)</span>
-                      </h3>
-                      <p className="text-xs md:text-sm font-medium text-stone-400 mt-1.5">
-                        {patientAge !== null 
-                          ? `Protocolo 7 dobras. Idade: ${patientAge} anos (${profile?.sexo || 'Indefinido'}).`
-                          : <span className="text-rose-300 flex items-center gap-1 font-bold text-xs"><AlertCircle size={12}/> Idade ausente no perfil.</span>
-                        }
-                      </p>
-                    </div>
-                    
-                    {(() => {
-                      const latestSkin = skinfoldsData[0];
-                      const s1 = parseFloat(latestSkin.triceps?.toString()||"0") + parseFloat(latestSkin.biceps?.toString()||"0") + parseFloat(latestSkin.subscapular?.toString()||"0") + parseFloat(latestSkin.suprailiac?.toString()||"0") + parseFloat(latestSkin.abdominal?.toString()||"0") + parseFloat(latestSkin.thigh?.toString()||"0") + parseFloat(latestSkin.calf?.toString()||"0");
-                      const currentPoint = timelineData.slice().reverse().find(t => t.somatorio_dobras === parseFloat(s1.toFixed(1)));
-                      
-                      const initialPoint = timelineData.find(t => t.bf !== null && t.bf !== undefined);
-
-                      if (currentPoint && currentPoint.bf && patientAge !== null) {
-                        
-                        const getDelta = (current: number, initial: number) => (current - initial).toFixed(1);
-                        const renderDelta = (delta: string, reverseColors = false) => {
-                          const val = parseFloat(delta);
-                          if (isNaN(val) || val === 0) return <span className="text-stone-500">Mantido</span>;
-                          const isPositive = val > 0;
-                          
-                          let colorClass = isPositive ? 'text-emerald-400' : 'text-rose-400';
-                          if (reverseColors) {
-                            colorClass = isPositive ? 'text-rose-400' : 'text-emerald-400';
-                          }
-
-                          return (
-                            <span className={`font-bold flex items-center gap-0.5 ${colorClass}`}>
-                              {isPositive ? '+' : ''}{delta}
-                            </span>
-                          );
-                        };
-
-                        return (
-                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 w-full relative z-10 border-t border-white/10 pt-5">
-                            
-                            {/* CARD IMC */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-cyan-200/50 mb-1.5">Índice IMC</span>
-                              <div className="flex items-baseline mb-3">
-                                <span className="text-2xl md:text-3xl font-black text-cyan-400 tracking-tight">{currentPoint.imc || '-'}</span>
-                              </div>
-                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
-                                {initialPoint?.imc && (
-                                  <>
-                                    <span className="flex justify-between">Início: <span className="text-cyan-100/70">{initialPoint.imc}</span></span>
-                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.imc!, initialPoint.imc), true)}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* CARD GORDURA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-amber-200/50 mb-1.5">% Gordura</span>
-                              <div className="flex items-baseline mb-3">
-                                <span className="text-2xl md:text-3xl font-black text-amber-400 tracking-tight">{currentPoint.bf}</span>
-                                <span className="text-xs font-bold text-amber-400/50 ml-1 uppercase">%</span>
-                              </div>
-                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
-                                {initialPoint?.bf && (
-                                  <>
-                                    <span className="flex justify-between">Início: <span className="text-amber-100/70">{initialPoint.bf}%</span></span>
-                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.bf, initialPoint.bf), true)}%</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* CARD MASSA MAGRA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-emerald-200/50 mb-1.5">Massa Magra</span>
-                              <div className="flex items-baseline mb-3">
-                                <span className="text-2xl md:text-3xl font-black text-emerald-400 tracking-tight">{currentPoint.leanMass}</span>
-                                <span className="text-xs font-bold text-emerald-400/50 ml-1 uppercase">kg</span>
-                              </div>
-                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
-                                {initialPoint?.leanMass && (
-                                  <>
-                                    <span className="flex justify-between">Início: <span className="text-emerald-100/70">{initialPoint.leanMass}</span></span>
-                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.leanMass!, initialPoint.leanMass))} kg</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* CARD MASSA GORDA */}
-                            <div className="flex flex-col bg-white/5 backdrop-blur-md p-4 rounded-xl md:rounded-2xl border border-white/10 shadow-inner">
-                              <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-rose-200/50 mb-1.5">Massa Gorda</span>
-                              <div className="flex items-baseline mb-3">
-                                <span className="text-2xl md:text-3xl font-black text-rose-400 tracking-tight">{currentPoint.fatMass}</span>
-                                <span className="text-xs font-bold text-rose-400/50 ml-1 uppercase">kg</span>
-                              </div>
-                              <div className="mt-auto pt-3 border-t border-white/5 flex flex-col gap-1 text-[9px] font-bold tracking-widest uppercase text-stone-500">
-                                {initialPoint?.fatMass && (
-                                  <>
-                                    <span className="flex justify-between">Início: <span className="text-rose-100/70">{initialPoint.fatMass}</span></span>
-                                    <span className="flex justify-between mt-0.5">Evol: {renderDelta(getDelta(currentPoint.fatMass!, initialPoint.fatMass), true)} kg</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-
-                          </div>
-                        )
-                      }
-                      return <p className="text-xs md:text-sm font-bold text-amber-300 italic mt-4 bg-amber-900/30 p-4 rounded-xl border border-amber-500/20">O peso do paciente deve ser atualizado na mesma data das dobras para cálculo da composição.</p>;
-                    })()}
-                  </div>
-                )}
-
-                <div className="overflow-x-auto rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm scrollbar-hide bg-white">
-                  <table className="w-full text-left min-w-[900px]">
-                    <thead className="bg-stone-50/80">
-                      <tr>
-                        <th className="py-4 px-5 text-[10px] text-stone-500 uppercase font-bold tracking-widest border-b border-stone-200 whitespace-nowrap">Data</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-800 uppercase font-bold tracking-widest border-b border-stone-200">Soma</th>
-                        <th className="py-4 px-4 text-[10px] text-cyan-600 uppercase font-bold tracking-widest border-b border-stone-200">IMC</th>
-                        <th className="py-4 px-4 text-[10px] text-amber-500 uppercase font-bold tracking-widest border-b border-stone-200">BF%</th>
-                        <th className="py-4 px-4 text-[10px] text-emerald-600 uppercase font-bold tracking-widest border-b border-stone-200">M. Magra</th>
-                        <th className="py-4 px-4 text-[10px] text-stone-400 uppercase font-bold tracking-widest pl-5 border-l border-stone-200 border-b">Tri</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Bic</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Sub</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Sup</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Abd</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Cox</th>
-                        <th className="py-4 px-3 text-[10px] text-stone-400 uppercase font-bold tracking-widest border-b border-stone-200">Pan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {skinfoldsData.length === 0 && (
-                        <tr><td colSpan={12} className="text-center py-10 text-stone-400 text-sm font-medium italic">Nenhum protocolo cadastrado.</td></tr>
-                      )}
-                      {skinfoldsData.map(i => {
-                         const sum = parseFloat(i.triceps?.toString()||"0") + parseFloat(i.biceps?.toString()||"0") + parseFloat(i.subscapular?.toString()||"0") + parseFloat(i.suprailiac?.toString()||"0") + parseFloat(i.abdominal?.toString()||"0") + parseFloat(i.thigh?.toString()||"0") + parseFloat(i.calf?.toString()||"0");
-                         
-                         const formatD = (d: string) => new Date(d).toISOString().split('T')[0];
-                         const tPoint = timelineData.find(t => t.date === formatD(i.measurement_date) && t.somatorio_dobras === parseFloat(sum.toFixed(1)));
-                         
-                         const bf = tPoint?.bf;
-                         const imc = tPoint?.imc;
-                         const mMag = tPoint?.leanMass;
-
-                         return (
-                          <tr key={i.id} className="hover:bg-stone-50/50 transition-colors">
-                            <td className="py-3 px-5 font-bold text-xs md:text-sm text-stone-800 whitespace-nowrap">{new Date(i.measurement_date).toLocaleDateString('pt-BR')}</td>
-                            <td className="py-3 px-4 font-black text-stone-700 text-xs md:text-sm bg-stone-50/30">{sum > 0 ? sum.toFixed(1) : '-'}</td>
-                            <td className="py-3 px-4 font-extrabold text-cyan-600 text-xs md:text-sm">{imc ? imc : '-'}</td>
-                            <td className="py-3 px-4 font-extrabold text-amber-500 text-xs md:text-sm">{bf ? `${bf}%` : '-'}</td>
-                            <td className="py-3 px-4 font-extrabold text-emerald-600 text-xs md:text-sm">{mMag ? `${mMag}kg` : '-'}</td>
-                            <td className="py-3 px-4 font-medium text-xs text-stone-500 pl-5 border-l border-stone-100">{i.triceps || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.biceps || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.subscapular || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.suprailiac || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.abdominal || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.thigh || '-'}</td>
-                            <td className="py-3 px-3 font-medium text-xs text-stone-500">{i.calf || '-'}</td>
-                          </tr>
-                         )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <DobrasSection
+                skinfolds={skinfoldsData}
+                timeline={timelineData}
+                patientAge={patientAge}
+                sexo={profile?.sexo}
+              />
             )}
 
             {/* COPILOTO */}

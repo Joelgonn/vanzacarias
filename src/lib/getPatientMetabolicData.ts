@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { buildMetabolicSnapshot, calculateAvgActivity, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 import type { RecommendationResult } from '@/lib/nutrition';
+import { calculateBodyComposition, calculateAge, normalizeSex } from '@/lib/nutrition/bodyComposition';
 
 interface MetabolicDataInput {
   patientId: string;
@@ -89,43 +90,65 @@ export async function getPatientMetabolicData(
     }
   }
 
-  // 5. Buscar dobras para calcular % gordura e massa magra
+  // 5. Buscar dobras para calcular % gordura e massa magra (via motor único — DO-000.0)
+  // Antes: cálculo inline com soma 7 errada (biceps+calf) e fallback sexo invertido.
+  // Agora: delega ao motor (JP7 corrigido, null!=0, sem fallback).
   let bfPercent: number | null = null;
-  if (!leanMass && weight && height && ageStr && age !== null) {
+  if (!leanMass && weight && ageStr && age !== null) {
     const { data: lastSkinfolds } = await supabase
       .from('skinfolds')
-      .select('triceps, biceps, subscapular, suprailiac, abdominal, thigh, calf')
+      .select('id, triceps, biceps, subscapular, axillary_media, pectoral, suprailiac, abdominal, thigh, calf, measurement_date, protocol')
       .eq('user_id', patientId)
       .order('measurement_date', { ascending: false })
       .limit(1);
 
     if (lastSkinfolds && lastSkinfolds.length > 0) {
-      const skin = lastSkinfolds[0];
-      const sum = (parseFloat(skin.triceps?.toString() || "0") +
-                  parseFloat(skin.biceps?.toString() || "0") +
-                  parseFloat(skin.subscapular?.toString() || "0") +
-                  parseFloat(skin.suprailiac?.toString() || "0") +
-                  parseFloat(skin.abdominal?.toString() || "0") +
-                  parseFloat(skin.thigh?.toString() || "0") +
-                  parseFloat(skin.calf?.toString() || "0"));
-
-      if (sum > 0) {
-        const isFemale = ['f', 'feminino', 'female', 'mulher'].some(v => gender.toLowerCase().trim().startsWith(v));
-
-        let bd = 0;
-        if (isFemale) {
-          bd = 1.097 - (0.00046971 * sum) + (0.00000056 * (sum * sum)) - (0.00012828 * age);
-        } else {
-          bd = 1.112 - (0.00043499 * sum) + (0.00000055 * (sum * sum)) - (0.00028826 * age);
+      const skin = lastSkinfolds[0] as Record<string, unknown>;
+      // F3.6 — prioriza body_compositions is_official
+      const { data: official } = await supabase
+        .from('body_compositions')
+        .select('*')
+        .eq('skinfold_id', (skin as any).id)
+        .eq('is_official', true)
+        .maybeSingle();
+      if (official) {
+        // Conjunto indivisível do oficial
+        bfPercent = (official as any).bf;
+        if (bfPercent !== null && bfPercent > 0 && bfPercent < 60) {
+          bf = bfPercent;
+          leanMass = (official as any).lean_mass ?? null;
         }
-
-        if (bd > 0) {
-          bfPercent = (4.95 / bd - 4.5) * 100;
-          if (bfPercent > 0 && bfPercent < 60) {
-            bf = parseFloat(bfPercent.toFixed(1));
-            leanMass = parseFloat((weight - (weight * (bfPercent / 100))).toFixed(1));
-          }
+      } else {
+      const rawProtocol = (skin as any).protocol ?? null;
+      const isValidProtocol = rawProtocol === 'jp3' || rawProtocol === 'jp7' || rawProtocol === 'petroski4';
+      if (!isValidProtocol) {
+        // Protocolo NULL histórico → não calcular como JP7 oficial
+      } else {
+      // Usar idade na data da medida quando houver measurement_date; senão idade atual (compat Fase 1)
+      const skinAge = skin.measurement_date
+        ? calculateAge(ageStr, skin.measurement_date as string) ?? age
+        : age;
+      const sexNorm = normalizeSex(gender);
+      const comp = calculateBodyComposition({
+        protocol: rawProtocol as any,
+        sex: sexNorm,
+        age: skinAge,
+        weight,
+        height: null,
+        skinfolds: skin as never,
+        conversion: 'siri',
+      });
+      if (comp && comp.bf !== null && (comp as { bf: number }).bf !== null) {
+        const c = comp as { bf: number; density: number; sum: number; leanMass: number | null; fatMass: number | null };
+        bfPercent = c.bf;
+        // Manter compat de tipos antigos (bf/leanMass com 1 casa) mas derivar de bf não-arredondado no motor
+        // Se peso disponível, o motor já calculou leanMass sem arredondamento intermediário
+        if (bfPercent > 0 && bfPercent < 60) {
+          bf = bfPercent; // não arredondar aqui; apresentação arredonda na borda
+          if (c.leanMass !== null) leanMass = c.leanMass;
         }
+      }
+      }
       }
     }
   }

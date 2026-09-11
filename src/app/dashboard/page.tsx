@@ -28,10 +28,9 @@ import type { FocusInput } from '@/lib/vz015/types';
 import { toast } from 'sonner';
 
 // =========================================================================
-// 🔥 FUNÇÃO DE CÁLCULO DE COMPOSIÇÃO CORPORAL
-// (Jackson & Pollock — centralizada em src/lib/nutrition/bodyComposition.ts)
-// O dashboard usa a lib para evitar duplicação de motor com o admin.
+// Composição corporal — motor central (DO-000.0) é fonte única JP7
 // =========================================================================
+import { calculateBodyComposition, calculateAge as calculateAgeMotor, normalizeSex } from '@/lib/nutrition/bodyComposition';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -99,10 +98,13 @@ interface SkinfoldRow {
   triceps?: string;
   biceps?: string;
   subscapular?: string;
+  axillary_media?: string;
+  pectoral?: string;
   suprailiac?: string;
   abdominal?: string;
   thigh?: string;
   calf?: string;
+  protocol?: string | null; // F3.1 — protocolo por medição
 }
 
 interface BioRow {
@@ -123,6 +125,7 @@ export default function Dashboard() {
   const [antroData, setAntroData] = useState<AntroRow[]>([]);
   const [skinfoldsData, setSkinfoldsData] = useState<SkinfoldRow[]>([]);
   const [bioData, setBioData] = useState<BioRow[]>([]);
+  const [bodyCompsData, setBodyCompsData] = useState<any[]>([]); // F3.6 oficial
   const [nextAppointment] = useState<AppointmentRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -204,6 +207,12 @@ export default function Dashboard() {
         .eq('user_id', userId)
         .order('measurement_date', { ascending: false });
 
+      const { data: bodyComps } = await supabase
+        .from('body_compositions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_official', true);
+
       const { data: bio } = await supabase
         .from('biochemicals')
         .select('*')
@@ -245,6 +254,7 @@ export default function Dashboard() {
       setAntroData(antro || []);
       setSkinfoldsData(skin || []);
       setBioData(bio || []);
+      setBodyCompsData(bodyComps || []);
 
       checkPushSubscription();
     } catch (error) {
@@ -594,6 +604,9 @@ export default function Dashboard() {
     const checkinComAltura = [...checkins].reverse().find(c => c.altura);
     const ultimaAltura = checkinComAltura?.altura ? parseFloat(checkinComAltura.altura) : null;
 
+    // F3.6 — mapa oficial para N+1 eficiente
+    const bodyCompMap = new Map((bodyCompsData as any[]).map((b: any) => [b.skinfold_id, b]));
+
     return sortedDates.map(dateStr => {
       const checkin = checkins.find(h => formatD(h.created_at) === dateStr);
       const antro = antroData.find(a => formatD(a.measurement_date) === dateStr);
@@ -607,10 +620,33 @@ export default function Dashboard() {
       const cinturaAtual = rawCintura ? parseFloat(rawCintura) : null;
       const imcAtual = pesoAtual && ultimaAltura ? parseFloat(getIMC(pesoAtual, ultimaAltura) || "0") : null;
 
+      // F3.6 — prioriza body_compositions is_official, fallback on-the-fly
       let sumFolds: number | null = null;
+      let protocol: string | null = null;
       if (skin) {
-        const s1 = parseFloat(skin.triceps || "0") + parseFloat(skin.biceps || "0") + parseFloat(skin.subscapular || "0") + parseFloat(skin.suprailiac || "0") + parseFloat(skin.abdominal || "0") + parseFloat(skin.thigh || "0") + parseFloat(skin.calf || "0");
-        if (s1 > 0) sumFolds = parseFloat(s1.toFixed(1));
+        const official = bodyCompMap.get((skin as any).id) as any;
+        if (official) {
+          sumFolds = official.sum;
+          protocol = official.protocol;
+        } else {
+          const rawProtocol = (skin as any).protocol ?? null;
+          const isValidProtocol = rawProtocol === 'jp3' || rawProtocol === 'jp7' || rawProtocol === 'petroski4';
+          protocol = isValidProtocol ? rawProtocol : null;
+          if (protocol) {
+            const ageAtMeasure = skin.measurement_date ? calculateAgeMotor(profile?.data_nascimento, skin.measurement_date) : null;
+            const sexNorm = normalizeSex(profile?.sexo);
+            const comp = calculateBodyComposition({
+              protocol: protocol as any,
+              sex: sexNorm,
+              age: ageAtMeasure,
+              weight: pesoAtual,
+              height: null,
+              skinfolds: skin as unknown as Record<string, unknown>,
+              conversion: 'siri',
+            });
+            if (comp && comp.sum !== null) sumFolds = comp.sum;
+          }
+        }
       }
 
       let homa: number | null = null;
@@ -625,12 +661,13 @@ export default function Dashboard() {
         classificacao: imcAtual ? getClassificacaoIMC(imcAtual) : '',
         cintura: cinturaAtual,
         somatorio_dobras: sumFolds,
+        protocol,
         homair: homa,
         adesao: checkin?.adesao_ao_plano ?? null,
         hasExam: !!bio, 
       };
     });
-  }, [checkins, antroData, skinfoldsData, bioData]);
+  }, [checkins, antroData, skinfoldsData, bioData, bodyCompsData, profile?.data_nascimento, profile?.sexo]);
 
   const deltas = useMemo(() => {
     const validWeights = timelineData.filter(d => d.peso !== null).map(d => d.peso!);
