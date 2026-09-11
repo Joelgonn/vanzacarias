@@ -5,9 +5,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 
 import { requireAdmin } from '@/lib/supabase/serverAuth'
-import { buildContext } from '@/lib/contextBuilder'
+import { buildContext, type UserData } from '@/lib/contextBuilder'
 import { detectSabotagePattern, buildIntervention } from '@/lib/behaviorEngine'
 import { findAdminPatient } from '@/lib/adminMatching'
+import type { FoodRestriction } from '@/types/patient'
+import { buildMetabolicSnapshot, type MetabolicSnapshot } from '@/lib/metabolicModel'
+import { calculateAge } from '@/lib/nutrition/bodyComposition'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos, fetchHistoricoBeliscos } from '@/lib/beliscosProcessor'
@@ -198,7 +201,7 @@ async function buildPatientUserData(
   objetivoPrincipal: string,
   evolucaoTxt: string,
   todayStr: string
-) {
+): Promise<UserData> {
   const macros = calcularMacrosDoCardapio(patient?.meal_plan);
   const beliscosProcessed = processBeliscos(todayLog?.beliscos);
   
@@ -258,7 +261,8 @@ async function buildPatientUserData(
       hasBeliscos: beliscosProcessed.hasBeliscos
     },
     behaviorPattern,
-    interventionSuggestion
+    interventionSuggestion,
+    metabolicSafety: undefined
   };
 }
 
@@ -358,7 +362,7 @@ export async function POST(req: NextRequest) {
     if (mentionedPatient && mentionedPatient.id) {
       const fullData = await getFullPatientData(mentionedPatient.id, todayStr);
       
-      const userData = await buildPatientUserData(
+      const userData: UserData = await buildPatientUserData(
         fullData.patient,
         fullData.todayLog,
         fullData.historicoBeliscos,
@@ -368,12 +372,61 @@ export async function POST(req: NextRequest) {
         todayStr
       );
       
+      // F3.4 — alinhar metabolicSafety com patient route (mesmo SSOT, sem duplicar cálculo)
+      try {
+        const patientData = fullData.patient as Record<string, unknown>;
+        const todayLogData = fullData.todayLog as Record<string, unknown> | undefined;
+        const age = typeof patientData.data_nascimento === 'string' ? calculateAge(patientData.data_nascimento) : null;
+        const { data: lastCheckin } = await supabaseAdmin.from('checkins').select('peso, altura').eq('user_id', mentionedPatient.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const checkinData = lastCheckin as Record<string, unknown> | null;
+        const pesoMaisRecente = typeof checkinData?.peso === 'number' ? checkinData.peso : null;
+        const alturaCheckin = typeof checkinData?.altura === 'number' ? checkinData.altura : null;
+        const alturaPatient = typeof patientData.altura === 'number' ? patientData.altura : null;
+        const alturaVal = alturaCheckin ?? alturaPatient ?? null;
+        if (pesoMaisRecente !== null && alturaVal !== null && age !== null) {
+          const snap: MetabolicSnapshot = buildMetabolicSnapshot({
+            weight: pesoMaisRecente,
+            height: alturaVal,
+            age,
+            gender: typeof patientData.sexo === 'string' ? patientData.sexo : '',
+            bf: null,
+            leanMass: null,
+            avgActivity: typeof todayLogData?.activity_kcal === 'number' ? todayLogData.activity_kcal : 0,
+          });
+          if (snap.recommendation) {
+            userData.metabolicSafety = {
+              tmb: snap.tmb,
+              get: snap.get,
+              vctCalculated: snap.recommendation.calculatedCalories ?? null,
+              vctProtected: snap.recommendation.calories ?? null,
+              deficit: snap.deficitKcal ?? null,
+              deficitPercent: snap.deficitPercent ?? null,
+              minCalories: snap.recommendation.minCalories ?? null,
+              safetyAdjustmentApplied: !!snap.recommendation.safetyAdjustmentApplied,
+              safetyReason: snap.recommendation.safetyReason ?? null,
+            };
+          } else if (snap) {
+            userData.metabolicSafety = {
+              tmb: snap.tmb,
+              get: snap.get,
+              vctCalculated: null,
+              vctProtected: null,
+              deficit: null,
+              deficitPercent: null,
+              minCalories: null,
+              safetyAdjustmentApplied: false,
+              safetyReason: null,
+            };
+          }
+        }
+      } catch {}
+
       deepContext = buildContext(safeMessage, userData);
       
       deepContextRaw = `
       DADOS DO PACIENTE: ${mentionedPatient.full_name}
       
-      🚫 RESTRIÇÕES ALIMENTARES: ${userData.restrictions.map((r) => r.food || r.tag).join(', ') || 'Nenhuma'}
+      🚫 RESTRIÇÕES ALIMENTARES: ${(userData.restrictions || []).map((r: FoodRestriction) => r.food || r.tag).join(', ') || 'Nenhuma'}
       
       🍽️ CARDÁPIO DETALHADO:
       ${userData.cardapioFormatado}
