@@ -35,16 +35,18 @@ type MedidaRowData = {
 
 type MeasureKind = 'weight' | 'height' | 'circ';
 
-/** Ordem espelha a declaração de AntroData (peso, altura, cintura, quadril,
- *  braço, panturrilha, pescoço) — sem sugerir hierarquia clínica. */
+/** 10 medidas antropométricas do sistema (ordem do formulário ClinicalDataModal). */
 const MEASURES: { key: keyof AntroData; label: string; kind: MeasureKind }[] = [
   { key: 'weight', label: 'Peso', kind: 'weight' },
   { key: 'height', label: 'Altura', kind: 'height' },
   { key: 'waist', label: 'Cintura', kind: 'circ' },
   { key: 'hip', label: 'Quadril', kind: 'circ' },
   { key: 'arm', label: 'Braço', kind: 'circ' },
+  { key: 'forearm' as keyof AntroData, label: 'Antebraço', kind: 'circ' },
+  { key: 'thigh' as keyof AntroData, label: 'Coxa', kind: 'circ' },
   { key: 'calf', label: 'Panturrilha', kind: 'circ' },
   { key: 'neck', label: 'Pescoço', kind: 'circ' },
+  { key: 'chest' as keyof AntroData, label: 'Tórax', kind: 'circ' },
 ];
 
 /* -------------------------------------------------------------------------
@@ -230,7 +232,7 @@ function MedidaRow({ data }: { data: MedidaRowData }) {
       {expanded && (
         <div
           id={detailsId}
-          className="mt-3 grid grid-cols-2 gap-2.5 transition-all duration-200 md:grid-cols-4 xl:grid-cols-7"
+          className="mt-3 grid grid-cols-2 gap-2.5 transition-all duration-200 md:grid-cols-3 lg:grid-cols-5"
         >
           {MEASURES.map((m) => (
             <MeasureCell
@@ -266,12 +268,9 @@ export default function MedidasSection({ measurements }: MedidasSectionProps) {
 
   return (
     <div className="animate-in fade-in duration-300">
-      <h2 className="mb-4 flex items-center gap-2.5 text-lg font-bold tracking-tight text-stone-900 md:mb-6 md:text-xl">
-        <div className="rounded-xl bg-stone-100 p-2 text-stone-600">
-          <Ruler size={18} />
-        </div>
-        Circunferências
-      </h2>
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-stone-500">
+        Histórico de medidas
+      </p>
 
       {!current ? (
         <div className="rounded-2xl border border-stone-200 bg-white px-5 py-10 text-center shadow-sm md:rounded-3xl">
@@ -294,7 +293,7 @@ export default function MedidasSection({ measurements }: MedidasSectionProps) {
               </span>
             </header>
 
-            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3 xl:grid-cols-7">
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-5 md:gap-3">
               {MEASURES.map((m) => (
                 <MeasureCell
                   key={m.key}

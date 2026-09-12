@@ -133,7 +133,7 @@ const PROTOCOLS: Record<
   }
 > = {
   jp3: {
-    label: 'Jackson & Pollock 3 dobras',
+    label: 'Jackson & Pollock — 3 dobras',
     sitesBySex: {
       M: ['pectoral', 'abdominal', 'thigh'],
       F: ['triceps', 'suprailiac', 'thigh'],
@@ -147,7 +147,7 @@ const PROTOCOLS: Record<
     ageRange: { M: [18, 61], F: [18, 61] },
   },
   jp7: {
-    label: 'Jackson & Pollock 7 dobras',
+    label: 'Jackson & Pollock — 7 dobras',
     sitesBySex: {
       M: ['pectoral', 'axillary_media', 'triceps', 'subscapular', 'abdominal', 'suprailiac', 'thigh'],
       F: ['pectoral', 'axillary_media', 'triceps', 'subscapular', 'abdominal', 'suprailiac', 'thigh'],
@@ -161,7 +161,7 @@ const PROTOCOLS: Record<
     ageRange: { M: [18, 61], F: [18, 61] },
   },
   petroski4: {
-    label: 'Petroski 4 dobras',
+    label: 'Petroski — 4 dobras',
     sitesBySex: {
       M: ['subscapular', 'triceps', 'suprailiac', 'calf'],
       F: ['axillary_media', 'suprailiac', 'thigh', 'calf'],

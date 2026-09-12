@@ -11,6 +11,7 @@ import { findAdminPatient } from '@/lib/adminMatching'
 import type { FoodRestriction } from '@/types/patient'
 import { buildMetabolicSnapshot, type MetabolicSnapshot } from '@/lib/metabolicModel'
 import { calculateAge } from '@/lib/nutrition/bodyComposition'
+import { detectClinicalIndicesRequest, parseProtocolFromMessage, getClinicalIndicesForPatient } from '@/lib/clinicalIndices'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos, fetchHistoricoBeliscos } from '@/lib/beliscosProcessor'
@@ -443,6 +444,34 @@ export async function POST(req: NextRequest) {
       - Carboidratos: ${userData.macrosDiarios?.totalCarbs || 0}g
       - Gorduras: ${userData.macrosDiarios?.totalFat || 0}g
       `;
+    }
+
+    // PRO-004.0 — DADOS CLÍNICOS CALCULADOS (motor único, sem persistência, sem cross-paciente)
+    let adminClinicalBlock = '';
+    if (detectClinicalIndicesRequest(safeMessage)) {
+      const reqProtocol = parseProtocolFromMessage(safeMessage);
+      if (!mentionedPatient?.id) {
+        adminClinicalBlock = `\n\n[DADOS CLÍNICOS CALCULADOS]\nNão foi possível identificar o paciente. Informe o nome completo (ex: "Joelson da Silva") para consultar os índices. Não foi solicitado protocolo específico.\n`;
+      } else {
+        try {
+          const indices: any = await getClinicalIndicesForPatient(mentionedPatient.id, reqProtocol);
+          if (indices.error && !indices.protocol) {
+            adminClinicalBlock = `\n\n[DADOS CLÍNICOS CALCULADOS]\nPaciente: ${mentionedPatient.full_name}\n${indices.error}\n`;
+          } else if (indices.error) {
+            const evalDate = indices.measurementDate ? new Date(indices.measurementDate).toLocaleDateString('pt-BR') : 'sem data';
+            adminClinicalBlock = `\n\n[DADOS CLÍNICOS CALCULADOS]\nPaciente: ${mentionedPatient.full_name}\n${indices.error}\nAvaliação: ${evalDate}\nProtocolo: ${indices.protocolLabel}\n`;
+            if (indices.missing?.length) adminClinicalBlock += `Faltam: ${indices.missing.join(', ')}\n`;
+          } else {
+            const evalDate = indices.measurementDate ? new Date(indices.measurementDate).toLocaleDateString('pt-BR') : 'sem data';
+            adminClinicalBlock = `\n\n[DADOS CLÍNICOS CALCULADOS - APRESENTE EXATAMENTE ESTES VALORES, NÃO RECALCULE]\nPaciente: ${mentionedPatient.full_name}\nAvaliação: ${evalDate}\nProtocolo: ${indices.protocolLabel}\n- IMC: ${indices.imc !== null ? indices.imc.toFixed(1) : 'não calculado (faltam peso/altura)'}\n- Gordura corporal: ${indices.bf !== null ? indices.bf.toFixed(1) + '%' : 'não calculada'}\n- Massa gorda: ${indices.fatMass !== null ? indices.fatMass.toFixed(1) + ' kg' : 'não calculada'}\n- Massa magra: ${indices.leanMass !== null ? indices.leanMass.toFixed(1) + ' kg' : 'não calculada'}\n`;
+            if (indices.warnings?.length) adminClinicalBlock += `Observações: ${indices.warnings.join('; ')}\n`;
+          }
+        } catch (e) { console.error('[clinicalIndices] admin error', e); }
+      }
+      if (adminClinicalBlock) {
+        deepContext += adminClinicalBlock + '\nINSTRUÇÃO CLÍNICA: Se houver [DADOS CLÍNICOS CALCULADOS], apresente EXATAMENTE esses valores no formato: Avaliação: DD/MM/AAAA / Protocolo: JP7 / - IMC: ... / - Gordura corporal: ...% / - Massa gorda: ... kg / - Massa magra: ... kg. Se houver erro/ausência, transcreva literalmente sem inventar.';
+        deepContextRaw += adminClinicalBlock;
+      }
     }
 
     const systemInstruction = buildAdminContext(overview, currentTimeBR, deepContext, deepContextRaw);

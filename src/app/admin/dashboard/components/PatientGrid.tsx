@@ -19,7 +19,6 @@ interface PatientGridProps {
   };
   onOpenDietBuilder: (p: Patient) => void;
   onOpenEvalModal: (p: Patient) => void;
-  onOpenClinicalModal: (p: Patient) => void;
   onEditProfile: (p: Patient) => void;
   onDeleteDiet: (id: string) => void;
   onGeneratePDF: (p: Patient) => void;
@@ -37,7 +36,6 @@ export function PatientGrid({
   editFormData,
   onOpenDietBuilder,
   onOpenEvalModal,
-  onOpenClinicalModal,
   onEditProfile,
   onDeleteDiet,
   onGeneratePDF,
@@ -155,7 +153,6 @@ export function PatientGrid({
                     editFormData={editFormData}
                     onOpenDietBuilder={onOpenDietBuilder}
                     onOpenEvalModal={onOpenEvalModal}
-                    onOpenClinicalModal={onOpenClinicalModal}
                     onEditProfile={onEditProfile}
                     onDeleteDiet={onDeleteDiet}
                     onGeneratePDF={onGeneratePDF}

@@ -19,7 +19,6 @@ import { StatsBar } from './components/StatsBar';
 import { PatientGrid } from './components/PatientGrid';
 import VZ020RecoveryList from '@/components/admin/VZ020RecoveryList';
 import { getRecoveryV2 } from '@/lib/vz020/recoveryEngine';
-import ClinicalDataModal from '@/components/ClinicalDataModal';
 import DietBuilder from '@/components/DietBuilder';
 import ChatAssistant from '@/components/ChatAssistant';
 import { Patient, MealFoodItem, MealMacros } from './types';
@@ -823,7 +822,6 @@ export default function AdminDashboardPage() {
               editFormData={editFormData}
               onOpenDietBuilder={actions.handleOpenDietBuilder}
               onOpenEvalModal={actions.handleOpenEvalModal}
-              onOpenClinicalModal={(p) => actions.setSelectedPatient({ id: p.id, name: p.full_name })}
               onEditProfile={handleEditProfile}
               onDeleteDiet={actions.handleDeleteDiet}
               onGeneratePDF={generatePatientPDF}
@@ -1262,14 +1260,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
-
-      {/* ==================== MODAL CLÍNICO ==================== */}
-      <ClinicalDataModal
-        isOpen={!!state.selectedPatient}
-        onClose={() => actions.setSelectedPatient(null)}
-        patientId={state.selectedPatient?.id || ''}
-        patientName={state.selectedPatient?.name || ''}
-      />
 
       {/* ==================== CHAT ASSISTANT ==================== */}
       <ChatAssistant role="admin" adminContext={state.adminContext} />

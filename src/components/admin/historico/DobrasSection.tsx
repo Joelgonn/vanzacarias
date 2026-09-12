@@ -457,8 +457,8 @@ export default function DobrasSection({
 
   return (
     <div className="animate-in fade-in duration-300">
-      {/* ============ SNAPSHOT — protocolo ATUAL ============ */}
-      <div className="relative mb-6 flex flex-col gap-5 overflow-hidden rounded-2xl border border-stone-800 bg-stone-900 p-5 text-white shadow-xl md:mb-8 md:gap-6 md:rounded-[2.5rem] md:p-8">
+      {/* ============ SNAPSHOT — protocolo ATUAL (compacto) ============ */}
+      <div className="relative mb-5 flex flex-col gap-4 overflow-hidden rounded-2xl border border-stone-800 bg-stone-900 p-4 text-white shadow-lg md:mb-6 md:gap-5 md:rounded-3xl md:p-6">
         <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-white opacity-5 blur-3xl" />
 
         <div className="relative z-10">
@@ -492,115 +492,134 @@ export default function DobrasSection({
           </p>
         </div>
 
-        {/* 5 indicadores exigidos: IMC, BF%, massa magra, massa gorda, soma */}
-        <div className="relative z-10 grid w-full grid-cols-2 gap-3 border-t border-white/10 pt-5 md:grid-cols-3 md:gap-4 xl:grid-cols-5">
+        {/* 5 indicadores — grid responsivo 2→3→5, indisponível explícito */}
+        <div className="relative z-10 grid w-full grid-cols-2 gap-2.5 border-t border-white/10 pt-4 md:grid-cols-3 md:gap-3 lg:grid-cols-5">
           {/* IMC */}
-          <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-md md:rounded-2xl">
-            <span className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-cyan-200/50 md:text-[10px]">Índice IMC</span>
-            <div className="mb-3 flex items-baseline">
-              <span className="text-2xl font-black tracking-tight text-cyan-400 md:text-3xl">{show(currentPoint?.imc)}</span>
+          <div className="flex min-h-[96px] flex-col rounded-xl border border-white/10 bg-white/5 p-3 shadow-inner backdrop-blur-md">
+            <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-cyan-200/60">Índice IMC</span>
+            <div className="mb-2 flex min-h-[28px] items-baseline">
+              {currentPoint?.imc ? (
+                <span className="text-xl font-black tracking-tight text-cyan-400 md:text-2xl">{currentPoint.imc}</span>
+              ) : (
+                <span className="text-[11px] font-bold leading-tight text-stone-400">IMC indisponível</span>
+              )}
             </div>
-            <div className="mt-auto flex flex-col gap-1 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-widest text-stone-500">
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-white/5 pt-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">
               {initialPoint?.imc && currentPoint?.imc && (
                 <>
                   <span className="flex justify-between">Início: <span className="text-cyan-100/70">{initialPoint.imc}</span></span>
-                  <span className="mt-0.5 flex justify-between">Evol: {renderDelta(getDelta(currentPoint.imc, initialPoint.imc), true)}</span>
+                  <span className="flex justify-between">Evol: {renderDelta(getDelta(currentPoint.imc, initialPoint.imc), true)}</span>
                 </>
               )}
             </div>
           </div>
 
           {/* % GORDURA */}
-          <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-md md:rounded-2xl">
-            <span className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-amber-200/50 md:text-[10px]">% Gordura</span>
-            <div className="mb-3 flex items-baseline">
-              <span className="text-2xl font-black tracking-tight text-amber-400 md:text-3xl">{show(currentPoint?.bf)}</span>
-              {currentPoint?.bf ? <span className="ml-1 text-xs font-bold uppercase text-amber-400/50">%</span> : null}
+          <div className="flex min-h-[96px] flex-col rounded-xl border border-white/10 bg-white/5 p-3 shadow-inner backdrop-blur-md">
+            <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-amber-200/60">% Gordura</span>
+            <div className="mb-2 flex min-h-[28px] items-baseline">
+              {currentPoint?.bf ? (
+                <>
+                  <span className="text-xl font-black tracking-tight text-amber-400 md:text-2xl">{currentPoint.bf}</span>
+                  <span className="ml-1 text-[10px] font-bold uppercase text-amber-400/60">%</span>
+                </>
+              ) : (
+                <span className="text-[11px] font-bold leading-tight text-stone-400">BF% indisponível</span>
+              )}
             </div>
-            <div className="mt-auto flex flex-col gap-1 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-widest text-stone-500">
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-white/5 pt-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">
               {initialPoint?.bf && currentPoint?.bf && (
                 <>
                   <span className="flex justify-between">Início: <span className="text-amber-100/70">{initialPoint.bf}%</span></span>
-                  <span className="mt-0.5 flex justify-between">Evol: {renderDelta(getDelta(currentPoint.bf, initialPoint.bf), true)}%</span>
+                  <span className="flex justify-between">Evol: {renderDelta(getDelta(currentPoint.bf, initialPoint.bf), true)}%</span>
                 </>
               )}
             </div>
           </div>
 
           {/* MASSA MAGRA */}
-          <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-md md:rounded-2xl">
-            <span className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-emerald-200/50 md:text-[10px]">Massa Magra</span>
-            <div className="mb-3 flex items-baseline">
-              <span className="text-2xl font-black tracking-tight text-emerald-400 md:text-3xl">{show(currentPoint?.leanMass)}</span>
-              {currentPoint?.leanMass ? <span className="ml-1 text-xs font-bold uppercase text-emerald-400/50">kg</span> : null}
+          <div className="flex min-h-[96px] flex-col rounded-xl border border-white/10 bg-white/5 p-3 shadow-inner backdrop-blur-md">
+            <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-emerald-200/60">Massa Magra</span>
+            <div className="mb-2 flex min-h-[28px] items-baseline">
+              {currentPoint?.leanMass ? (
+                <>
+                  <span className="text-xl font-black tracking-tight text-emerald-400 md:text-2xl">{currentPoint.leanMass}</span>
+                  <span className="ml-1 text-[10px] font-bold uppercase text-emerald-400/60">kg</span>
+                </>
+              ) : (
+                <span className="text-[11px] font-bold leading-tight text-stone-400">Massa magra indisponível</span>
+              )}
             </div>
-            <div className="mt-auto flex flex-col gap-1 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-widest text-stone-500">
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-white/5 pt-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">
               {initialPoint?.leanMass && currentPoint?.leanMass && (
                 <>
                   <span className="flex justify-between">Início: <span className="text-emerald-100/70">{initialPoint.leanMass}</span></span>
-                  <span className="mt-0.5 flex justify-between">Evol: {renderDelta(getDelta(currentPoint.leanMass, initialPoint.leanMass))} kg</span>
+                  <span className="flex justify-between">Evol: {renderDelta(getDelta(currentPoint.leanMass, initialPoint.leanMass))} kg</span>
                 </>
               )}
             </div>
           </div>
 
           {/* MASSA GORDA */}
-          <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-md md:rounded-2xl">
-            <span className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-rose-200/50 md:text-[10px]">Massa Gorda</span>
-            <div className="mb-3 flex items-baseline">
-              <span className="text-2xl font-black tracking-tight text-rose-400 md:text-3xl">{show(currentPoint?.fatMass)}</span>
-              {currentPoint?.fatMass ? <span className="ml-1 text-xs font-bold uppercase text-rose-400/50">kg</span> : null}
+          <div className="flex min-h-[96px] flex-col rounded-xl border border-white/10 bg-white/5 p-3 shadow-inner backdrop-blur-md">
+            <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-rose-200/60">Massa Gorda</span>
+            <div className="mb-2 flex min-h-[28px] items-baseline">
+              {currentPoint?.fatMass ? (
+                <>
+                  <span className="text-xl font-black tracking-tight text-rose-400 md:text-2xl">{currentPoint.fatMass}</span>
+                  <span className="ml-1 text-[10px] font-bold uppercase text-rose-400/60">kg</span>
+                </>
+              ) : (
+                <span className="text-[11px] font-bold leading-tight text-stone-400">Massa gorda indisponível</span>
+              )}
             </div>
-            <div className="mt-auto flex flex-col gap-1 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-widest text-stone-500">
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-white/5 pt-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">
               {initialPoint?.fatMass && currentPoint?.fatMass && (
                 <>
                   <span className="flex justify-between">Início: <span className="text-rose-100/70">{initialPoint.fatMass}</span></span>
-                  <span className="mt-0.5 flex justify-between">Evol: {renderDelta(getDelta(currentPoint.fatMass, initialPoint.fatMass), true)} kg</span>
+                  <span className="flex justify-between">Evol: {renderDelta(getDelta(currentPoint.fatMass, initialPoint.fatMass), true)} kg</span>
                 </>
               )}
             </div>
           </div>
 
-          {/* SOMA DAS DOBRAS — JP7 correto via motor central */}
-          <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 shadow-inner backdrop-blur-md md:rounded-2xl">
-            <span className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-stone-400 md:text-[10px]">Soma das dobras</span>
-            <div className="mb-3 flex items-baseline">
-              <span className="text-2xl font-black tracking-tight text-stone-200 md:text-3xl">
-                {currentSum !== null ? currentSum.toFixed(1) : '—'}
-              </span>
-              {currentSum !== null ? <span className="ml-1 text-xs font-bold uppercase text-stone-400">mm</span> : null}
+          {/* SOMA DAS DOBRAS */}
+          <div className="flex min-h-[96px] flex-col rounded-xl border border-white/10 bg-white/5 p-3 shadow-inner backdrop-blur-md">
+            <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-stone-400">Soma das dobras</span>
+            <div className="mb-2 flex min-h-[28px] items-baseline">
+              {currentSum !== null ? (
+                <>
+                  <span className="text-xl font-black tracking-tight text-stone-200 md:text-2xl">{currentSum.toFixed(1)}</span>
+                  <span className="ml-1 text-[10px] font-bold uppercase text-stone-400">mm</span>
+                </>
+              ) : (
+                <span className="text-[11px] font-bold leading-tight text-stone-400">Soma indisponível</span>
+              )}
             </div>
-            <div className="mt-auto flex flex-col gap-1 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-widest text-stone-500">
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-white/5 pt-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">
               {current.previous && sumOf7(current.previous) !== null && currentSum !== null && (
                 <>
-                  <span className="flex justify-between">
-                    Anterior: <span className="text-stone-300">{(sumOf7(current.previous) as number).toFixed(1)}</span>
-                  </span>
-                  <span className="mt-0.5 flex justify-between">
-                    Variação:{' '}
-                    <span className="font-bold text-stone-300">
-                      {(() => {
-                        const prev = sumOf7(current.previous!);
-                        const d = buildDelta(currentSum, prev, 'mm');
-                        return d ? d.text : '—';
-                      })()}
-                    </span>
-                  </span>
+                  <span className="flex justify-between">Anterior: <span className="text-stone-300">{(sumOf7(current.previous) as number).toFixed(1)}</span></span>
+                  <span className="flex justify-between">Variação: <span className="font-bold text-stone-300">{(() => { const prev = sumOf7(current.previous!); const d = buildDelta(currentSum, prev, 'mm'); return d ? d.text : '—'; })()}</span></span>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        {/* Aviso ORIGINAL preservado (aparecia quando a composição não podia
-            ser casada com a timeline). */}
+        {/* Alertas compactos */}
         {!compositionOk && (
-          <p className="relative z-10 mt-1 rounded-xl border border-amber-500/20 bg-amber-900/30 p-4 text-xs font-bold italic text-amber-300 md:text-sm">
-            O peso do paciente deve ser atualizado na mesma data das dobras para cálculo da composição.
-          </p>
+          <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold text-amber-300">
+            Atenção: atualize o peso na mesma data das dobras para calcular a composição corporal.
+          </span>
+        )}
+        {currentPoint && !currentPoint.protocol && (
+          <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full border border-stone-700 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-stone-300">
+            Protocolo não registrado. Os dados históricos estão sendo exibidos sem cálculo oficial.
+          </span>
         )}
 
-        {/* DOBRAS DO PROTOCOLO — F3.5+ : somente protocolo, outras em secundária */}
+        {/* DOBRAS — 9 em uma única linha desktop (compacto) */}
         {(() => {
           const proto = (current.item as any).protocol ?? null;
           const isValid = proto === 'jp3' || proto === 'jp7' || proto === 'petroski4';
@@ -611,49 +630,50 @@ export default function DobrasSection({
             if (!sexNorm && proto === 'jp7') return [...JP7_SITES];
             return (PROTOCOLS as any)[proto].sitesBySex[sexNorm!] as FoldKey[];
           })() : null;
-          const isProtocolMode = !!protocolSites;
-          const mainFolds = isProtocolMode ? protocolSites!.map(k => FOLDS.find(f=>f.key===k)!).filter(Boolean) : FOLDS;
-          const mainCount = mainFolds.length;
-          const otherFolds = isProtocolMode ? FOLDS.filter(f => !protocolSites!.includes(f.key) && asValue((current.item as any)[f.key]) !== null) : [];
-          const title = isProtocolMode ? `DOBRAS DO PROTOCOLO — ${proto === 'jp3' ? 'JP3' : proto === 'jp7' ? 'JP7' : 'PETROSKI'} (${mainCount})` : 'Dobras cutâneas (9)';
           return (
-            <div className="relative z-10 border-t border-white/10 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400 md:text-xs">
-                  {title}
+            <div className="relative z-10 border-t border-white/10 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">
+                  Dobras cutâneas — 9 medidas
                 </h4>
-                {isProtocolMode && <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500">{sexo || 'Sexo não informado'}</span>}
+                {isValid && protocolSites && (
+                  <span className="text-[10px] font-bold text-stone-500">
+                    Protocolo: <span className="text-stone-300">{proto === 'jp3' ? 'Jackson & Pollock — 3 dobras' : proto === 'jp7' ? 'Jackson & Pollock — 7 dobras' : 'Petroski — 4 dobras'}</span>
+                    {sexNorm ? ` · ${sexNorm}` : ' · sem sexo'}
+                  </span>
+                )}
               </div>
-              {!isProtocolMode && currentPoint && !currentPoint.protocol && (
-                <p className="mt-2 text-xs font-bold text-amber-300">Protocolo não registrado — exibindo dados históricos brutos.</p>
+              {!isValid && currentPoint && !currentPoint.protocol && (
+                <p className="mt-1.5 text-[11px] font-bold text-amber-300">Protocolo não registrado — exibindo histórico sem cálculo oficial.</p>
               )}
-              {isProtocolMode && !sexNorm && proto !== 'jp7' && (
-                <p className="mt-2 text-xs font-bold text-amber-300">Sexo não disponível — exibindo todas as dobras. Cadastre o sexo para determinar o subconjunto.</p>
-              )}
-              <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-5 xl:grid-cols-7">
-                {mainFolds.map((f) => (
-                  <FoldCell key={f.key} label={f.label} value={(current.item as any)[f.key]} previous={current.previous ? (current.previous as any)[f.key] : undefined} tone="dark" />
-                ))}
-              </div>
-              {otherFolds.length > 0 && (
-                <div className="mt-4 border-t border-white/10 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setOtherOpen(v=>!v)}
-                    aria-expanded={otherOpen}
-                    aria-controls={otherOpenId}
-                    className={cn(ui.buttonSecondary, 'min-h-11 w-full md:w-auto justify-center', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-stone-900')}
-                  >
-                    {otherOpen ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-                    {otherOpen ? 'Recolher outras dobras' : `Outras dobras coletadas (${otherFolds.length})`}
-                  </button>
-                  <div id={otherOpenId} className={cn('mt-3 grid grid-cols-3 gap-2 md:grid-cols-5', otherOpen ? 'grid' : 'hidden')}>
-                    {otherFolds.map((f)=> (
-                      <FoldCell key={f.key} label={f.label} value={(current.item as any)[f.key]} previous={current.previous ? (current.previous as any)[f.key] : undefined} tone="dark" />
-                    ))}
-                  </div>
+              <div className="mt-3 overflow-x-auto -mx-1 px-1 scrollbar-thin">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-9 gap-2 min-w-0">
+                  {FOLDS.map((f) => {
+                    const isRequired = !!protocolSites?.includes(f.key);
+                    return (
+                      <div
+                        key={f.key}
+                        className={cn(
+                          'min-w-0 rounded-lg border p-2',
+                          isRequired ? 'border-amber-500/30 bg-amber-500/10' : 'border-white/10 bg-white/5'
+                        )}
+                      >
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-stone-400 truncate">
+                          {f.label}
+                        </p>
+                        <p className="mt-0.5 text-sm font-black tabular-nums truncate text-white">
+                          {asValue((current.item as any)[f.key]) !== null ? `${(current.item as any)[f.key]} mm` : '—'}
+                        </p>
+                        {isRequired && (
+                          <span className="mt-1 inline-flex rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-300">
+                            protocolo
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
             </div>
           );
         })()}

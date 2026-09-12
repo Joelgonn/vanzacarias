@@ -20,7 +20,6 @@ interface PatientCardProps {
   isDietReady: boolean;
   onOpenDietBuilder: (p: Patient) => void;
   onOpenEvalModal: (p: Patient) => void;
-  onOpenClinicalModal: (p: Patient) => void;
   onEditProfile: (p: Patient) => void;
   onDeleteDiet: (id: string) => void;
   onGeneratePDF: (p: Patient) => void;
@@ -75,7 +74,6 @@ export function PatientCard({
   isDietReady,
   onOpenDietBuilder,
   onOpenEvalModal,
-  onOpenClinicalModal,
   onEditProfile,
   onDeleteDiet,
   onGeneratePDF,
@@ -438,15 +436,13 @@ export function PatientCard({
                       </button>
                     )}
 
-                    <button
-                      onClick={() => {
-                        setShowMenu(false);
-                        onOpenClinicalModal(patient);
-                      }}
+                    <Link
+                      href={`/admin/paciente/${patient.id}/historico`}
+                      onClick={() => setShowMenu(false)}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors"
                     >
-                      <Activity size={12} /> Dados clínicos
-                    </button>
+                      <Eye size={12} /> Ver histórico
+                    </Link>
 
                     {patient.account_type !== 'premium' && (
                       <button
@@ -548,16 +544,14 @@ export function PatientCard({
             </button>
           )}
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenClinicalModal(patient);
-            }}
-            className={cn('action-button', ui.buttonSecondary, ui.buttonSecondaryInfo)}
-            title="Dados clínicos"
+          <Link
+            href={`/admin/paciente/${patient.id}/historico`}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(ui.buttonSecondary, ui.buttonSecondaryInfo)}
+            title="Ver histórico"
           >
-            <Activity size={11} /> Clínico
-          </button>
+            <Eye size={11} /> Ver histórico
+          </Link>
 
           <a
             href={`https://wa.me/55${patient.phone?.replace(/\D/g, '')}?text=Olá!`}

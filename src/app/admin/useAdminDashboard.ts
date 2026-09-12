@@ -145,7 +145,6 @@ export function useAdminDashboard() {
 
   // =========================== EDIÇÃO DE PERFIL ===========================
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedPatient, setSelectedPatient] = useState<{ id: string; name: string } | null>(null);
   const [editForm, setEditForm] = useState({
     data_nascimento: '',
     sexo: '',
@@ -638,7 +637,6 @@ export function useAdminDashboard() {
       consultationPrice,
       isSavingPrice,
       dietModalOpen,
-      selectedPatient,
       adminContext,
       statusFilter,
     },
@@ -655,7 +653,6 @@ export function useAdminDashboard() {
       setEvalModalOpen,
       setEvalModalActiveTab,
       setDietModalOpen,
-      setSelectedPatient,
       copyToClipboard,
       setPremiumPrice,
       setMealPlanPrice,

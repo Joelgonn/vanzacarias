@@ -21,6 +21,7 @@ import { detectFactualHallucinations, type FactualContext } from '@/lib/factualV
 import { buildMetabolicSnapshot } from '@/lib/metabolicModel'
 import { calculateAge } from '@/lib/nutrition/bodyComposition'
 import type { RecommendationResult } from '@/lib/nutrition'
+import { detectClinicalIndicesRequest, parseProtocolFromMessage, getClinicalIndicesForPatient } from '@/lib/clinicalIndices'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos } from '@/lib/beliscosProcessor'
@@ -519,6 +520,26 @@ export async function POST(req: NextRequest) {
         // CONTEXTO PRINCIPAL
     const baseContext = buildContext(safeMessage, userDataForContext);
 
+    // PRO-004.0 — DADOS CLÍNICOS CALCULADOS (motor único, sem persistência)
+    let clinicalIndicesBlock = '';
+    if (detectClinicalIndicesRequest(safeMessage)) {
+      try {
+        const reqProtocol = parseProtocolFromMessage(safeMessage);
+        const indices: any = await getClinicalIndicesForPatient(userId, reqProtocol);
+        if (indices.error && !indices.protocol) {
+          clinicalIndicesBlock = `\n\n[DADOS CLÍNICOS CALCULADOS]\n${indices.error}\n`;
+        } else if (indices.error) {
+          const evalDate = indices.measurementDate ? new Date(indices.measurementDate).toLocaleDateString('pt-BR') : 'sem data';
+          clinicalIndicesBlock = `\n\n[DADOS CLÍNICOS CALCULADOS]\n${indices.error}\nAvaliação: ${evalDate}\nProtocolo: ${indices.protocolLabel}\n`;
+          if (indices.missing?.length) clinicalIndicesBlock += `Faltam: ${indices.missing.join(', ')}\n`;
+        } else {
+          const evalDate = indices.measurementDate ? new Date(indices.measurementDate).toLocaleDateString('pt-BR') : 'sem data';
+          clinicalIndicesBlock = `\n\n[DADOS CLÍNICOS CALCULADOS - APRESENTE EXATAMENTE ESTES VALORES, NÃO RECALCULE]\nAvaliação: ${evalDate}\nProtocolo: ${indices.protocolLabel}\n- IMC: ${indices.imc !== null ? indices.imc.toFixed(1) : 'não calculado (faltam peso/altura)'}\n- Gordura corporal: ${indices.bf !== null ? indices.bf.toFixed(1) + '%' : 'não calculada'}\n- Massa gorda: ${indices.fatMass !== null ? indices.fatMass.toFixed(1) + ' kg' : 'não calculada'}\n- Massa magra: ${indices.leanMass !== null ? indices.leanMass.toFixed(1) + ' kg' : 'não calculada'}\n`;
+          if (indices.warnings?.length) clinicalIndicesBlock += `Observações: ${indices.warnings.join('; ')}\n`;
+        }
+      } catch (e) { console.error('[clinicalIndices] patient error', e); }
+    }
+
     const summary = await getUserSummary(userId);
     mark(obs, 'memory_duration');
     const msgLower = safeMessage.toLowerCase();
@@ -534,7 +555,8 @@ export async function POST(req: NextRequest) {
     // São entregues como blocos de DADOS no histórico, isolados e sinalizados.
     const systemInstruction = `
 [INFORMAÇÃO DO SISTEMA]: Hora atual: ${currentTimeBR}.
-${baseContext}`.trim();
+${baseContext}${clinicalIndicesBlock}
+${clinicalIndicesBlock ? 'INSTRUÇÃO CLÍNICA: Se houver [DADOS CLÍNICOS CALCULADOS], apresente EXATAMENTE esses valores no formato:\nAvaliação: DD/MM/AAAA\nProtocolo: JP7\n- IMC: ...\n- Gordura corporal: ...%\n- Massa gorda: ... kg\n- Massa magra: ... kg\nSe houver mensagem de erro/ausência, transcreva-a literalmente sem inventar valores. Não recalcule.' : ''}`.trim();
 
     const modelName = (isComplexRequest(safeMessage, !!safeImage) || macrosDiarios !== null) ? "gemini-2.5-flash" : "gemini-2.5-flash-lite";
 

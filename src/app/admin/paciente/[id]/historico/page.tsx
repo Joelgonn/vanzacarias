@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
@@ -9,7 +9,7 @@ import {
   CheckCircle2, AlertTriangle, Activity, Target, Clock, Zap, 
   ChevronRight, Scale, Droplets, Smile, Frown, Meh, 
   Coffee, Check, Brain, Flame, MessageCircle, ClipboardList, 
-  Stethoscope, ListChecks, Save
+  Stethoscope, ListChecks, Save, Plus
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -23,9 +23,14 @@ import MetabolicSummary from '@/components/admin/MetabolicSummary';
 import CopilotTab from './components/CopilotTab';
 import CheckinsSection from '@/components/admin/historico/CheckinsSection';
 import MedidasSection from '@/components/admin/historico/MedidasSection';
+import { ExamStatusWithTooltip } from '@/components/admin/historico/ExamTooltip';
 import DobrasSection from '@/components/admin/historico/DobrasSection';
+import ClinicalDataModalStepped from '@/components/ClinicalDataModalStepped';
+import ClinicalDataModal from '@/components/ClinicalDataModal';
 // Motor central de composição corporal (DO-000.0) — fonte única JP7
-import { calculateBodyComposition, calculateAge as calculateAgeMotor, normalizeSex } from '@/lib/nutrition/bodyComposition';
+import { calculateBodyComposition, calculateAge as calculateAgeMotor, normalizeSex, PROTOCOLS } from '@/lib/nutrition/bodyComposition';
+import type { ProtocolId } from '@/lib/nutrition/bodyComposition';
+import { formatCivilDate, formatCivilDateLong, formatCivilDateShort, todayCivilSP, addDaysCivil } from '@/lib/civilDate';
 // 🔥 Sprint Z-001: histórico delega o cálculo metabólico ao modelo único (SSOT)
 import { buildMetabolicSnapshot, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 // Validador de QFA (perfil alimentar) — mantido aqui
@@ -60,7 +65,7 @@ export interface CheckinData {
   comentarios: string;
 }
 
-// Exportado como fonte de verdade única do tipo (consumido por MedidasSection).
+// Exportado como fonte de verdade única do tipo (consumido por MedidasSection) — 10 campos.
 export interface AntroData {
   id: string;
   measurement_date: string;
@@ -69,8 +74,11 @@ export interface AntroData {
   waist?: string | number;
   hip?: string | number;
   arm?: string | number;
+  forearm?: string | number;
+  thigh?: string | number;
   calf?: string | number;
   neck?: string | number;
+  chest?: string | number;
 }
 
 // Exportado como fonte de verdade única do tipo (consumido por DobrasSection).
@@ -136,7 +144,7 @@ interface Alert {
   waText?: string;
 }
 
-type ClinicalTab = 'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos' | 'copiloto';
+  type ClinicalTab = 'prontuario' | 'diario' | 'checkins' | 'antropometria' | 'dobras' | 'bioquimicos' | 'copiloto';
 
 export default function PacienteHistoricoAdmin() {
   // =========================================================================
@@ -164,6 +172,12 @@ export default function PacienteHistoricoAdmin() {
   const [activeLens, setActiveLens] = useState<'medidas' | 'composicao' | 'metabolico'>('medidas');
   
   const [isRadarExpanded, setIsRadarExpanded] = useState(false);
+  const [isSteppedOpen, setIsSteppedOpen] = useState(false);
+  const [clinicalMode, setClinicalMode] = useState<'anthropometry' | 'skinfolds' | 'biochemicals' | 'full'>('full');
+  const [dobrasProtocol, setDobrasProtocol] = useState<ProtocolId | null>(null);
+  const [diarioDate, setDiarioDate] = useState<string>(() => todayCivilSP());
+  const [diarioSaving, setDiarioSaving] = useState(false);
+  const [isProtocolPickerOpen, setIsProtocolPickerOpen] = useState(false);
   const [contactedAlerts, setContactedAlerts] = useState<Set<string>>(new Set());
 
   const router = useRouter();
@@ -285,6 +299,50 @@ export default function PacienteHistoricoAdmin() {
   useEffect(() => { 
     if (pacienteId) fetchData(); 
   }, [supabase, router, pacienteId]);
+
+  // UX-REF-006: garantir topo após F5 — sem timeout, sem scrollIntoView
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    // Evitar salto visível durante hidratação
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    let prev: ScrollRestoration | undefined
+    try {
+      if ('scrollRestoration' in window.history) {
+        prev = window.history.scrollRestoration as ScrollRestoration
+        window.history.scrollRestoration = 'manual'
+      }
+    } catch {}
+    // Correção no elemento real de scroll (window) e containers internos se existirem
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      document.documentElement.scrollTop = 0
+      document.body.scrollTop = 0
+      // Se houver container interno com overflow-y-auto (admin layout), zerar também
+      const containers = document.querySelectorAll<HTMLElement>('[data-scroll-container], main, [class*="overflow-y-auto"]')
+      containers.forEach((el) => {
+        if (el.scrollHeight > el.clientHeight) {
+          try { el.scrollTop = 0 } catch {}
+        }
+      })
+    }
+    scrollToTop()
+    // Reaplicar após carregamento dos dados (sem timeout artificial, apenas no próximo frame)
+    const raf = requestAnimationFrame(scrollToTop)
+    return () => {
+      cancelAnimationFrame(raf)
+      try {
+        if (prev && 'scrollRestoration' in window.history) {
+          window.history.scrollRestoration = prev
+        }
+      } catch {}
+    }
+  }, [])
 
   // =========================================================================
   // AÇÕES
@@ -1465,91 +1523,180 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* DIÁRIO NO APP (WIDGETS) */}
-            {activeTab === 'diario' && (
-              <div className="animate-in fade-in duration-300">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-8 gap-2 md:gap-4">
-                  <div>
-                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
-                      <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Coffee size={18} /></div>
-                      Diário do Paciente
+            {/* DIÁRIO — somente leitura, civil YYYY-MM-DD, sem Adicionar evento */}
+            {activeTab === 'diario' && (() => {
+              const selectedLog = dailyLogs.find(l => l.date === diarioDate) || null
+              const hasLog = !!selectedLog
+              const mealCount = selectedLog && Array.isArray(selectedLog.meals_checked) ? selectedLog.meals_checked.length : 0
+              const isToday = diarioDate === todayCivilSP()
+              const hasWater = selectedLog?.water_ml !== null && selectedLog?.water_ml !== undefined && String(selectedLog.water_ml).trim() !== ''
+              const hasActivity = selectedLog?.activity_kcal !== null && selectedLog?.activity_kcal !== undefined && String(selectedLog!.activity_kcal).trim() !== ''
+              const activityNum = hasActivity ? Number(selectedLog!.activity_kcal) : null
+              const isActivityZero = activityNum === 0
+              const isActivityMissing = !hasActivity
+              return (
+                <div className="animate-in fade-in duration-300">
+                  {/* Cabeçalho compacto */}
+                  <div className="mb-3">
+                    <h2 className="text-base md:text-lg font-bold text-stone-900 flex items-center gap-2">
+                      <div className="bg-stone-100 p-1.5 rounded-lg text-stone-600"><Coffee size={16} aria-hidden="true" /></div>
+                      Diário
                     </h2>
-                    <p className="text-xs md:text-sm text-stone-500 mt-1 font-medium">Registro diário de água, humor, refeições e treino.</p>
+                    <p className="text-xs text-stone-500 mt-1">Registre e acompanhe os eventos do seu dia.</p>
                   </div>
-                </div>
 
-                {dailyLogs.length === 0 ? (
-                  <div className="text-center py-16 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl md:rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center justify-center">
-                    <Coffee size={40} className="mb-3 text-stone-300 opacity-50" />
-                    <p>Sem registros no diário no momento.</p>
+                  {/* Navegação */}
+                  <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-2.5">
+                    {/* Desktop: uma linha */}
+                    <div className="hidden sm:flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300"
+                          aria-label="Dia anterior"
+                        >
+                          <ChevronLeft size={14} aria-hidden="true" />
+                        </button>
+                        <span className="min-w-[200px] text-center text-sm font-bold text-stone-800 px-2">{formatCivilDateLong(diarioDate)}</span>
+                        <button
+                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300"
+                          aria-label="Próximo dia"
+                        >
+                          <ChevronRight size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="diario-date-desktop" className="sr-only">Selecionar data</label>
+                        <input
+                          id="diario-date-desktop"
+                          type="date"
+                          value={diarioDate}
+                          onChange={(e) => e.target.value && setDiarioDate(e.target.value)}
+                          className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700 focus:border-nutri-400 focus:ring-2 focus:ring-nutri-100 outline-none"
+                        />
+                        <button
+                          onClick={() => setDiarioDate(todayCivilSP())}
+                          className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold hover:bg-nutri-100"}
+                        >
+                          Hoje
+                        </button>
+                      </div>
+                    </div>
+                    {/* Mobile: duas linhas */}
+                    <div className="sm:hidden space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600"
+                          aria-label="Dia anterior"
+                        >
+                          <ChevronLeft size={14} aria-hidden="true" />
+                        </button>
+                        <span className="flex-1 text-center text-sm font-bold text-stone-800">{formatCivilDateShort(diarioDate)}</span>
+                        <button
+                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600"
+                          aria-label="Próximo dia"
+                        >
+                          <ChevronRight size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="diario-date-mobile" className="sr-only">Selecionar data</label>
+                        <input
+                          id="diario-date-mobile"
+                          type="date"
+                          value={diarioDate}
+                          onChange={(e) => e.target.value && setDiarioDate(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700"
+                        />
+                        <button
+                          onClick={() => setDiarioDate(todayCivilSP())}
+                          className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold"}
+                        >
+                          Hoje
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                    {dailyLogs.map((log) => {
-                      const mealCount = Array.isArray(log.meals_checked) ? log.meals_checked.length : 0;
-                      return (
-                        <div key={log.id} className="bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-all relative flex flex-col">
-                          <div className="flex justify-between items-center mb-5 border-b border-stone-100 pb-4">
-                            <div>
-                              <p className="text-[9px] md:text-[10px] font-bold uppercase text-stone-400 tracking-widest mb-0.5">Data</p>
-                              <h3 className="font-extrabold text-stone-800 text-sm md:text-base">{new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
-                            </div>
-                            <div title={`Humor: ${log.mood || 'Não informado'}`}>{getMoodIcon(log.mood)}</div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4">
-                            {/* Água */}
-                            <div className="bg-blue-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-blue-100/50 flex flex-col justify-center items-center text-center">
-                              <Droplets size={18} className="text-blue-500 mb-1.5" />
-                              <p className="text-xl md:text-2xl font-black text-blue-900 tracking-tight">{log.water_ml || 0} <span className="text-[10px] font-bold text-blue-500">ml</span></p>
-                              <p className="text-[9px] md:text-[10px] font-bold text-blue-400/80 uppercase tracking-widest mt-1">Hidratação</p>
-                            </div>
-                            {/* Refeições */}
-                            <div className="bg-emerald-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-emerald-100/50 flex flex-col justify-center items-center text-center">
-                              <Check size={18} className="text-emerald-500 mb-1.5" />
-                              <p className="text-xl md:text-2xl font-black text-emerald-900 tracking-tight">{mealCount}</p>
-                              <p className="text-[9px] md:text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest mt-1">Refeições</p>
-                            </div>
-                          </div>
 
-                          {/* Exercício */}
-                          {(log.activity_kcal && log.activity_kcal > 0) ? (
-                            <div className="bg-orange-50/60 p-3 md:p-4 rounded-xl md:rounded-2xl border border-orange-100/50 flex justify-between items-center text-left">
-                               <div>
-                                 <p className="text-[9px] md:text-[10px] font-bold text-orange-500/80 uppercase tracking-widest mb-0.5">Treino (Gasto)</p>
-                                 <p className="text-lg md:text-xl font-black text-orange-900 tracking-tight">{log.activity_kcal} <span className="text-[10px] font-bold text-orange-600">kcal</span></p>
-                               </div>
-                               <div className="bg-white p-2 rounded-lg shadow-sm border border-orange-100/50">
-                                 <Flame size={20} className="text-orange-500" />
-                               </div>
-                            </div>
-                          ) : (
-                            <div className="bg-stone-50/80 p-3 md:p-4 rounded-xl md:rounded-2xl border border-stone-100 flex items-center justify-center h-full">
-                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5"><Activity size={12}/> Sem Treino</p>
-                            </div>
-                          )}
-
-                          {mealCount > 0 && (
-                            <div className="mt-4 md:mt-5 pt-4 border-t border-stone-100">
-                              <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-2.5">Refeições checadas:</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {log.meals_checked.map((meal: string, idx: number) => (
-                                  <span key={idx} className="bg-stone-100/80 text-stone-600 text-[9px] md:text-[10px] font-bold px-2 py-1 rounded-md border border-stone-200/50 truncate max-w-full">
-                                    {meal}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                  {/* Estados */}
+                  {loading ? (
+                    <div className="space-y-3">
+                      <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
+                      <div className="h-32 rounded-xl bg-stone-100 animate-pulse" />
+                    </div>
+                  ) : !hasLog ? (
+                    <div className="text-center py-10 px-6 rounded-2xl border border-dashed border-stone-200 bg-white">
+                      <Coffee size={28} className="mx-auto mb-2 text-stone-300" aria-hidden="true" />
+                      <p className="text-sm font-bold text-stone-600">Nenhum registro encontrado para este dia.</p>
+                      <p className="text-xs text-stone-500 mt-1">{formatCivilDateLong(diarioDate)} — sem dados para exibir.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-stone-600">Resumo do dia</h3>
+                        <span title={selectedLog!.mood ? `Humor: ${selectedLog!.mood}` : 'Sem humor registrado'}>{getMoodIcon(selectedLog!.mood)}</span>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* Indicadores */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center">
+                            <Droplets size={14} className="mx-auto mb-1 text-blue-500" aria-hidden="true" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Água registrada</p>
+                            <p className="text-sm font-black text-stone-800 mt-0.5">
+                              {hasWater ? `${Number(selectedLog!.water_ml).toLocaleString('pt-BR')} ml` : <span className="text-xs font-medium text-stone-400">Sem registro</span>}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center">
+                            <Check size={14} className="mx-auto mb-1 text-emerald-500" aria-hidden="true" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Refeições registradas</p>
+                            <p className="text-sm font-black text-stone-800 mt-0.5">{mealCount === 0 ? <span className="text-xs font-medium text-stone-400">Sem registro</span> : `${mealCount}`}</p>
+                          </div>
+                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center col-span-2 sm:col-span-1">
+                            <Flame size={14} className="mx-auto mb-1 text-orange-500" aria-hidden="true" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Atividade física</p>
+                            <p className="text-sm font-black text-stone-800 mt-0.5">
+                              {isActivityMissing ? <span className="text-xs font-medium text-stone-400">Sem registro</span> : isActivityZero ? 'Sem treino' : `${activityNum} kcal`}
+                            </p>
+                          </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
 
-            {/* CHECK-INS SEMANAIS (Timeline responsiva — Sprint Histórico/Fase 1) */}
+                        {/* Refeições */}
+                        {mealCount > 0 && (
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1.5">Refeições registradas</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {selectedLog!.meals_checked.map((meal: string, idx: number) => {
+                                const label = meal ? meal.charAt(0).toUpperCase() + meal.slice(1) : meal
+                                return (
+                                  <span key={idx} className="bg-stone-50 text-stone-700 text-xs font-medium px-2 py-1 rounded-full border border-stone-200">
+                                    {label}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Atividade detalhe quando houver */}
+                        {hasActivity && !isActivityZero && !isActivityMissing && selectedLog!.activities && Array.isArray(selectedLog!.activities) && selectedLog!.activities.length > 0 && (
+                          <div className="text-xs text-stone-600">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1">Atividades</p>
+                            <p>{(selectedLog!.activities as any[]).map((a:any)=> a?.name || '').filter(Boolean).join(', ')}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* CHECK-INS SEMANAIS
+
+            {/* CHECK-INS SEMANAIS            {/* CHECK-INS SEMANAIS (Timeline responsiva — Sprint Histórico/Fase 1) */}
             {activeTab === 'checkins' && (
               <CheckinsSection
                 history={history}
@@ -1557,115 +1704,215 @@ export default function PacienteHistoricoAdmin() {
               />
             )}
 
-            {/* MEDIDAS (Snapshot + histórico responsivo — Sprint Histórico/Fase 2) */}
+            {/* MEDIDAS (antropometria) — somente medidas, sem protocolo/dobras/exames */}
             {activeTab === 'antropometria' && (
-              <MedidasSection measurements={antroData} />
+              <div className="animate-in fade-in duration-300 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
+                      <div className="bg-nutri-50 p-2 rounded-xl border border-nutri-100 text-nutri-800"><Ruler size={18} /></div>
+                      Medidas
+                    </h2>
+                    <p className="text-xs md:text-sm text-stone-500 mt-1 font-medium">Medidas antropométricas por data de avaliação. Sem protocolo ou exames.</p>
+                  </div>
+                  <button onClick={() => { setClinicalMode('anthropometry'); setIsSteppedOpen(true); }} className="inline-flex items-center gap-2 bg-nutri-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-nutri-800 transition-all shadow-md shrink-0">
+                    <Plus size={16} /> Coletar medidas
+                  </button>
+                </div>
+                <MedidasSection measurements={antroData} />
+              </div>
             )}
 
-            {/* DOBRAS E COMPOSIÇÃO (Snapshot + histórico responsivo — Sprint Histórico/Fase 3) */}
+            {/* DOBRAS / BF% — dois botões independentes: protocolo e coleta */}
             {activeTab === 'dobras' && (
-              <DobrasSection
-                skinfolds={skinfoldsData}
-                timeline={timelineData}
-                patientAge={patientAge}
-                sexo={profile?.sexo}
-              />
+              <div className="animate-in fade-in duration-300 space-y-4">
+                <div className="flex flex-col gap-3 border-b border-stone-100 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
+                        <div className="bg-nutri-50 p-2 rounded-xl border border-nutri-100 text-nutri-800"><Layers size={18} /></div>
+                        Dobras / BF%
+                      </h2>
+                      <p className="text-xs md:text-sm text-stone-500 mt-1 font-medium">Dobras cutâneas e composição corporal por protocolo.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <button onClick={() => setIsProtocolPickerOpen(true)} className="inline-flex items-center gap-2 bg-white border border-nutri-200 text-nutri-800 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-nutri-50 transition-all shadow-sm">
+                        <Layers size={16} /> Escolher protocolo
+                      </button>
+                      <button onClick={() => {
+                        if (!dobrasProtocol) { toast.error('Escolha o protocolo antes de coletar as dobras.'); return; }
+                        setClinicalMode('skinfolds'); setIsSteppedOpen(true);
+                      }} className="inline-flex items-center gap-2 bg-nutri-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-nutri-800 transition-all shadow-md">
+                        <Plus size={16} /> Coletar dobras
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Protocolo selecionado:</span>
+                    {dobrasProtocol ? (
+                      <span className="inline-flex items-center rounded-full border border-nutri-200 bg-nutri-50 px-3 py-1 text-xs font-black text-nutri-800">
+                        {PROTOCOLS[dobrasProtocol].label}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">Nenhum protocolo selecionado</span>
+                    )}
+                  </div>
+                </div>
+                <DobrasSection skinfolds={skinfoldsData} timeline={timelineData} patientAge={patientAge} sexo={profile?.sexo} />
+              </div>
+            )}
+
+            {/* EXAMES — somente resultados laboratoriais */}
+            {activeTab === 'bioquimicos' && (
+              <div className="animate-in fade-in duration-300 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
+                      <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Syringe size={18} /></div>
+                      Exames
+                    </h2>
+                    <p className="text-xs md:text-sm text-stone-500 mt-1 font-medium">Resultados laboratoriais por data de coleta. Sem protocolo ou medidas.</p>
+                  </div>
+                  <button onClick={() => { setClinicalMode('biochemicals'); setIsSteppedOpen(true); }} className="inline-flex items-center gap-2 bg-nutri-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-nutri-800 transition-all shadow-md shrink-0">
+                    <Plus size={16} /> Adicionar exames
+                  </button>
+                </div>
+                <div className="space-y-8">
+                  <div className="flex gap-3 text-[9px] font-bold uppercase text-stone-500 bg-stone-50 px-3 py-2 rounded-lg border border-stone-200/80 w-fit">
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400"></span> Atenção</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Risco</span>
+                  </div>
+                  {bioData.length === 0 ? (
+                    <div className="text-center py-10 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl border-2 border-dashed border-stone-200">Nenhum exame cadastrado. Use Adicionar exames para registrar.</div>
+                  ) : (
+                    bioData.map((item) => {
+                      const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose as string) * parseFloat(item.insulin as string)) / 405).toFixed(2) : null;
+                      return (
+                          <div key={item.id} className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
+                            <div className="bg-stone-50 px-3 py-2.5 border-b border-stone-200">
+                              <span className="font-bold text-stone-700 text-xs uppercase tracking-wider flex items-center gap-2">
+                                <CalendarCheck size={14} className="text-nutri-600" /> Exames laboratoriais — {new Date(item.exam_date).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                            <div className="p-3 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-6xl">
+                              {(item.glucose || item.insulin || item.hba1c || homaIr) && (
+                                <div className="overflow-hidden rounded-xl border border-stone-200">
+                                  <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-200">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-stone-500">Glicêmico & Insulina</h4>
+                                  </div>
+                                  <div className="divide-y divide-stone-100 bg-white">
+                                    {[
+                                      { k: 'glucose', label: 'Glicose', v: item.glucose, unit: 'mg/dL' },
+                                      { k: 'insulin', label: 'Insulina', v: item.insulin, unit: 'µUI/mL' },
+                                      { k: 'hba1c', label: 'HbA1c', v: item.hba1c, unit: '%' },
+                                      { k: 'homair', label: 'HOMA-IR', v: homaIr, unit: '' },
+                                    ].filter(e=> e.v !== null && e.v !== undefined && String(e.v).trim() !== '').map(e=> {
+                                      const interp = interpretBiochemical(e.k, Number(e.v));
+                                      return (
+                                        <div key={e.k} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                          <span className="text-xs font-medium text-stone-700">{e.label}</span>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-sm font-bold tabular-nums text-stone-800">{e.v} <span className="text-[10px] font-medium text-stone-500">{e.unit}</span></span>
+                                            <ExamStatusWithTooltip examKey={e.k} status={interp.status as any} statusText={interp.text} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {(item.total_cholesterol || item.hdl || item.ldl || item.triglycerides) && (
+                                <div className="overflow-hidden rounded-xl border border-stone-200">
+                                  <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-200">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-stone-500">Perfil Lipídico</h4>
+                                  </div>
+                                  <div className="divide-y divide-stone-100 bg-white">
+                                    {[
+                                      { k: 'total_cholesterol', label: 'Col. Total', v: item.total_cholesterol, unit: 'mg/dL' },
+                                      { k: 'hdl', label: 'HDL', v: item.hdl, unit: 'mg/dL' },
+                                      { k: 'ldl', label: 'LDL', v: item.ldl, unit: 'mg/dL' },
+                                      { k: 'triglycerides', label: 'Triglicerídeos', v: item.triglycerides, unit: 'mg/dL' },
+                                    ].filter(e=> e.v !== null && e.v !== undefined && String(e.v).trim() !== '').map(e=> {
+                                      const interp = interpretBiochemical(e.k, Number(e.v));
+                                      return (
+                                        <div key={e.k} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                          <span className="text-xs font-medium text-stone-700">{e.label}</span>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-sm font-bold tabular-nums text-stone-800">{e.v} <span className="text-[10px] font-medium text-stone-500">{e.unit}</span></span>
+                                            <ExamStatusWithTooltip examKey={e.k} status={interp.status as any} statusText={interp.text} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {(item.ferritin || item.pcr || item.tgp || item.creatinine || item.urea) && (
+                                <div className="overflow-hidden rounded-xl border border-stone-200">
+                                  <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-200">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-stone-500">Inflamação & Órgãos</h4>
+                                  </div>
+                                  <div className="divide-y divide-stone-100 bg-white">
+                                    {[
+                                      { k: 'ferritin', label: 'Ferritina', v: item.ferritin, unit: 'ng/mL' },
+                                      { k: 'pcr', label: 'PCR', v: item.pcr, unit: 'mg/dL' },
+                                      { k: 'tgp', label: 'TGP', v: item.tgp, unit: 'U/L' },
+                                      { k: 'creatinine', label: 'Creatinina', v: item.creatinine, unit: 'mg/dL' },
+                                      { k: 'urea', label: 'Ureia', v: item.urea, unit: 'mg/dL' },
+                                    ].filter(e=> e.v !== null && e.v !== undefined && String(e.v).trim() !== '').map(e=> {
+                                      const interp = interpretBiochemical(e.k, Number(e.v));
+                                      return (
+                                        <div key={e.k} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                          <span className="text-xs font-medium text-stone-700">{e.label}</span>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-sm font-bold tabular-nums text-stone-800">{e.v} <span className="text-[10px] font-medium text-stone-500">{e.unit}</span></span>
+                                            <ExamStatusWithTooltip examKey={e.k} status={interp.status as any} statusText={interp.text} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {(item.vitamin_d || item.vitamin_b12 || item.tsh || item.iron) && (
+                                <div className="overflow-hidden rounded-xl border border-stone-200">
+                                  <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-200">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-stone-500">Vitaminas & Hormonal</h4>
+                                  </div>
+                                  <div className="divide-y divide-stone-100 bg-white">
+                                    {[
+                                      { k: 'vitamin_d', label: 'Vit. D', v: item.vitamin_d, unit: 'ng/mL' },
+                                      { k: 'vitamin_b12', label: 'Vit. B12', v: item.vitamin_b12, unit: 'pg/mL' },
+                                      { k: 'tsh', label: 'TSH', v: item.tsh, unit: 'µUI/mL' },
+                                      { k: 'iron', label: 'Ferro Sérico', v: item.iron, unit: 'µg/dL' },
+                                    ].filter(e=> e.v !== null && e.v !== undefined && String(e.v).trim() !== '').map(e=> {
+                                      const interp = interpretBiochemical(e.k, Number(e.v));
+                                      return (
+                                        <div key={e.k} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                          <span className="text-xs font-medium text-stone-700">{e.label}</span>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-sm font-bold tabular-nums text-stone-800">{e.v} <span className="text-[10px] font-medium text-stone-500">{e.unit}</span></span>
+                                            <ExamStatusWithTooltip examKey={e.k} status={interp.status as any} statusText={interp.text} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             )}
 
             {/* COPILOTO */}
             {activeTab === 'copiloto' && (
               <CopilotTab profile={profile} history={history} dailyLogs={dailyLogs} />
-            )}
-
-            {/* BIOQUÍMICOS */}
-            {activeTab === 'bioquimicos' && (
-              <div className="animate-in fade-in duration-300 space-y-8 md:space-y-10">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <h2 className="text-lg md:text-xl font-bold text-stone-900 flex items-center gap-2.5 tracking-tight">
-                    <div className="bg-stone-100 p-2 rounded-xl text-stone-600"><Activity size={18} /></div>
-                    Exames de Sangue
-                  </h2>
-                  <div className="flex gap-3 md:gap-4 text-[9px] md:text-[10px] font-bold uppercase text-stone-500 bg-stone-50 px-3 md:px-4 py-2 rounded-lg md:rounded-xl border border-stone-200/80 shrink-0">
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-emerald-500 shadow-sm"></span> Normal</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-amber-400 shadow-sm"></span> Atenção</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500 shadow-sm"></span> Risco</span>
-                  </div>
-                </div>
-
-                {bioData.length === 0 ? (
-                  <div className="text-center py-16 text-stone-400 font-medium text-sm bg-stone-50/50 rounded-2xl md:rounded-[2.5rem] border-2 border-dashed border-stone-200 flex flex-col items-center">
-                    <Syringe size={40} className="mb-3 text-stone-300 opacity-50" />
-                    <p>Nenhum biomarcador cadastrado para este paciente.</p>
-                  </div>
-                ) : (
-                  bioData.map((item) => {
-                    const homaIr = (item.glucose && item.insulin) ? ((parseFloat(item.glucose as string) * parseFloat(item.insulin as string)) / 405).toFixed(2) : null;
-
-                    return (
-                      <div key={item.id} className="bg-white rounded-3xl md:rounded-[2rem] border border-stone-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                        <div className="bg-stone-50/80 px-5 md:px-8 py-4 border-b border-stone-200">
-                          <span className="font-extrabold text-stone-800 text-xs md:text-sm uppercase tracking-wider flex items-center gap-2">
-                            <CalendarCheck size={16} className="text-nutri-600" /> Coleta: {new Date(item.exam_date).toLocaleDateString('pt-BR')}
-                          </span>
-                        </div>
-                        
-                        <div className="p-5 md:p-8 space-y-8 md:space-y-10">
-                          
-                          {(item.glucose || item.insulin || item.hba1c) && (
-                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
-                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Eixo Glicêmico</h3>
-                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-                                <ExamBadge label="Glicose" value={item.glucose} unit="mg/dL" type="glucose" />
-                                <ExamBadge label="Insulina" value={item.insulin} unit="µUI/mL" type="insulin" />
-                                <ExamBadge label="HbA1c" value={item.hba1c} unit="%" type="hba1c" />
-                                <ExamBadge label="HOMA-IR" value={homaIr} unit="" type="homair" />
-                              </div>
-                            </div>
-                          )}
-
-                          {(item.total_cholesterol || item.hdl || item.ldl || item.triglycerides) && (
-                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
-                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Perfil Lipídico</h3>
-                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-                                <ExamBadge label="Col. Total" value={item.total_cholesterol} unit="mg/dL" type="total_cholesterol" />
-                                <ExamBadge label="HDL" value={item.hdl} unit="mg/dL" type="hdl" />
-                                <ExamBadge label="LDL" value={item.ldl} unit="mg/dL" type="ldl" />
-                                <ExamBadge label="Triglicerídeos" value={item.triglycerides} unit="mg/dL" type="triglycerides" />
-                              </div>
-                            </div>
-                          )}
-
-                          {(item.ferritin || item.pcr || item.tgp || item.creatinine || item.urea) && (
-                            <div className="border-b border-stone-100 pb-8 md:pb-10 last:border-0 last:pb-0">
-                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Órgãos & Inflamação</h3>
-                              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-5">
-                                <ExamBadge label="Ferritina" value={item.ferritin} unit="ng/mL" type="ferritin" />
-                                <ExamBadge label="PCR" value={item.pcr} unit="mg/dL" type="pcr" />
-                                <ExamBadge label="TGP" value={item.tgp} unit="U/L" type="tgp" />
-                                <ExamBadge label="Creatinina" value={item.creatinine} unit="mg/dL" type="creatinine" />
-                                <ExamBadge label="Ureia" value={item.urea} unit="mg/dL" type="urea" />
-                              </div>
-                            </div>
-                          )}
-
-                          {(item.vitamin_d || item.vitamin_b12 || item.tsh || item.iron) && (
-                            <div className="pb-2">
-                              <h3 className="text-[10px] md:text-xs font-bold uppercase text-stone-400 mb-4 md:mb-5 tracking-widest flex items-center gap-1.5">Vitaminas & Tireoide</h3>
-                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-                                <ExamBadge label="Vit. D (25OH)" value={item.vitamin_d} unit="ng/mL" type="vitamin_d" />
-                                <ExamBadge label="Vit. B12" value={item.vitamin_b12} unit="pg/mL" type="vitamin_b12" />
-                                <ExamBadge label="TSH" value={item.tsh} unit="µUI/mL" type="tsh" />
-                                <ExamBadge label="Ferro Sérico" value={item.iron} unit="µg/dL" type="iron" />
-                              </div>
-                            </div>
-                          )}
-
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
             )}
 
           </div>
@@ -1737,6 +1984,50 @@ export default function PacienteHistoricoAdmin() {
         )}
 
       </div>
+
+      {/* Modal escalonado — modo independente por aba (sem protocolo em Medidas/Exames) */}
+      {(() => {
+        const USE_STEPPED_HISTORICO = true;
+        const protocolForModal = clinicalMode === 'skinfolds' ? dobrasProtocol : undefined;
+        return USE_STEPPED_HISTORICO ? (
+          <ClinicalDataModalStepped
+            isOpen={isSteppedOpen}
+            onClose={() => { setIsSteppedOpen(false); fetchData(); }}
+            patientId={pacienteId}
+            patientName={profile?.full_name || ''}
+            patientSex={profile?.sexo ?? null}
+            protocol={protocolForModal}
+            mode={clinicalMode}
+          />
+        ) : (
+          <ClinicalDataModal
+            isOpen={isSteppedOpen}
+            onClose={() => { setIsSteppedOpen(false); fetchData(); }}
+            patientId={pacienteId}
+            patientName={profile?.full_name || ''}
+            patientSex={profile?.sexo ?? null}
+            protocol={protocolForModal as any}
+          />
+        );
+      })()}
+
+      {/* Picker de protocolo para Dobras/BF% — dois botões independentes */}
+      {isProtocolPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <h3 className="font-black text-stone-800 mb-1">Escolher protocolo</h3>
+            <p className="text-xs text-stone-500 mb-4">Selecione o protocolo que será usado na coleta de dobras.</p>
+            <div className="space-y-2">
+              {(['jp3','jp7','petroski4'] as const).map(p => (
+                <button key={p} onClick={() => { setDobrasProtocol(p); setIsProtocolPickerOpen(false); toast.success(`Protocolo ${PROTOCOLS[p].label} selecionado`); }} className={cn("w-full text-left px-4 py-3 rounded-xl border font-bold text-sm transition-all", dobrasProtocol===p ? "bg-nutri-900 text-white border-nutri-900" : "bg-white border-stone-200 hover:bg-stone-50 text-stone-700")}>
+                  {PROTOCOLS[p].label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setIsProtocolPickerOpen(false)} className="mt-4 w-full py-2.5 rounded-xl border border-stone-200 font-bold text-sm hover:bg-stone-50">Cancelar</button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

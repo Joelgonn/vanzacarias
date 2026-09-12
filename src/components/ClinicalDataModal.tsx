@@ -11,6 +11,18 @@ import type { ProtocolId } from '@/lib/nutrition/bodyComposition';
 import { PROTOCOLS, normalizeSex } from '@/lib/nutrition/bodyComposition';
 import { pickLastValidProtocol, resolveInitialProtocol } from '@/lib/nutrition/protocolDefault';
 
+const FOLD_PT: Record<string, string> = {
+  triceps: 'Tricipital',
+  biceps: 'Bicipital',
+  subscapular: 'Subescapular',
+  axillary_media: 'Axilar média',
+  pectoral: 'Peitoral',
+  suprailiac: 'Supra-ilíaca',
+  abdominal: 'Abdominal',
+  thigh: 'Coxa',
+  calf: 'Panturrilha',
+};
+
 // =========================================================================
 // INTERFACES E TIPAGENS
 // =========================================================================
@@ -356,7 +368,7 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                       <p className="mt-2 text-xs font-bold text-amber-600">Sexo não disponível — não é possível determinar campos específicos do protocolo até que o sexo esteja cadastrado.</p>
                     ) : required ? (
                       <p className="mt-2 text-xs font-medium text-stone-600">
-                        Necessárias para {PROTOCOLS[selectedProtocol].label}: <span className="font-bold text-nutri-800">{required.join(', ')}</span>
+                        Necessárias para {PROTOCOLS[selectedProtocol].label}: <span className="font-bold text-nutri-800">{required.map(c=>FOLD_PT[c]||c).join(', ')}</span>
                         {petroskiF ? <span className="font-bold"> + peso e altura</span> : null}
                       </p>
                     ) : null}
