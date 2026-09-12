@@ -32,6 +32,14 @@ export const measureInfo: Record<string, AnthropometryInfo> = {
     caption: 'Imagem mostra o local correto da fita métrica na cintura.',
     category: 'medida',
   },
+  abdominal: {
+    title: 'Circunferência abdominal',
+    description: 'Medida do perímetro abdominal utilizada para acompanhar a distribuição corporal e a adiposidade central, conforme o ponto anatômico definido pelo protocolo clínico.',
+    image: '/images/anthropometry/medidas/circunferencia-abdominal.webp',
+    imageAlt: 'Local anatômico para medição da circunferência abdominal',
+    caption: 'Circunferência abdominal — coletar conforme protocolo clínico definido pela nutricionista. Independente de cintura (waist) e antebraço (forearm). Fita horizontal, sem compressão da pele e postura padronizada.',
+    category: 'medida',
+  },
   hip: {
     title: 'Circunferência do quadril',
     description: 'Mede a circunferência na região de maior perímetro do quadril.',

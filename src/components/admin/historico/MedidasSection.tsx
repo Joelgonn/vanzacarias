@@ -18,7 +18,7 @@ import type { AntroData } from '@/app/admin/paciente/[id]/historico/page';
  * - Ordem recebida: `order('measurement_date', { ascending: false })`
  *   → DECRESCENTE, logo measurements[0] é o registro MAIS RECENTE ("Atual").
  * - Nenhum array de entrada é mutado.
- * - Todos os 7 campos de AntroData são exibidos; ausentes aparecem como '—'.
+ * - Todos os 11 campos de AntroData são exibidos; ausentes aparecem como '—'.
  * ========================================================================= */
 
 export type MedidasSectionProps = {
@@ -35,11 +35,12 @@ type MedidaRowData = {
 
 type MeasureKind = 'weight' | 'height' | 'circ';
 
-/** 10 medidas antropométricas do sistema (ordem do formulário ClinicalDataModal). */
+/** 11 medidas antropométricas do sistema (ordem do formulário ClinicalDataModal — abdominal entre cintura e quadril). */
 const MEASURES: { key: keyof AntroData; label: string; kind: MeasureKind }[] = [
   { key: 'weight', label: 'Peso', kind: 'weight' },
   { key: 'height', label: 'Altura', kind: 'height' },
   { key: 'waist', label: 'Cintura', kind: 'circ' },
+  { key: 'abdominal' as keyof AntroData, label: 'Abdominal', kind: 'circ' },
   { key: 'hip', label: 'Quadril', kind: 'circ' },
   { key: 'arm', label: 'Braço', kind: 'circ' },
   { key: 'forearm' as keyof AntroData, label: 'Antebraço', kind: 'circ' },
@@ -232,7 +233,7 @@ function MedidaRow({ data }: { data: MedidaRowData }) {
       {expanded && (
         <div
           id={detailsId}
-          className="mt-3 grid grid-cols-2 gap-2.5 transition-all duration-200 md:grid-cols-3 lg:grid-cols-5"
+          className="mt-3 grid grid-cols-2 gap-2.5 transition-all duration-200 md:grid-cols-3 xl:grid-cols-6"
         >
           {MEASURES.map((m) => (
             <MeasureCell
@@ -293,7 +294,7 @@ export default function MedidasSection({ measurements }: MedidasSectionProps) {
               </span>
             </header>
 
-            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-5 md:gap-3">
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6 md:gap-3">
               {MEASURES.map((m) => (
                 <MeasureCell
                   key={m.key}

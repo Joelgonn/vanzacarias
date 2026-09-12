@@ -302,6 +302,7 @@ export default function ClinicalDataModal({ isOpen, onClose, patientId, patientN
                   { label: "Peso (kg)", name: "weight" },
                   { label: "Altura (m)", name: "height" },
                   { label: "Cintura (cm)", name: "waist" },
+                  { label: "Abdominal (cm)", name: "abdominal" },
                   { label: "Quadril (cm)", name: "hip" },
                   { label: "Braço (cm)", name: "arm" },
                   { label: "Antebraço (cm)", name: "forearm" },

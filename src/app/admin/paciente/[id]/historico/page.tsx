@@ -34,7 +34,9 @@ import { formatCivilDate, formatCivilDateLong, formatCivilDateShort, todayCivilS
 // 🔥 Sprint Z-001: histórico delega o cálculo metabólico ao modelo único (SSOT)
 import { buildMetabolicSnapshot, calculateWeightTrend, calculateWeightVelocity } from '@/lib/metabolicModel';
 // Validador de QFA (perfil alimentar) — mantido aqui
-import { validateQFAConsistency } from '@/lib/nutrition'; 
+import { validateQFAConsistency } from '@/lib/nutrition';
+import { DiarioDayCard } from '@/components/admin/diario/DiarioDayCard';
+import { compareDiaryDays, deriveWaterGoal, getHydrationStatus, getMealStatus, getActivityStatus, getMoodStatus, getDayStatus } from '@/lib/diario/diarioRules';
 // NOVO: Tipos para o perfil alimentar
 import type { FoodRestriction } from '@/types/patient';
 
@@ -51,6 +53,7 @@ interface PatientProfile {
   meta_peso?: number | null;
   altura?: number | null;
   food_restrictions?: FoodRestriction[];
+  meal_plan?: { name: string }[] | null;
 }
 
 // Exportado como fonte de verdade única do tipo (consumido por CheckinsSection).
@@ -65,13 +68,14 @@ export interface CheckinData {
   comentarios: string;
 }
 
-// Exportado como fonte de verdade única do tipo (consumido por MedidasSection) — 10 campos.
+// Exportado como fonte de verdade única do tipo (consumido por MedidasSection) — 11 campos (abdominal entre waist e hip).
 export interface AntroData {
   id: string;
   measurement_date: string;
   weight?: string | number;
   height?: string | number;
   waist?: string | number;
+  abdominal?: string | number;
   hip?: string | number;
   arm?: string | number;
   forearm?: string | number;
@@ -1523,172 +1527,101 @@ export default function PacienteHistoricoAdmin() {
               </div>
             )}
 
-            {/* DIÁRIO — somente leitura, civil YYYY-MM-DD, sem Adicionar evento */}
+            {/* DIÁRIO — dois cards + status inteligente + insights contextuais (civil YYYY-MM-DD) */}
             {activeTab === 'diario' && (() => {
-              const selectedLog = dailyLogs.find(l => l.date === diarioDate) || null
-              const hasLog = !!selectedLog
-              const mealCount = selectedLog && Array.isArray(selectedLog.meals_checked) ? selectedLog.meals_checked.length : 0
+              const selectedLog = (dailyLogs.find(l => l.date === diarioDate) as any) || null
               const isToday = diarioDate === todayCivilSP()
-              const hasWater = selectedLog?.water_ml !== null && selectedLog?.water_ml !== undefined && String(selectedLog.water_ml).trim() !== ''
-              const hasActivity = selectedLog?.activity_kcal !== null && selectedLog?.activity_kcal !== undefined && String(selectedLog!.activity_kcal).trim() !== ''
-              const activityNum = hasActivity ? Number(selectedLog!.activity_kcal) : null
-              const isActivityZero = activityNum === 0
-              const isActivityMissing = !hasActivity
+              // Meta hidratação derivada apenas se houver fonte de peso válida (checkins/antro) — não inventar
+              const lastCheckinWeight = history.length > 0 ? Number(history[history.length - 1]?.peso) : null
+              const lastAntroWeight = antroData.length > 0 ? Number((antroData[0] as any)?.weight) : null
+              const waterGoal = deriveWaterGoal(Number.isFinite(lastCheckinWeight!) && lastCheckinWeight! > 0 ? lastCheckinWeight : null, Number.isFinite(lastAntroWeight!) && lastAntroWeight! > 0 ? lastAntroWeight : null)
+              const mealPlanNames = (profile as any)?.meal_plan && Array.isArray((profile as any).meal_plan) ? (profile as any).meal_plan.map((m: any) => m.name).filter(Boolean) : null
+
+              // Card comparação: dia anterior; fallback último dia disponível < diarioDate; senão vazio
+              const comparisonDateRaw = addDaysCivil(diarioDate, -1)
+              let comparisonLog: any = dailyLogs.find((l: any) => l.date === comparisonDateRaw) || null
+              let comparisonDate = comparisonDateRaw
+              if (!comparisonLog) {
+                const sortedBefore = (dailyLogs as any[]).filter((l) => l.date < diarioDate).sort((a, b) => (b.date as string).localeCompare(a.date as string))
+                if (sortedBefore.length > 0) {
+                  comparisonLog = sortedBefore[0]
+                  comparisonDate = comparisonLog.date
+                }
+              }
+              const comparison = compareDiaryDays(selectedLog, comparisonLog)
+
               return (
                 <div className="animate-in fade-in duration-300">
-                  {/* Cabeçalho compacto */}
+                  {/* Cabeçalho */}
                   <div className="mb-3">
                     <h2 className="text-base md:text-lg font-bold text-stone-900 flex items-center gap-2">
                       <div className="bg-stone-100 p-1.5 rounded-lg text-stone-600"><Coffee size={16} aria-hidden="true" /></div>
                       Diário
                     </h2>
-                    <p className="text-xs text-stone-500 mt-1">Registre e acompanhe os eventos do seu dia.</p>
+                    <p className="text-xs text-stone-500 mt-1">Dois dias lado a lado — hidratação, refeições, atividade e humor com insights educativos. Datas civis sem deslocamento UTC.</p>
                   </div>
 
-                  {/* Navegação */}
+                  {/* Navegação — preserva todayCivilSP / addDaysCivil / formatCivilDate */}
                   <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-2.5">
-                    {/* Desktop: uma linha */}
                     <div className="hidden sm:flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300"
-                          aria-label="Dia anterior"
-                        >
-                          <ChevronLeft size={14} aria-hidden="true" />
-                        </button>
+                        <button onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300" aria-label="Dia anterior"><ChevronLeft size={14} aria-hidden="true" /></button>
                         <span className="min-w-[200px] text-center text-sm font-bold text-stone-800 px-2">{formatCivilDateLong(diarioDate)}</span>
-                        <button
-                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300"
-                          aria-label="Próximo dia"
-                        >
-                          <ChevronRight size={14} aria-hidden="true" />
-                        </button>
+                        <button onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 hover:bg-white text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-300" aria-label="Próximo dia"><ChevronRight size={14} aria-hidden="true" /></button>
                       </div>
                       <div className="flex items-center gap-2">
                         <label htmlFor="diario-date-desktop" className="sr-only">Selecionar data</label>
-                        <input
-                          id="diario-date-desktop"
-                          type="date"
-                          value={diarioDate}
-                          onChange={(e) => e.target.value && setDiarioDate(e.target.value)}
-                          className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700 focus:border-nutri-400 focus:ring-2 focus:ring-nutri-100 outline-none"
-                        />
-                        <button
-                          onClick={() => setDiarioDate(todayCivilSP())}
-                          className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold hover:bg-nutri-100"}
-                        >
-                          Hoje
-                        </button>
+                        <input id="diario-date-desktop" type="date" value={diarioDate} onChange={(e) => e.target.value && setDiarioDate(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700 focus:border-nutri-400 focus:ring-2 focus:ring-nutri-100 outline-none" />
+                        <button onClick={() => setDiarioDate(todayCivilSP())} className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold hover:bg-nutri-100"}>Hoje</button>
                       </div>
                     </div>
-                    {/* Mobile: duas linhas */}
                     <div className="sm:hidden space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <button
-                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600"
-                          aria-label="Dia anterior"
-                        >
-                          <ChevronLeft size={14} aria-hidden="true" />
-                        </button>
+                        <button onClick={() => setDiarioDate(addDaysCivil(diarioDate, -1))} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600" aria-label="Dia anterior"><ChevronLeft size={14} aria-hidden="true" /></button>
                         <span className="flex-1 text-center text-sm font-bold text-stone-800">{formatCivilDateShort(diarioDate)}</span>
-                        <button
-                          onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600"
-                          aria-label="Próximo dia"
-                        >
-                          <ChevronRight size={14} aria-hidden="true" />
-                        </button>
+                        <button onClick={() => setDiarioDate(addDaysCivil(diarioDate, 1))} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-stone-200 text-stone-600" aria-label="Próximo dia"><ChevronRight size={14} aria-hidden="true" /></button>
                       </div>
                       <div className="flex items-center gap-2">
                         <label htmlFor="diario-date-mobile" className="sr-only">Selecionar data</label>
-                        <input
-                          id="diario-date-mobile"
-                          type="date"
-                          value={diarioDate}
-                          onChange={(e) => e.target.value && setDiarioDate(e.target.value)}
-                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700"
-                        />
-                        <button
-                          onClick={() => setDiarioDate(todayCivilSP())}
-                          className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold"}
-                        >
-                          Hoje
-                        </button>
+                        <input id="diario-date-mobile" type="date" value={diarioDate} onChange={(e) => e.target.value && setDiarioDate(e.target.value)} className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-medium text-stone-700" />
+                        <button onClick={() => setDiarioDate(todayCivilSP())} className={isToday ? "px-3 py-1.5 rounded-lg bg-stone-50 border border-stone-200 text-stone-400 text-xs font-bold" : "px-3 py-1.5 rounded-lg bg-nutri-50 border border-nutri-200 text-nutri-700 text-xs font-bold"}>Hoje</button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Estados */}
                   {loading ? (
                     <div className="space-y-3">
-                      <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
-                      <div className="h-32 rounded-xl bg-stone-100 animate-pulse" />
-                    </div>
-                  ) : !hasLog ? (
-                    <div className="text-center py-10 px-6 rounded-2xl border border-dashed border-stone-200 bg-white">
-                      <Coffee size={28} className="mx-auto mb-2 text-stone-300" aria-hidden="true" />
-                      <p className="text-sm font-bold text-stone-600">Nenhum registro encontrado para este dia.</p>
-                      <p className="text-xs text-stone-500 mt-1">{formatCivilDateLong(diarioDate)} — sem dados para exibir.</p>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="h-64 rounded-2xl bg-stone-100 animate-pulse" />
+                        <div className="h-64 rounded-2xl bg-stone-100 animate-pulse" />
+                      </div>
                     </div>
                   ) : (
-                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-                      <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase tracking-widest text-stone-600">Resumo do dia</h3>
-                        <span title={selectedLog!.mood ? `Humor: ${selectedLog!.mood}` : 'Sem humor registrado'}>{getMoodIcon(selectedLog!.mood)}</span>
+                    <>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <DiarioDayCard date={diarioDate} log={selectedLog} mealPlanNames={mealPlanNames} waterGoal={waterGoal} variant="primary" />
+                        <DiarioDayCard date={comparisonDate} log={comparisonLog} mealPlanNames={mealPlanNames} waterGoal={waterGoal} variant="comparison" onMakePrimary={() => setDiarioDate(comparisonDate)} />
                       </div>
-                      <div className="p-4 space-y-4">
-                        {/* Indicadores */}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center">
-                            <Droplets size={14} className="mx-auto mb-1 text-blue-500" aria-hidden="true" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Água registrada</p>
-                            <p className="text-sm font-black text-stone-800 mt-0.5">
-                              {hasWater ? `${Number(selectedLog!.water_ml).toLocaleString('pt-BR')} ml` : <span className="text-xs font-medium text-stone-400">Sem registro</span>}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center">
-                            <Check size={14} className="mx-auto mb-1 text-emerald-500" aria-hidden="true" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Refeições registradas</p>
-                            <p className="text-sm font-black text-stone-800 mt-0.5">{mealCount === 0 ? <span className="text-xs font-medium text-stone-400">Sem registro</span> : `${mealCount}`}</p>
-                          </div>
-                          <div className="rounded-xl border border-stone-100 bg-stone-50/60 p-3 text-center col-span-2 sm:col-span-1">
-                            <Flame size={14} className="mx-auto mb-1 text-orange-500" aria-hidden="true" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Atividade física</p>
-                            <p className="text-sm font-black text-stone-800 mt-0.5">
-                              {isActivityMissing ? <span className="text-xs font-medium text-stone-400">Sem registro</span> : isActivityZero ? 'Sem treino' : `${activityNum} kcal`}
-                            </p>
-                          </div>
+
+                      {/* Comparação neutra — somente quando há dados nos dois dias */}
+                      {selectedLog && comparisonLog && (
+                        <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
+                          <h3 className="text-xs font-black uppercase tracking-widest text-stone-500 mb-2">Comparação</h3>
+                          <ul className="space-y-1.5 text-sm text-stone-700">
+                            {comparison.hydrationDelta.text && <li className="flex gap-2"><span className="text-stone-400">•</span> {comparison.hydrationDelta.text}</li>}
+                            {comparison.mealsDelta.text && <li className="flex gap-2"><span className="text-stone-400">•</span> {comparison.mealsDelta.text}</li>}
+                            {comparison.activityDelta.text && <li className="flex gap-2"><span className="text-stone-400">•</span> {comparison.activityDelta.text}</li>}
+                          </ul>
+                          <p className="mt-2 text-[11px] text-stone-400">Comparação apenas entre campos equivalentes; NULL nunca como zero; sem frases conclusivas como “piorou”.</p>
                         </div>
-
-                        {/* Refeições */}
-                        {mealCount > 0 && (
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1.5">Refeições registradas</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {selectedLog!.meals_checked.map((meal: string, idx: number) => {
-                                const label = meal ? meal.charAt(0).toUpperCase() + meal.slice(1) : meal
-                                return (
-                                  <span key={idx} className="bg-stone-50 text-stone-700 text-xs font-medium px-2 py-1 rounded-full border border-stone-200">
-                                    {label}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Atividade detalhe quando houver */}
-                        {hasActivity && !isActivityZero && !isActivityMissing && selectedLog!.activities && Array.isArray(selectedLog!.activities) && selectedLog!.activities.length > 0 && (
-                          <div className="text-xs text-stone-600">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1">Atividades</p>
-                            <p>{(selectedLog!.activities as any[]).map((a:any)=> a?.name || '').filter(Boolean).join(', ')}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      )}
+                      {!selectedLog && !comparisonLog && (
+                        <div className="mt-4 text-center py-6 rounded-2xl border border-dashed border-stone-200 bg-white">
+                          <p className="text-sm font-bold text-stone-600">Nenhum registro diário disponível.</p>
+                          <p className="text-xs text-stone-500 mt-1">Selecione outra data ou verifique o preenchimento do paciente.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )

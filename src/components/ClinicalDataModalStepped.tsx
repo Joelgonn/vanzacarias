@@ -26,6 +26,7 @@ const ANTHRO_FIELDS: { label: string; name: string; unit: string }[] = [
   { label: 'Peso', name: 'weight', unit: 'kg' },
   { label: 'Altura', name: 'height', unit: 'm' },
   { label: 'Cintura', name: 'waist', unit: 'cm' },
+  { label: 'Abdominal', name: 'abdominal', unit: 'cm' },
   { label: 'Quadril', name: 'hip', unit: 'cm' },
   { label: 'Braço', name: 'arm', unit: 'cm' },
   { label: 'Antebraço', name: 'forearm', unit: 'cm' },
