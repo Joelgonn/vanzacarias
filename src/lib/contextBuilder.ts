@@ -148,6 +148,19 @@ export type UserData = {
     humorMaisRecente: number | null;
     metaPeso: number | null;
   };
+
+  // F3.4 SAFETY GATE — contexto metabólico para Copiloto (estruturado, sem regra rígida)
+  metabolicSafety?: {
+    tmb: number | null;
+    get: number | null;
+    vctCalculated: number | null;
+    vctProtected: number | null;
+    deficit: number | null;
+    deficitPercent: number | null;
+    minCalories: number | null;
+    safetyAdjustmentApplied: boolean;
+    safetyReason: string | null;
+  };
 };
 
 type IntentType = 'troca' | 'resultado' | 'motivacional' | 'geral';
@@ -847,6 +860,29 @@ ${linhas.join('\n')}
 }
 
 // ============================================================================
+// 🛡️ MÓDULO: CONTEXTO METABÓLICO E SAFETY GATE (F3.4)
+// Estruturado para Copiloto entender TMB/GET/VCT sem regra rígida
+// ============================================================================
+function buildMetabolicSafetyContext(data: UserData): string {
+  const m = data.metabolicSafety;
+  if (!m || m.tmb === null || m.get === null) return '';
+  const lines: string[] = [];
+  lines.push(`- TMB: ${m.tmb} kcal`);
+  lines.push(`- GET: ${m.get} kcal`);
+  if (m.vctCalculated !== null) lines.push(`- VCT calculado (antes do Safety Gate): ${m.vctCalculated} kcal`);
+  if (m.vctProtected !== null) lines.push(`- VCT protegido (entregue ao DietBuilder): ${m.vctProtected} kcal`);
+  if (m.deficit !== null) lines.push(`- Déficit: ${m.deficit} kcal (${m.deficitPercent?.toFixed(1)}%)`);
+  if (m.minCalories !== null) lines.push(`- Limite de segurança (minCalories): ${m.minCalories} kcal`);
+  if (m.safetyAdjustmentApplied) lines.push(`- ⚠️ Safety Gate acionado: ${m.safetyReason}`);
+  else lines.push(`- Safety Gate: não acionado`);
+  lines.push(`- Nota: TMB não é piso universal; Safety Gate é preventivo antes do DietBuilder; profissional decide; aumentar NEAT é alternativa a reduzir VCT.`);
+  return `
+[CONTEXTO METABÓLICO — DADOS ESTRUTURADOS]
+${lines.join('\n')}
+`.trim();
+}
+
+// ============================================================================
 // 🧠 3. CONSTRUTOR PRINCIPAL (ÚNICA FUNÇÃO EXPORTADA)
 // ============================================================================
 export function buildContext(message: string, data: UserData): string {
@@ -872,6 +908,7 @@ export function buildContext(message: string, data: UserData): string {
     buildBehaviorAnalysisContext(data),
     buildTemporalContext(data),
     buildProgressContext(data),
+    buildMetabolicSafetyContext(data),
     buildIntentInstructions(intent, hasMacros, hasBodyComposition),
     data.hasImage ? buildImageAnalysisRules() : '',
     `

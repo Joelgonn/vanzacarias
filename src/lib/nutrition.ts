@@ -109,7 +109,7 @@ export interface RecommendationParams {
 
 export interface RecommendationResult {
   goal: 'perda de gordura' | 'ganho de massa' | 'manutenção';
-  calories: number;
+  calories: number; // VCT PROTEGIDO entregue ao DietBuilder
   trainingDayCalories: number;
   restDayCalories: number;
   refeedCalories: number | null;
@@ -120,6 +120,12 @@ export interface RecommendationResult {
     carbs: number;
     fat: number;
   };
+  // Rastreabilidade do Safety Gate (F3.4)
+  calculatedCalories: number; // VCT antes da proteção
+  protectedCalories: number; // alias de calories (protegido)
+  minCalories: number; // limite de segurança aplicado
+  safetyAdjustmentApplied: boolean;
+  safetyReason: string | null;
 }
 
 export function generateRecommendation({
@@ -228,11 +234,17 @@ export function generateRecommendation({
   }
 
   const alertsList: string[] = [];
-  const isSedentary = avgActivity < 150;
-  const tmbFactor = isSedentary ? 1.0 : 0.95;
-  const minCalories = Math.round(tmb * tmbFactor);
+  // Safety Gate — regra revisada F3.4: TMB como limite único (sem distinção sedentário 100% vs ativo 95%)
+  // Fundamentação: 95% TMB para ativos é heuristicamente permissivo e inverso à segurança (ativo precisa de mais energia)
+  // Mantém proteção preventiva antes do DietBuilder, mas com rastreabilidade
+  const minCalories = Math.round(tmb * 1.0);
+  const calculatedCalories = calories;
+  let safetyAdjustmentApplied = false;
+  let safetyReason: string | null = null;
 
   if (calories < minCalories) {
+    safetyAdjustmentApplied = true;
+    safetyReason = `VCT calculado ${Math.round(calculatedCalories)} kcal abaixo do limite de segurança ${minCalories} kcal (TMB ${tmb} kcal) — proteção aplicada`;
     calories = minCalories;
     strategy += ' | Proteção metabólica aplicada';
   }
@@ -346,6 +358,11 @@ export function generateRecommendation({
       protein: Math.round(protein),
       carbs: Math.round(carbs),
       fat: Math.round(fat)
-    }
+    },
+    calculatedCalories: Math.round(calculatedCalories),
+    protectedCalories: Math.round(calories),
+    minCalories,
+    safetyAdjustmentApplied,
+    safetyReason,
   };
 }

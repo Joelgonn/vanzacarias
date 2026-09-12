@@ -41,6 +41,9 @@ export interface MetabolicSnapshot {
   tmbMethod: 'Katch-McArdle' | 'Mifflin-St Jeor';
   get: number;
   recommendation: RecommendationResult | null;
+  // Derivados do Safety Gate para leitores/Copilot (sem duplicar cálculo)
+  deficitKcal: number | null;
+  deficitPercent: number | null;
   sourceMetadata: {
     weightSource?: string;
     heightSource?: string;
@@ -171,6 +174,9 @@ export function buildMetabolicSnapshot(input: MetabolicSnapshotInput): Metabolic
       })
     : null;
 
+  const deficitKcal = recommendation ? get - recommendation.calories : null;
+  const deficitPercent = deficitKcal !== null && get ? (deficitKcal / get) * 100 : null;
+
   return {
     weight,
     height,
@@ -185,6 +191,8 @@ export function buildMetabolicSnapshot(input: MetabolicSnapshotInput): Metabolic
     tmbMethod,
     get,
     recommendation,
+    deficitKcal,
+    deficitPercent,
     sourceMetadata: {
       activityLogsUsed: 0, // preenchido pelo chamador quando souber a contagem
     }

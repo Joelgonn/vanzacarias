@@ -24,6 +24,17 @@ interface TargetRecommendation {
   };
 }
 
+// Estado do modal do DietBuilder
+export interface DietModalOpen {
+  isOpen: boolean;
+  id: string;
+  name: string;
+  targetRecommendation: TargetRecommendation | null;
+  foodRestrictions: FoodRestriction[];
+  tmb?: number | null;
+  getVal?: number | null;
+}
+
 // Linha da VIEW admin_dashboard (Supabase)
 // Campos espelham a nulabilidade da interface Patient (sem `null` explícito
 // onde Patient só aceita `undefined`).
@@ -155,13 +166,15 @@ export function useAdminDashboard() {
 
   const [evalModalActiveTab, setEvalModalActiveTab] = useState<'avaliacao' | 'qfa' | 'perfil'>('avaliacao');
 
-  const [dietModalOpen, setDietModalOpen] = useState<{
-    isOpen: boolean;
-    id: string;
-    name: string;
-    targetRecommendation: TargetRecommendation | null;
-    foodRestrictions: FoodRestriction[];
-  }>({ isOpen: false, id: '', name: '', targetRecommendation: null, foodRestrictions: [] });
+  const [dietModalOpen, setDietModalOpen] = useState<DietModalOpen>({
+    isOpen: false,
+    id: '',
+    name: '',
+    targetRecommendation: null,
+    foodRestrictions: [],
+    tmb: null,
+    getVal: null,
+  });
 
   // =========================== CONFIGURAÇÕES ===========================
   const [premiumPrice, setPremiumPrice] = useState('297.00');
@@ -417,6 +430,8 @@ export function useAdminDashboard() {
         name: p.full_name,
         targetRecommendation: metabolicData.recommendation,
         foodRestrictions: p.food_restrictions || [],
+        tmb: metabolicData.tmb,
+        getVal: metabolicData.getVal,
       });
     } catch (e) {
       console.error('Erro ao gerar recomendação:', e);

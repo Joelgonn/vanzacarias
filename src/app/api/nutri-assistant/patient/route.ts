@@ -18,6 +18,9 @@ import { trackCommerceEvent } from '@/lib/commerceEvents'
 import { PatientRequestSchema } from '@/lib/patientValidation'
 import { extractFoodIdsFromText } from '@/lib/guardrailHelpers'
 import { detectFactualHallucinations, type FactualContext } from '@/lib/factualValidator'
+import { buildMetabolicSnapshot } from '@/lib/metabolicModel'
+import { calculateAge } from '@/lib/nutrition/bodyComposition'
+import type { RecommendationResult } from '@/lib/nutrition'
 
 // IMPORTS CENTRALIZADOS
 import { processBeliscos } from '@/lib/beliscosProcessor'
@@ -273,7 +276,7 @@ export async function POST(req: NextRequest) {
 
     // BUSCA DE DADOS DO PACIENTE
     const [profileRes, dailyLogRes, evalRes, qfaRes, antroRes, checkinsRes] = await Promise.all([
-      supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan, food_restrictions, account_type, has_meal_plan_access, created_at').eq('id', userId).limit(1),
+      supabaseAdmin.from('profiles').select('full_name, meta_peso, meal_plan, food_restrictions, account_type, has_meal_plan_access, created_at, data_nascimento, sexo, altura').eq('id', userId).limit(1),
       supabaseAdmin.from('daily_logs').select('water_ml, meals_checked, mood, activities, activity_kcal, beliscos').eq('user_id', userId).eq('date', todayStr).limit(1),
       supabaseAdmin.from('evaluations').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
       supabaseAdmin.from('qfa_responses').select('answers').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
@@ -421,6 +424,53 @@ export async function POST(req: NextRequest) {
       metaPeso
     };
 
+    // F3.4 Safety Gate — contexto metabólico estruturado para Copiloto (sem regra rígida)
+    let metabolicSafety: import('@/lib/contextBuilder').UserData['metabolicSafety'] = undefined;
+    try {
+      const profileData = profile as Record<string, unknown> | null;
+      const ageForMetabolic = profileData && typeof profileData.data_nascimento === 'string'
+        ? calculateAge(profileData.data_nascimento)
+        : null;
+      const heightForMetabolic = typeof alturaMetros === 'number' ? alturaMetros : (profileData && typeof profileData.altura === 'number' ? profileData.altura : null);
+      if (pesoMaisRecente !== null && heightForMetabolic !== null && ageForMetabolic !== null) {
+        const snap = buildMetabolicSnapshot({
+          weight: pesoMaisRecente,
+          height: heightForMetabolic,
+          age: ageForMetabolic,
+          gender: profileData && typeof profileData.sexo === 'string' ? profileData.sexo : '',
+          bf: null,
+          leanMass: null,
+          avgActivity: dailyLog?.activity_kcal || 0,
+        });
+        if (snap && snap.recommendation) {
+          const rec: RecommendationResult = snap.recommendation;
+          metabolicSafety = {
+            tmb: snap.tmb,
+            get: snap.get,
+            vctCalculated: rec.calculatedCalories ?? null,
+            vctProtected: rec.calories ?? null,
+            deficit: snap.deficitKcal,
+            deficitPercent: snap.deficitPercent,
+            minCalories: rec.minCalories ?? null,
+            safetyAdjustmentApplied: !!rec.safetyAdjustmentApplied,
+            safetyReason: rec.safetyReason ?? null,
+          };
+        } else if (snap) {
+          metabolicSafety = {
+            tmb: snap.tmb,
+            get: snap.get,
+            vctCalculated: null,
+            vctProtected: null,
+            deficit: null,
+            deficitPercent: null,
+            minCalories: null,
+            safetyAdjustmentApplied: false,
+            safetyReason: null,
+          };
+        }
+      }
+    } catch {}
+
     // JG-002.2 — contexto factual para validação pós-LLM (peso, altura, IMC, macros, exames)
     const factualContext: FactualContext = {
       pesoMaisRecente,
@@ -462,7 +512,8 @@ export async function POST(req: NextRequest) {
       },
       canAccessMealPlan,
       temporal: temporalContext,
-      progress: progressContext
+      progress: progressContext,
+      metabolicSafety,
     };
 
         // CONTEXTO PRINCIPAL

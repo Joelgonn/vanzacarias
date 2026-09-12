@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { cn, ui, SkeletonCard } from '@/ui/system';
 import { useDarkMode } from '@/hooks/useDarkMode';
-import { useAdminDashboard } from '@/app/admin/useAdminDashboard';
+import { useAdminDashboard, type DietModalOpen } from '@/app/admin/useAdminDashboard';
 import { usePatientScore } from './hooks/usePatientScore';
 import { useAutoActions } from './hooks/useAutoActions';
 import { useRetentionMetrics } from './hooks/useRetentionMetrics';
@@ -388,6 +388,7 @@ const generatePatientPDF = async (patient: Patient) => {
 
 export default function AdminDashboardPage() {
   const { state, actions } = useAdminDashboard();
+  const dietModalOpen = state.dietModalOpen as DietModalOpen;
   const { isDark, toggleDarkMode } = useDarkMode();
   
   // Estado para controle do modal de avaliação com todas as abas
@@ -562,7 +563,7 @@ export default function AdminDashboardPage() {
   const [dietIsDirty, setDietIsDirty] = useState(false);
   const closeDietModal = () => {
     if (dietIsDirty && !window.confirm('Há alterações não salvas neste cardápio. Deseja realmente sair? As alterações serão perdidas.')) return;
-    actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
+    actions.setDietModalOpen({ ...dietModalOpen, isOpen: false });
     actions.fetchAdminData();
     setDietIsDirty(false);
   };
@@ -1218,7 +1219,7 @@ export default function AdminDashboardPage() {
        )}
 
       {/* ==================== MODAL DE DIETA ==================== */}
-      {state.dietModalOpen.isOpen && (
+      {dietModalOpen.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-0 md:p-4 overflow-y-auto animate-in fade-in duration-200">
           <div className="w-full max-w-5xl relative my-auto h-full md:h-auto flex flex-col animate-in zoom-in-95 duration-300">
             <div className="hidden md:flex justify-end mb-3">
@@ -1243,15 +1244,17 @@ export default function AdminDashboardPage() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 <DietBuilder
-                  patientId={state.dietModalOpen.id}
-                  patientName={state.dietModalOpen.name}
+                  patientId={dietModalOpen.id}
+                  patientName={dietModalOpen.name}
                   onClose={() => {
-                    actions.setDietModalOpen({ ...state.dietModalOpen, isOpen: false });
+                    actions.setDietModalOpen({ ...dietModalOpen, isOpen: false });
                     actions.fetchAdminData();
                     setDietIsDirty(false);
                   }}
-                  targetRecommendation={state.dietModalOpen.targetRecommendation}
-                  foodRestrictions={state.dietModalOpen.foodRestrictions}
+                  targetRecommendation={dietModalOpen.targetRecommendation}
+                  foodRestrictions={dietModalOpen.foodRestrictions}
+                  tmb={dietModalOpen.tmb ?? null}
+                  getVal={dietModalOpen.getVal ?? null}
                   onDirtyChange={setDietIsDirty}
                 />
               </div>

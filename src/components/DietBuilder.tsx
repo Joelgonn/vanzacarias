@@ -113,6 +113,11 @@ interface TargetRecommendation {
     carbs: number;
     fat: number;
   };
+  // Safety Gate rastreabilidade (opcional, sem quebrar contrato)
+  calculatedCalories?: number;
+  minCalories?: number;
+  safetyAdjustmentApplied?: boolean;
+  safetyReason?: string | null;
 }
 
 interface DietBuilderProps {
@@ -121,6 +126,8 @@ interface DietBuilderProps {
   onClose: () => void;
   targetRecommendation: TargetRecommendation | null;
   foodRestrictions?: FoodRestriction[]; 
+  tmb?: number | null;
+  getVal?: number | null;
   /** Opcional: notifica o pai quando há alterações não salvas (para proteger o botão de fechar externo) */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -147,7 +154,7 @@ export interface Meal {
 // =========================================================================
 // COMPONENTE PRINCIPAL
 // =========================================================================
-export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose, foodRestrictions = [], onDirtyChange }: DietBuilderProps) {
+export default function DietBuilder({ patientId, patientName, targetRecommendation, onClose, foodRestrictions = [], tmb, getVal, onDirtyChange }: DietBuilderProps) {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -822,6 +829,22 @@ export default function DietBuilder({ patientId, patientName, targetRecommendati
                   </span>
                 )}
               </div>
+
+              {/* READERS — Safety Gate + VCT vs Actual (F3.4) — somente leitura, sem recalcular */}
+              {targetRecommendation && (
+                <div className="rounded-xl border border-stone-200 bg-white p-3 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-stone-500">Leituras de Segurança</p>
+                  <div className="space-y-1 text-xs leading-relaxed">
+                    <p>VCT protegido: <span className="font-bold">{targetRecommendation.calories} kcal</span> {targetRecommendation.calculatedCalories && targetRecommendation.calculatedCalories !== targetRecommendation.calories ? <span className="text-stone-500"> (calculado {targetRecommendation.calculatedCalories})</span> : null}</p>
+                    {typeof getVal === 'number' && targetRecommendation.calories && <p>GET: {getVal} kcal — Déficit: {getVal - targetRecommendation.calories} kcal ({(((getVal - targetRecommendation.calories)/getVal)*100).toFixed(1)}%)</p>}
+                    {targetRecommendation.safetyAdjustmentApplied && (
+                      <p className="text-amber-600 font-bold flex items-start gap-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{targetRecommendation.safetyReason}</p>
+                    )}
+                    <p>Cardápio atual: <span className="font-bold">{dailyTotals?.kcal ?? 0} kcal</span> — {(() => { const d = (dailyTotals?.kcal ?? 0) - targetRecommendation.calories; return d===0 ? '0 vs protegido' : `${d>0?`+${d}`:d} vs protegido`; })()}</p>
+                    {typeof tmb === 'number' && tmb >0 && <p>TMB: {tmb} kcal — Cardápio {(() => { const d=(dailyTotals?.kcal ?? 0)-tmb; return `${d>0?`+${d}`:d} vs TMB`; })()}</p>}
+                  </div>
+                </div>
+              )}
               
               {/* SUGESTÕES */}
               {analysis && suggestions.length > 0 && (
