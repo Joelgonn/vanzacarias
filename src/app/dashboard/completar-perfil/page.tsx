@@ -15,6 +15,7 @@ import type { FoodEntity } from '@/lib/foodRegistry';
 import { toast } from 'sonner';
 import { isValidBirthDate } from '@/lib/patientJourney';
 import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
+import { podeContinuarEtapaRestricoes } from './restrictionsConfirmation';
 
 // =========================================================================
 // CUSTOM SELECT PREMIUM
@@ -505,7 +506,28 @@ function StepBasic({ phone, setPhone, birthDate, setBirthDate, onNext, onBack }:
   );
 }
 
-function StepRestrictions({ foodRestrictions, setFoodRestrictions, onNext, onBack }: { foodRestrictions: FoodRestriction[]; setFoodRestrictions: (v: FoodRestriction[]) => void; onNext: () => void; onBack: () => void }) {
+/**
+ * Regra visual da etapa de restrições: pacientes que informaram ao menos um
+ * item seguem sem confirmação adicional; lista vazia exige a confirmação
+ * explícita de ausência de restrições.
+ */
+function StepRestrictions({
+  foodRestrictions,
+  setFoodRestrictions,
+  confirmouAusencia,
+  onConfirmarAusencia,
+  onNext,
+  onBack
+}: {
+  foodRestrictions: FoodRestriction[];
+  setFoodRestrictions: (v: FoodRestriction[]) => void;
+  confirmouAusencia: boolean;
+  onConfirmarAusencia: (v: boolean) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const podeContinuar = podeContinuarEtapaRestricoes(foodRestrictions.length, confirmouAusencia);
+
   return (
     <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} transition={{ duration: 0.3 }} className="space-y-6 flex flex-col min-h-full">
       <div>
@@ -514,12 +536,32 @@ function StepRestrictions({ foodRestrictions, setFoodRestrictions, onNext, onBac
       </div>
       <div className="flex-1">
         <FoodRestrictionsForm value={foodRestrictions} onChange={setFoodRestrictions} />
+        {foodRestrictions.length === 0 && (
+          <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-4">
+            <label htmlFor="confirmar-sem-restricoes" className="flex min-h-[44px] cursor-pointer items-start gap-3">
+              <input
+                id="confirmar-sem-restricoes"
+                type="checkbox"
+                checked={confirmouAusencia}
+                onChange={(event) => onConfirmarAusencia(event.target.checked)}
+                aria-describedby="confirmar-sem-restricoes-ajuda"
+                className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-nutri-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nutri-700 focus-visible:ring-offset-2"
+              />
+              <span className="text-sm font-semibold leading-snug text-stone-700">
+                Não tenho restrições, alergias ou intolerâncias a declarar.
+              </span>
+            </label>
+            <p id="confirmar-sem-restricoes-ajuda" className="mt-1 pl-8 text-xs leading-relaxed text-stone-500">
+              Marque a opção acima para confirmar e continuar.
+            </p>
+          </div>
+        )}
       </div>
       <div className="flex gap-3 pt-6 mt-auto">
         <button onClick={onBack} className="flex-1 bg-stone-100 text-stone-600 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-stone-200 active:scale-[0.98] transition-all">
           <ChevronLeft size={18} /> Voltar
         </button>
-        <button onClick={onNext} className="flex-1 bg-gradient-to-r from-nutri-900 to-nutri-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.98] transition-all">
+        <button onClick={onNext} disabled={!podeContinuar} className="flex-1 bg-gradient-to-r from-nutri-900 to-nutri-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
           Continuar <ChevronRight size={18} />
         </button>
       </div>
@@ -560,6 +602,10 @@ export default function CompletarPerfil() {
   const [phone, setPhone] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [foodRestrictions, setFoodRestrictions] = useState<FoodRestriction[]>([]);
+  // Confirmação visual de ausência de restrições: estado transitório de UI.
+  // Nunca é enviado ao banco; por isso fica aqui, sobrevivendo à remontagem da
+  // etapa 3 durante a navegação.
+  const [confirmouAusencia, setConfirmouAusencia] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -679,6 +725,14 @@ export default function CompletarPerfil() {
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
   const goToNext = () => router.push(nextRoute);
 
+  // Qualquer mudança na lista invalida a confirmação anterior. Assim, ao
+  // remover a última restrição, o checkbox reaparece desmarcado; ao adicionar
+  // uma restrição, a confirmação deixa de existir sem afetar o fluxo.
+  const handleRestrictionsChange = (next: FoodRestriction[]) => {
+    setFoodRestrictions(next);
+    setConfirmouAusencia(false);
+  };
+
   if (fetching) return <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><Loader2 className="animate-spin text-nutri-800" size={48} /></div>;
 
   if (loadError) return (
@@ -709,7 +763,17 @@ export default function CompletarPerfil() {
         <AnimatePresence mode="wait">
           {step === 1 && <StepWelcome key="step1" onNext={nextStep} />}
           {step === 2 && <StepBasic key="step2" phone={phone} setPhone={setPhone} birthDate={birthDate} setBirthDate={setBirthDate} onNext={nextStep} onBack={prevStep} />}
-          {step === 3 && <StepRestrictions key="step3" foodRestrictions={foodRestrictions} setFoodRestrictions={setFoodRestrictions} onNext={nextStep} onBack={prevStep} />}
+          {step === 3 && (
+            <StepRestrictions
+              key="step3"
+              foodRestrictions={foodRestrictions}
+              setFoodRestrictions={handleRestrictionsChange}
+              confirmouAusencia={confirmouAusencia}
+              onConfirmarAusencia={setConfirmouAusencia}
+              onNext={nextStep}
+              onBack={prevStep}
+            />
+          )}
           {step === 4 && <StepConfirm key="step4" phone={phone} birthDate={birthDate} foodRestrictions={foodRestrictions} onConfirm={handleSubmit} onBack={prevStep} loading={loading} />}
         </AnimatePresence>
       </div>
