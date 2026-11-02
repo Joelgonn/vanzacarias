@@ -26,6 +26,16 @@ export default function NavigationWrapper({ children }: NavigationWrapperProps) 
   const isAdmin = pathname?.startsWith('/admin');
 
   // =========================================================================
+  // OVERFLOW HORIZONTAL
+  // `overflow-x-hidden` transforma o wrapper em scroll container vertical
+  // (o eixo Y passa a computar `auto`), o que quebra o `position: sticky` do
+  // indicador de progresso do QFA. Na rota do QFA usamos `overflow-x-clip`,
+  // que recorta o eixo horizontal sem criar scroll container. Nas demais
+  // rotas o comportamento original é preservado.
+  // =========================================================================
+  const horizontalOverflow = isPanel ? 'overflow-x-clip' : 'overflow-x-hidden';
+
+  // =========================================================================
   // VZ-007.1 — MOLDURA ÚNICA DO PACIENTE
   // Aplica a PatientAppShell (Sidebar desktop + coluna de conteúdo) em TODAS
   // as rotas da área autenticada do paciente, EXCETO o onboarding
@@ -48,7 +58,7 @@ export default function NavigationWrapper({ children }: NavigationWrapperProps) 
   // RENDERIZAÇÃO
   // =========================================================================
   return (
-    <div className="flex flex-col min-h-[100dvh] bg-[#FAFAFA] text-stone-900 selection:bg-nutri-500 selection:text-white overflow-x-hidden">
+    <div className={`flex flex-col min-h-[100dvh] bg-[#FAFAFA] text-stone-900 selection:bg-nutri-500 selection:text-white ${horizontalOverflow}`}>
       
       {/* 
           CABEÇALHO

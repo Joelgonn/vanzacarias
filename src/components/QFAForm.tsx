@@ -224,6 +224,9 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
   const progress = actionableItems === 0 ? 100 : Math.round((manualAnswersCount / actionableItems) * 100);
   const isComplete = manualAnswersCount >= actionableItems;
 
+  // Percentual efetivamente exibido (largura da barra e ARIA): limitado a 0–100.
+  const displayProgress = Math.min(100, Math.max(0, progress));
+
   // =========================================================================
   // 💾 PERSISTÊNCIA ENRIQUECIDA (NORMALIZAÇÃO NO BANCO)
   // =========================================================================
@@ -368,19 +371,27 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
     <div className="space-y-12 pb-24 max-w-4xl mx-auto">
       
       {/* Barra de Progresso */}
-      <div className="sticky top-0 md:top-20 z-40 bg-white/80 backdrop-blur-md pt-4 pb-6 md:pt-6 border-b border-stone-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] mb-8 px-4 md:px-0">
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md pt-4 pb-6 md:pt-6 border-b border-stone-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] mb-8 px-4 md:px-0">
         <div className="flex justify-between items-end mb-3">
           <span className="text-[10px] font-black uppercase text-nutri-800 tracking-[0.2em] flex items-center gap-2">
             Seu Perfil Alimentar
           </span>
-          <span className={`text-xs font-black transition-colors ${isComplete ? 'text-emerald-500 flex items-center gap-1' : 'text-stone-400'}`}>
-            {isComplete && <CheckCircle2 size={14} />} {progress > 100 ? 100 : progress}% concluído
+          <span className={`text-xs font-black transition-colors motion-reduce:transition-none ${isComplete ? 'text-emerald-700 flex items-center gap-1' : 'text-stone-600'}`}>
+            {isComplete && <CheckCircle2 size={14} />} {displayProgress}% concluído
           </span>
         </div>
-        <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden shadow-inner">
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={displayProgress}
+          aria-valuetext={`${displayProgress}% concluído`}
+          aria-label="Progresso do Raio-X Alimentar"
+          className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden shadow-inner"
+        >
           <div 
-            className={`h-full transition-all duration-700 ease-[0.22,1,0.36,1] ${isComplete ? 'bg-emerald-500' : 'bg-nutri-800'}`} 
-            style={{ width: `${progress > 100 ? 100 : progress}%` }}
+            className={`h-full transition-all duration-700 ease-[0.22,1,0.36,1] motion-reduce:transition-none ${isComplete ? 'bg-emerald-600' : 'bg-nutri-800'}`}
+            style={{ width: `${displayProgress}%` }}
           ></div>
         </div>
       </div>
