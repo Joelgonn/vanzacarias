@@ -213,6 +213,7 @@ export default function CheckinForm({ onSuccess, onFormChange }: CheckinFormProp
           </label>
           <div className="relative">
             <input 
+              id="checkin-weight"
               type="number" 
               step="0.1" 
               min="0"

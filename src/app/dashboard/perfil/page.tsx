@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { setTtsUser, setTtsEnabled, subscribeTts, getTtsSnapshot } from '@/lib/tts/preference';
 import { isPerfilBasicoComplete } from '@/lib/patientJourney';
 import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
+import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
+import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 
 interface ProfileRow {
   id?: string;
@@ -31,6 +33,12 @@ export default function PerfilPaciente() {
   
   const supabase = createClient();
   const router = useRouter();
+
+  const intro = useOnboardingStepIntro({
+    step: 'perfil',
+    supabase,
+    enabled: !loading && !loadError,
+  });
 
   // TTS-INTEGRATION-003 — mesma fonte de verdade do Chat (D04): localStorage
   // por usuário. O toggle aqui reflete instantaneamente o valor usado no Chat.
@@ -169,6 +177,15 @@ export default function PerfilPaciente() {
 
   return (
     <PatientPageShell maxWidth="max-w-3xl" className="bg-[#FAFAFA] pb-24 selection:bg-nutri-200">
+      <OnboardingStepIntro
+        stepKey="perfil"
+        open={intro.show}
+        completedCount={intro.snapshot?.completedCount ?? 0}
+        totalSteps={intro.snapshot?.totalSteps ?? 4}
+        onStart={intro.dismiss}
+        onDismiss={intro.dismiss}
+        focusTargetSelector="#profile-full-name"
+      />
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" />
           
@@ -217,6 +234,7 @@ export default function PerfilPaciente() {
                     <User size={16} strokeWidth={2.5} />
                   </div>
                   <input 
+                    id="profile-full-name"
                     type="text" 
                     value={profile?.full_name || ''} 
                     onChange={e => setProfile({...profile, full_name: e.target.value})} 

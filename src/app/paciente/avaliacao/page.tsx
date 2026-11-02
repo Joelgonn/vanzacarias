@@ -11,6 +11,8 @@ import BackButton from '@/components/ui/BackButton';
 import { PatientPageShell, PageNavigation, PageHeader, PageContent } from '@/components/layout/PatientPageShell';
 import { isQfaResponseComplete } from '@/lib/patientJourney';
 import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
+import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
+import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 
 export default function AvaliacaoPaciente() {
   const [alreadyAnswered, setAlreadyAnswered] = useState<boolean>(false);
@@ -19,6 +21,12 @@ export default function AvaliacaoPaciente() {
   const [retryCount, setRetryCount] = useState(0);
   const router = useRouter();
   const supabase = createClient();
+
+  const intro = useOnboardingStepIntro({
+    step: 'raioX',
+    supabase,
+    enabled: !loading && !loadError && !alreadyAnswered,
+  });
 
   useEffect(() => {
     async function checkExistingResponse() {
@@ -140,7 +148,11 @@ export default function AvaliacaoPaciente() {
           <>
             <PageHeader>
             <header style={{ animationDelay: '0.1s' }}>
-              <h1 className="text-3xl md:text-5xl font-black text-stone-900 tracking-tight mb-4 leading-tight">
+              <h1
+                id="qfa-title"
+                tabIndex={-1}
+                className="text-3xl md:text-5xl font-black text-stone-900 tracking-tight mb-4 leading-tight outline-none"
+              >
                 Raio-X Alimentar
               </h1>
               <p className="text-stone-500 text-sm md:text-lg leading-relaxed font-medium">
@@ -150,7 +162,20 @@ export default function AvaliacaoPaciente() {
             </PageHeader>
 
             <PageContent>
-              <QFAForm onSuccess={handleSuccess} />
+              <QFAForm
+                onSuccess={handleSuccess}
+                onboardingIntro={
+                  <OnboardingStepIntro
+                    stepKey="raioX"
+                    open={intro.show}
+                    completedCount={intro.snapshot?.completedCount ?? 0}
+                    totalSteps={intro.snapshot?.totalSteps ?? 4}
+                    onStart={intro.dismiss}
+                    onDismiss={intro.dismiss}
+                    focusTargetSelector="#qfa-title"
+                  />
+                }
+              />
             </PageContent>
           </>
         )}

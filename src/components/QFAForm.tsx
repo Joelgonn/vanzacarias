@@ -25,9 +25,11 @@ const isKnownFoodTag = (tag: string): tag is FoodEntity['tags'][number] => {
 
 interface QFAFormProps {
   onSuccess: () => void;
+  /** Slot apresentacional: o formulário só o renderiza após carregar os dados. */
+  onboardingIntro?: React.ReactNode;
 }
 
-export default function QFAForm({ onSuccess }: QFAFormProps) {
+export default function QFAForm({ onSuccess, onboardingIntro }: QFAFormProps) {
   // =========================================================================
   // ESTADOS
   // =========================================================================
@@ -369,7 +371,8 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
 
   return (
     <div className="space-y-12 pb-24 max-w-4xl mx-auto">
-      
+      {onboardingIntro}
+
       {/* Barra de Progresso */}
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md pt-4 pb-6 md:pt-6 border-b border-stone-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] mb-8 px-4 md:px-0">
         <div className="flex justify-between items-end mb-3">

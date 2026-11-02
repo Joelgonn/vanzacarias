@@ -20,7 +20,9 @@ import PremiumAccessCard from '@/components/dashboard/PremiumAccessCard';
 import ProgressChart from '@/components/dashboard/ProgressChart';
 import NextBestAction from '@/components/dashboard/NextBestAction';
 import OnboardingProgress from '@/components/onboarding/OnboardingProgress';
+import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
 import { useOnboardingRedirect } from '@/hooks/useOnboardingRedirect';
+import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 import { getTotalActivityKcal } from '@/lib/activities';
 import type { Activity } from '@/lib/activities';
 import * as checkinLib from '@/lib/checkin';
@@ -158,6 +160,15 @@ export default function Dashboard() {
 
   // Gate de entrada: só redireciona em /dashboard e nunca com consulta indisponível.
   const { shouldRedirect } = useOnboardingRedirect({ snapshot: journey, loading });
+
+  // Introdução do primeiro check-in também no modal. Usa o snapshot já
+  // carregado pelo Dashboard — sem novas consultas de onboarding.
+  const checkinIntro = useOnboardingStepIntro({
+    step: 'checkin',
+    supabase,
+    enabled: isCheckinModalOpen,
+    snapshot: journey,
+  });
 
   async function loadData() {
     setLoading(true);
@@ -1045,6 +1056,15 @@ export default function Dashboard() {
               <X size={18} />
             </button>
             <CheckinForm onSuccess={handleCheckinSuccess} onFormChange={() => {}} />
+            <OnboardingStepIntro
+              stepKey="checkin"
+              open={checkinIntro.show}
+              completedCount={checkinIntro.snapshot?.completedCount ?? 0}
+              totalSteps={checkinIntro.snapshot?.totalSteps ?? 4}
+              onStart={checkinIntro.dismiss}
+              onDismiss={checkinIntro.dismiss}
+              focusTargetSelector="#checkin-weight"
+            />
           </div>
         </div>
       )}

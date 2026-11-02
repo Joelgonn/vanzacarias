@@ -16,6 +16,8 @@ import { toast } from 'sonner';
 import { isValidBirthDate } from '@/lib/patientJourney';
 import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
 import { podeContinuarEtapaRestricoes } from './restrictionsConfirmation';
+import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
+import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 
 // =========================================================================
 // CUSTOM SELECT PREMIUM
@@ -254,6 +256,7 @@ function FoodRestrictionsForm({ value, onChange }: { value: FoodRestriction[]; o
         <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-nutri-700 transition-colors" size={20} />
           <input
+            id="food-restrictions-search"
             ref={searchInputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -616,6 +619,12 @@ export default function CompletarPerfil() {
   const supabase = createClient();
   const router = useRouter();
 
+  const intro = useOnboardingStepIntro({
+    step: 'perfilAlimentar',
+    supabase,
+    enabled: !fetching && !loadError,
+  });
+
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
 
   useEffect(() => {
@@ -764,15 +773,26 @@ export default function CompletarPerfil() {
           {step === 1 && <StepWelcome key="step1" onNext={nextStep} />}
           {step === 2 && <StepBasic key="step2" phone={phone} setPhone={setPhone} birthDate={birthDate} setBirthDate={setBirthDate} onNext={nextStep} onBack={prevStep} />}
           {step === 3 && (
-            <StepRestrictions
-              key="step3"
-              foodRestrictions={foodRestrictions}
-              setFoodRestrictions={handleRestrictionsChange}
-              confirmouAusencia={confirmouAusencia}
-              onConfirmarAusencia={setConfirmouAusencia}
-              onNext={nextStep}
-              onBack={prevStep}
-            />
+            <>
+              <OnboardingStepIntro
+                stepKey="perfilAlimentar"
+                open={intro.show}
+                completedCount={intro.snapshot?.completedCount ?? 0}
+                totalSteps={intro.snapshot?.totalSteps ?? 4}
+                onStart={intro.dismiss}
+                onDismiss={intro.dismiss}
+                focusTargetSelector="#food-restrictions-search"
+              />
+              <StepRestrictions
+                key="step3"
+                foodRestrictions={foodRestrictions}
+                setFoodRestrictions={handleRestrictionsChange}
+                confirmouAusencia={confirmouAusencia}
+                onConfirmarAusencia={setConfirmouAusencia}
+                onNext={nextStep}
+                onBack={prevStep}
+              />
+            </>
           )}
           {step === 4 && <StepConfirm key="step4" phone={phone} birthDate={birthDate} foodRestrictions={foodRestrictions} onConfirm={handleSubmit} onBack={prevStep} loading={loading} />}
         </AnimatePresence>

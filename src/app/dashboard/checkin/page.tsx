@@ -6,10 +6,15 @@ import BackButton from '@/components/ui/BackButton';
 import { PatientPageShell, PageNavigation, PageContent } from '@/components/layout/PatientPageShell';
 import CheckinForm from '@/components/CheckinForm';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
+import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
+import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 
 export default function CheckinPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const intro = useOnboardingStepIntro({ step: 'checkin', supabase });
 
   // Função para lidar com a saída da página com alerta
   const handleBack = (e: React.MouseEvent) => {
@@ -23,6 +28,15 @@ export default function CheckinPage() {
 
   return (
     <PatientPageShell maxWidth="max-w-3xl" className="bg-[#FAFAFA] pb-24 selection:bg-nutri-200">
+      <OnboardingStepIntro
+        stepKey="checkin"
+        open={intro.show}
+        completedCount={intro.snapshot?.completedCount ?? 0}
+        totalSteps={intro.snapshot?.totalSteps ?? 4}
+        onStart={intro.dismiss}
+        onDismiss={intro.dismiss}
+        focusTargetSelector="#checkin-weight"
+      />
       <PageNavigation>
         <BackButton href="/dashboard" label="Voltar ao Painel" onClick={handleBack} />
           
