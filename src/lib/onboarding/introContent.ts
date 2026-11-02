@@ -2,8 +2,15 @@ import type { JourneyStepKey } from '@/lib/patientJourney';
 
 export interface OnboardingIntroContent {
   title: string;
+  /** Quebra visual controlada; o texto acessível continua sendo `title`. */
+  titleLines?: readonly string[];
   description: string;
   cta: string;
+  /** Campos opcionais: apenas a introdução de boas-vindas da etapa 1 os usa. */
+  badge?: string;
+  characterMessage?: string;
+  journeyLabel?: string;
+  highlights?: readonly string[];
 }
 
 /**
@@ -13,10 +20,15 @@ export interface OnboardingIntroContent {
  */
 export const ONBOARDING_INTRO_CONTENT: Record<JourneyStepKey, OnboardingIntroContent> = {
   perfil: {
-    title: 'Vamos começar pelo seu perfil',
+    badge: 'BOAS-VINDAS',
+    characterMessage: 'Olá, eu sou a Nutri Van, sua assistente virtual.',
+    journeyLabel: 'JORNADA PERSONALIZADA',
+    title: 'SUA SAÚDE É IMPORTANTE PARA NÓS',
+    titleLines: ['SUA SAÚDE É IMPORTANTE', 'PARA NÓS'],
     description:
-      'Seus dados básicos — nome, WhatsApp, data de nascimento e sexo — são usados para personalizar seu acompanhamento nutricional.',
-    cta: 'Preencher meu perfil',
+      'Para a nutricionista Vanusa montar um plano alimentar seguro e adaptado às suas necessidades, responda às perguntas a seguir.',
+    cta: 'Começar agora',
+    highlights: ['Seguro', 'Personalizado', 'Gratuito'],
   },
   perfilAlimentar: {
     title: 'Agora, suas restrições alimentares',

@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Loader2, Sparkles, Phone, 
-  ChevronRight, ChevronLeft, CheckCircle2, Shield, 
-  Target, Heart, Gift, ArrowRight, ChevronDown, X, Plus, Search, Info, AlertCircle
+  Loader2, Phone,
+  ChevronRight, ChevronLeft, CheckCircle2, Shield,
+  Gift, ArrowRight, ChevronDown, X, Plus, Search, Info, AlertCircle
 } from 'lucide-react';
 import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
@@ -17,6 +17,7 @@ import { isValidBirthDate } from '@/lib/patientJourney';
 import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
 import { podeContinuarEtapaRestricoes } from './restrictionsConfirmation';
 import OnboardingStepIntro from '@/components/onboarding/OnboardingStepIntro';
+import OnboardingWelcomeStep from '@/components/onboarding/OnboardingWelcomeStep';
 import { useOnboardingStepIntro } from '@/hooks/useOnboardingStepIntro';
 
 // =========================================================================
@@ -436,29 +437,6 @@ function ProgressTracker({ step, totalSteps }: { step: number; totalSteps: numbe
 // =========================================================================
 // STEPS
 // =========================================================================
-function StepWelcome({ onNext }: { onNext: () => void }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }} className="text-center space-y-6">
-      <motion.div className="w-20 h-20 bg-nutri-50 rounded-full flex items-center justify-center mx-auto shadow-inner" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1, type: "spring", stiffness: 200 }}>
-        <Sparkles className="text-nutri-800" size={36} strokeWidth={1.5} />
-      </motion.div>
-      <div>
-        <motion.p className="text-xs uppercase tracking-widest text-nutri-600 font-bold mb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>Jornada Personalizada</motion.p>
-        <motion.h1 className="text-3xl md:text-4xl font-black text-stone-900 mb-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25 }}>Vamos cuidar de você</motion.h1>
-        <motion.p className="text-stone-500 text-sm md:text-base leading-relaxed max-w-xs mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>Para montarmos um plano alimentar seguro e adaptado às suas necessidades. Responda as perguntas a seguir.</motion.p>
-      </div>
-      <motion.div className="pt-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <button onClick={onNext} className="w-full bg-gradient-to-r from-nutri-900 to-nutri-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.98] transition-all group">Começar agora <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" /></button>
-      </motion.div>
-      <div className="flex justify-center gap-6 pt-4 text-xs text-stone-400">
-        <span className="flex items-center gap-1"><Shield size={12} /> Seguro</span>
-        <span className="flex items-center gap-1"><Target size={12} /> Personalizado</span>
-        <span className="flex items-center gap-1"><Heart size={12} /> Gratuito</span>
-      </div>
-    </motion.div>
-  );
-}
-
 function StepBasic({ phone, setPhone, birthDate, setBirthDate, onNext, onBack }: { phone: string; setPhone: (v: string) => void; birthDate: string; setBirthDate: (v: string) => void; onNext: () => void; onBack: () => void }) {
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
@@ -770,7 +748,7 @@ export default function CompletarPerfil() {
       <div className="w-full max-w-lg mx-auto bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-6 md:p-8 relative overflow-hidden">
         <ProgressTracker step={step} totalSteps={4} />
         <AnimatePresence mode="wait">
-          {step === 1 && <StepWelcome key="step1" onNext={nextStep} />}
+          {step === 1 && <OnboardingWelcomeStep key="step1" onNext={nextStep} />}
           {step === 2 && <StepBasic key="step2" phone={phone} setPhone={setPhone} birthDate={birthDate} setBirthDate={setBirthDate} onNext={nextStep} onBack={prevStep} />}
           {step === 3 && (
             <>

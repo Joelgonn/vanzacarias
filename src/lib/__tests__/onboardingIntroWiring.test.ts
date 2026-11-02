@@ -12,6 +12,8 @@ const read = (relative: string) =>
 const content = read('src/lib/onboarding/introContent.ts');
 const hook = read('src/hooks/useOnboardingStepIntro.ts');
 const component = read('src/components/onboarding/OnboardingStepIntro.tsx');
+const welcomeContent = read('src/components/onboarding/OnboardingWelcomeContent.tsx');
+const welcomeStep = read('src/components/onboarding/OnboardingWelcomeStep.tsx');
 const perfil = read('src/app/dashboard/perfil/page.tsx');
 const completar = read('src/app/dashboard/completar-perfil/page.tsx');
 const qfaPage = read('src/app/paciente/avaliacao/page.tsx');
@@ -22,14 +24,20 @@ const dashboard = read('src/app/dashboard/page.tsx');
 describe('Introdução — conteúdo das quatro etapas', () => {
   it('define títulos e CTAs específicos', () => {
     for (const cta of [
-      'Preencher meu perfil',
+      'Começar agora',
       'Informar minhas restrições',
       'Iniciar meu Raio-X Alimentar',
       'Fazer meu check-in',
     ]) {
       expect(content).toContain(cta);
     }
-    expect(content).toContain('Seus dados básicos');
+    expect(content).toContain('SUA SAÚDE É IMPORTANTE PARA NÓS');
+    expect(content).toContain("titleLines: ['SUA SAÚDE É IMPORTANTE', 'PARA NÓS']");
+    expect(content).toContain('Para a nutricionista Vanusa montar um plano alimentar');
+    expect(content).toContain('Olá, eu sou a Nutri Van, sua assistente virtual.');
+    expect(content).toContain('JORNADA PERSONALIZADA');
+    expect(content).toContain("badge: 'BOAS-VINDAS'");
+    expect(content).toContain("highlights: ['Seguro', 'Personalizado', 'Gratuito']");
     expect(content).toContain('alergias, intolerâncias ou restrições');
     expect(content).toContain('questionário de frequência alimentar');
     expect(content).toContain('check-in inicial');
@@ -49,6 +57,24 @@ describe('Introdução — componente apresentacional', () => {
     expect(component).toContain('motion-safe:');
     expect(component).toContain('min-h-[44px]');
     expect(component).toContain('focusTargetSelector');
+  });
+
+  it('reutiliza o corpo de boas-vindas compartilhado', () => {
+    expect(component).toContain('OnboardingWelcomeContent');
+    expect(welcomeContent).toContain('src="/avatars/nutri-feliz.png"');
+    expect(welcomeContent).toContain('alt=""');
+    expect(welcomeContent).toContain('content.characterMessage');
+    expect(welcomeContent).toContain('content.highlights');
+    expect(welcomeContent).toContain('HIGHLIGHT_ICONS');
+  });
+
+  it('a primeira etapa do assistente usa a composição personalizada, não a tela genérica', () => {
+    expect(completar).toContain('<OnboardingWelcomeStep');
+    expect(welcomeStep).toContain('<OnboardingWelcomeContent');
+    expect(welcomeStep).toContain('content={ONBOARDING_INTRO_CONTENT.perfil}');
+    expect(welcomeStep).toContain('onStart={onNext}');
+    expect(welcomeStep).not.toContain('Vamos cuidar de');
+    expect(welcomeStep).not.toContain('Sparkles');
   });
 });
 
