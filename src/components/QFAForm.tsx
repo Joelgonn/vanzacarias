@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Save, Loader2, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,118 +11,13 @@ import { useRouter } from 'next/navigation';
 // 🔥 IMPORT DO CORE DE RESTRIÇÕES (SINGLE SOURCE OF TRUTH)
 import { resolveRestriction } from '@/lib/nutrition/restrictions';
 
-// =========================================================================
-// SCHEMA CLÍNICO REAL (QFA) CONECTADO AO DOMÍNIO
-// =========================================================================
-export interface QFASchemaItem {
-  id: string; // Chave legada
-  label: string; // Nome de exibição UI
-  foodId?: string; // Precisão máxima (1 para 1)
-  tag?: string; // Mapeamento comportamental/grupo (ex: lactose, ultraprocessado)
-  legacySearch?: string; // Fallback textual seguro
-}
-
-export interface QFASchemaCategory {
-  category: string;
-  items: QFASchemaItem[];
-}
-
-export interface QFARichAnswer {
-  id: string;
-  value: string;
-  label: string;
-  category: string;
-  foodId?: string;
-  tag?: string;
-  legacySearch?: string;
-}
-
-const qfaSchema: QFASchemaCategory[] = [
-  {
-    category: "Leites e Derivados",
-    items: [
-      { id: "leite", label: "Leite (copo de requeijão)", tag: "lactose", legacySearch: "leite" },
-      { id: "iogurte", label: "Iogurte natural (copo de requeijão)", tag: "lactose", legacySearch: "iogurte" },
-      { id: "queijos", label: "Queijos (1/2 fatia)", tag: "lactose", legacySearch: "queijo" },
-      { id: "requeijao", label: "Requeijão / Creme de ricota etc (1,5 colher de sopa)", tag: "lactose", legacySearch: "requeijão" }
-    ]
-  },
-  {
-    category: "Carnes e Ovos",
-    items: [
-      { id: "ovo", label: "Ovo cozido / mexido (2 unidades)", legacySearch: "ovo" },
-      { id: "carne_vermelha", label: "Carnes vermelhas (1 unidade)", legacySearch: "carne" },
-      { id: "carne_porco", label: "Carnes de Porco (1 fatia)", legacySearch: "porco" },
-      { id: "frango", label: "Frango - filé, sobrecoxa, peito (1 unidade)", legacySearch: "frango" },
-      { id: "peixe", label: "Peixe fresco / Frutos do Mar (1 unidade)", legacySearch: "peixe" }
-    ]
-  },
-  {
-    category: "Óleos",
-    items: [
-      { id: "azeite", label: "Azeite (1 colher de sopa)", legacySearch: "azeite" },
-      { id: "bacon", label: "Bacon e toucinho / banha (1/2 fatia)", legacySearch: "bacon" },
-      { id: "frituras", label: "Frituras", tag: "ultraprocessado", legacySearch: "frito" },
-      { id: "manteiga", label: "Manteiga / Margarina (1/2 colher de sopa)", legacySearch: "manteiga" },
-      { id: "maionese", label: "Maionese (1/2 colher de sopa)", legacySearch: "maionese" },
-      { id: "oleos_veg", label: "Óleos vegetais (1 colher de sopa)", legacySearch: "óleo" }
-    ]
-  },
-  {
-    category: "Cereais e Leguminosas",
-    items: [
-      { id: "arroz", label: "Arroz Branco / Integral (4 colheres de sopa)", legacySearch: "arroz" },
-      { id: "aveia", label: "Aveia (4 colheres de sopa)", legacySearch: "aveia" },
-      { id: "pao", label: "Pão francês / Integral / Forma (1 unidade)", legacySearch: "pão" },
-      { id: "macarrao", label: "Macarrão (3 colheres e 1/2 de sopa)", legacySearch: "macarrão" },
-      { id: "bolos", label: "Bolos caseiros (1 fatia pequena)", legacySearch: "bolo" },
-      { id: "leguminosas", label: "Leguminosas (1 concha)", legacySearch: "feijão" },
-      { id: "soja", label: "Soja (1 colher de servir)", legacySearch: "soja" },
-      { id: "oleaginosas", label: "Oleaginosas (castanha/nozes/amendoim) (1 colher de sopa)", legacySearch: "castanha" }
-    ]
-  },
-  {
-    category: "Frutas/Verduras/Legumes",
-    items: [
-      { id: "fruta", label: "Fruta in natura (1 unidade/fatia)", legacySearch: "fruta" },
-      { id: "folhosos", label: "Folhosos (10 folhas)", legacySearch: "alface" },
-      { id: "tuberculos", label: "Tubérculos (batatas/cenoura/beterraba) (2 colheres de sopa)", legacySearch: "batata" },
-      { id: "legumes", label: "Legumes (abobora/chuchu/tomate/pepino) (2 colheres de sopa)", legacySearch: "cenoura" }
-    ]
-  },
-  {
-    category: "Petiscos embutidos Enlatados",
-    items: [
-      { id: "snacks", label: "Snacks - salgadinhos, bolachas, pizza, amendoim (1 pacote)", tag: "ultraprocessado", legacySearch: "salgadinho" },
-      { id: "instantaneos", label: "Macarrão instantâneo / lasanha / Nuggets (1 pacote)", tag: "ultraprocessado", legacySearch: "instantâneo" },
-      { id: "embutidos", label: "Embutidos em geral (presunto, mortadela etc) (2 fatias)", tag: "ultraprocessado", legacySearch: "presunto" },
-      { id: "enlatados", label: "Enlatados (milho, ervilha, palmito, azeitona) (2 colheres de sopa)", tag: "ultraprocessado", legacySearch: "milho" }
-    ]
-  },
-  {
-    category: "Sobremesas e Doces",
-    items: [
-      { id: "sorvete", label: "Sorvete (1 unidade ou 2 bolas)", tag: "ultraprocessado", legacySearch: "sorvete" },
-      { id: "tortas", label: "Tortas e Doces Elaborados (1 fatia)", legacySearch: "doce" },
-      { id: "chocolates", label: "Chocolates (1 unidade)", legacySearch: "chocolate" },
-      { id: "balas", label: "Balas (1 unidade)", legacySearch: "bala" }
-    ]
-  },
-  {
-    category: "Bebidas",
-    items: [
-      { id: "agua", label: "Água (1 garrafa 510 ml)", legacySearch: "água" },
-      { id: "cafe_s_acucar", label: "Café sem açúcar (1 xícara café)", legacySearch: "café" },
-      { id: "suco_natural_s_acucar", label: "Suco Natural / Chás sem açúcar (copo de requeijão)", legacySearch: "suco" },
-      { id: "refrigerante", label: "Refrigerante normal (copo de requeijao)", tag: "ultraprocessado", legacySearch: "refrigerante" },
-      { id: "cafe_c_acucar", label: "Café / Chá com açúcar (1 xícara café)", legacySearch: "café" },
-      { id: "suco_natural_c_acucar", label: "Suco Natural Adoçado (copo de requeijao)", legacySearch: "suco" },
-      { id: "suco_caixinha", label: "Sucos de Caixinha (copo de requeijao)", tag: "ultraprocessado", legacySearch: "suco" }
-    ]
-  }
-];
-
-const options = ["0", "1-3", "4-6", "7-9", "10 +"];
+// Schema clínico compartilhado com a validação central do onboarding.
+import {
+  QFA_SCHEMA as qfaSchema,
+  QFA_OPTIONS as options,
+  type QFARichAnswer,
+  type QFASchemaItem,
+} from '@/lib/qfa/schema';
 
 const isKnownFoodTag = (tag: string): tag is FoodEntity['tags'][number] => {
   return FOOD_REGISTRY.some(food => food.tags.some(foodTag => foodTag === tag));
@@ -138,10 +33,14 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
   // =========================================================================
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [restrictions, setRestrictions] = useState<FoodRestriction[]>([]);
+  const [restrictionsAnswered, setRestrictionsAnswered] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingRestrictions, setSavingRestrictions] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showRestrictionModal, setShowRestrictionModal] = useState(false);
-  
+  const [retryCount, setRetryCount] = useState(0);
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -202,38 +101,76 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
   // =========================================================================
   // CARREGAR DADOS INICIAIS (COM RETROCOMPATIBILIDADE)
   // =========================================================================
-  useEffect(() => {
-    async function loadData() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const [profileRes, qfaRes] = await Promise.all([
-          supabase.from('profiles').select('food_restrictions').eq('id', session.user.id).single(),
-          supabase.from('qfa_responses').select('answers').eq('user_id', session.user.id).single()
-        ]);
+  const loadData = useCallback(async () => {
+    setFetchingData(true);
+    setLoadError(null);
 
-        if (profileRes.data?.food_restrictions) {
-          setRestrictions(profileRes.data.food_restrictions);
-        }
-        
-        if (qfaRes.data?.answers) {
-          const dbData = qfaRes.data.answers;
-          // Tradução da Fronteira: Se for o formato rico (Array), normaliza para UI
-          if (Array.isArray(dbData)) {
-            const restoredAnswers: Record<string, string> = {};
-            dbData.forEach((ans: QFARichAnswer) => {
-              restoredAnswers[ans.id] = ans.value;
-            });
-            setAnswers(restoredAnswers);
-          } else {
-            // Formato legado
-            setAnswers(dbData);
-          }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setLoadError('Sessão expirada. Entre novamente para continuar.');
+        return;
+      }
+
+      const [profileRes, qfaRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('food_restrictions')
+          .eq('id', session.user.id)
+          .maybeSingle(),
+        supabase
+          .from('qfa_responses')
+          .select('answers')
+          .eq('user_id', session.user.id)
+          .maybeSingle(),
+      ]);
+
+      // Falha de consulta não pode ser tratada como "sem respostas".
+      if (profileRes.error) {
+        console.error('Erro ao consultar perfil alimentar:', profileRes.error.message);
+        setLoadError('Não foi possível consultar seu perfil alimentar. Tente novamente.');
+        return;
+      }
+      if (qfaRes.error) {
+        console.error('Erro ao consultar respostas do QFA:', qfaRes.error.message);
+        setLoadError('Não foi possível consultar suas respostas do Raio-X. Tente novamente.');
+        return;
+      }
+
+      const storedRestrictions = profileRes.data?.food_restrictions;
+      if (Array.isArray(storedRestrictions)) {
+        setRestrictions(storedRestrictions as FoodRestriction[]);
+        setRestrictionsAnswered(true);
+      } else {
+        setRestrictions([]);
+        setRestrictionsAnswered(false);
+      }
+
+      if (qfaRes.data?.answers) {
+        const dbData = qfaRes.data.answers;
+        // Tradução da Fronteira: se for o formato rico (Array), normaliza para UI
+        if (Array.isArray(dbData)) {
+          const restoredAnswers: Record<string, string> = {};
+          dbData.forEach((ans: QFARichAnswer) => {
+            restoredAnswers[ans.id] = ans.value;
+          });
+          setAnswers(restoredAnswers);
+        } else if (dbData && typeof dbData === 'object') {
+          // Formato legado
+          setAnswers(dbData as Record<string, string>);
         }
       }
+    } catch (error) {
+      console.error('Erro ao carregar dados do QFA:', error);
+      setLoadError('Não foi possível carregar seus dados. Verifique a conexão e tente novamente.');
+    } finally {
       setFetchingData(false);
     }
-    loadData();
   }, [supabase]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData, retryCount]);
 
   // =========================================================================
   // AUTO-FILL DE ALERGIAS (GARANTIDO VIA DOMÍNIO)
@@ -319,7 +256,7 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
         });
       });
 
-      const { error } = await supabase
+      const { data: savedRow, error } = await supabase
         .from('qfa_responses')
         .upsert(
           { 
@@ -328,13 +265,20 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
             updated_at: new Date().toISOString() 
           }, 
           { onConflict: 'user_id' }
-        );
+        )
+        .select('user_id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!savedRow) {
+        throw new Error('Não foi possível confirmar o salvamento das respostas. Tente novamente.');
+      }
 
       toast.success("Questionário salvo com sucesso!", { id: toastId });
 
-      if (!restrictions.length) {
+      // Só pergunta sobre restrições quando o perfil alimentar ainda não foi
+      // respondido. Lista vazia já persistida é uma resposta válida ("nenhuma").
+      if (!restrictionsAnswered) {
         setShowRestrictionModal(true);
       } else {
         setTimeout(() => onSuccess(), 1000);
@@ -349,6 +293,47 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
     }
   };
 
+  /**
+   * "Não, como de tudo" precisa PERSISTIR a lista vazia. Sem isso o perfil
+   * alimentar continuaria pendente e o paciente voltaria eternamente ao QFA.
+   */
+  const handleNoRestrictions = async () => {
+    setSavingRestrictions(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        throw new Error('Sessão expirada. Entre novamente para continuar.');
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ food_restrictions: [] })
+        .eq('id', session.user.id)
+        .select('id')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        throw new Error('Não foi possível confirmar o salvamento do perfil alimentar.');
+      }
+
+      setRestrictions([]);
+      setRestrictionsAnswered(true);
+      setShowRestrictionModal(false);
+      toast.success('Perfil alimentar salvo: nenhuma restrição.');
+      onSuccess();
+    } catch (error) {
+      console.error('Erro ao salvar ausência de restrições:', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar seu perfil alimentar. Tente novamente.'
+      );
+    } finally {
+      setSavingRestrictions(false);
+    }
+  };
+
   // =========================================================================
   // RENDERIZAÇÃO
   // =========================================================================
@@ -356,6 +341,25 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
     return (
       <div className="flex justify-center items-center py-24">
         <Loader2 className="animate-spin text-nutri-800" size={40} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-md rounded-[2rem] border border-rose-100 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <AlertTriangle size={28} />
+        </div>
+        <h2 className="text-lg font-black text-stone-900">Não foi possível carregar o Raio-X</h2>
+        <p className="mt-2 text-sm font-medium text-stone-500">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryCount((count) => count + 1)}
+          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-stone-800"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -397,7 +401,7 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
               </div>
             </div>
             <button
-              onClick={() => router.push('/completar-perfil')}
+              onClick={() => router.push('/dashboard/completar-perfil')}
               className="w-full md:w-auto min-h-[44px] text-xs font-bold uppercase tracking-wider bg-amber-600 text-white px-5 py-3 rounded-xl hover:bg-amber-700 transition-colors shrink-0 shadow-sm"
             >
               Cadastrar agora
@@ -512,20 +516,20 @@ export default function QFAForm({ onSuccess }: QFAFormProps) {
             <div className="flex flex-col gap-3 justify-center">
               <button
                 onClick={() => {
-                  router.push('/completar-perfil?from=qfa');
+                  router.push('/dashboard/completar-perfil?from=qfa');
                 }}
-                className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold tracking-wide rounded-xl transition-colors shadow-md active:scale-[0.98]"
+                disabled={savingRestrictions}
+                className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold tracking-wide rounded-xl transition-colors shadow-md active:scale-[0.98] disabled:opacity-60"
               >
                 Sim, tenho restrições
               </button>
 
               <button
-                onClick={() => {
-                  setShowRestrictionModal(false);
-                  onSuccess();
-                }}
-                className="w-full py-4 bg-stone-100 hover:bg-stone-200 text-stone-600 text-sm font-bold tracking-wide rounded-xl transition-colors active:scale-[0.98]"
+                onClick={handleNoRestrictions}
+                disabled={savingRestrictions}
+                className="flex w-full items-center justify-center gap-2 py-4 bg-stone-100 hover:bg-stone-200 text-stone-600 text-sm font-bold tracking-wide rounded-xl transition-colors active:scale-[0.98] disabled:opacity-60"
               >
+                {savingRestrictions && <Loader2 size={16} className="animate-spin" />}
                 Não, como de tudo
               </button>
             </div>

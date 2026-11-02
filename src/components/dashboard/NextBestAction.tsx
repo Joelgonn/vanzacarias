@@ -3,69 +3,102 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   ClipboardCheck, Utensils, ShieldAlert, CalendarDays,
-  Lock, ChevronRight, ArrowRight, ClipboardList, Check,
+  Lock, ChevronRight, ArrowRight, ClipboardList, Check, User,
 } from 'lucide-react';
 import Link from 'next/link';
+import type { PatientJourneySnapshot } from '@/lib/patientJourney';
 
 // =========================================================================
 // NEXT BEST ACTION — Próximo Passo
-// Uma ação principal determinística + faixa horizontal de 4 atalhos.
-// A função getNextBestAction é PURA: não faz fetch, não altera estado,
-// não persiste nada — apenas prioriza visualmente uma ação já existente.
+// Uma ação principal determinística + faixa horizontal de atalhos.
+// A prioridade das etapas de onboarding vem do estado central
+// (patientJourney.ts). A recorrência semanal do check-in continua separada:
+// ela é acompanhamento, não conclusão do onboarding.
 // =========================================================================
 
 export interface NextBestActionProps {
+  /** Estado central das quatro etapas obrigatórias. */
+  journey: PatientJourneySnapshot;
   isPremium: boolean;
   trialActive: boolean;
   isCheckinDoneThisWeek: boolean;
   canAccessMealPlan: boolean | null | undefined;
   isMealPlanReady: boolean;
-  hasCompletedQFA: boolean;
-  hasFoodRestrictions: boolean;
-  foodStatusConfig: {
-    icon: React.ReactNode;
-    bgClass: string;
-    label: string;
-  };
-  nextAppointment: {
-    appointment_date: string;
-    appointment_time: string;
-  } | null;
   onOpenCheckin: () => void;
 }
 
-// -------------------------------------------------------------------------
-// ORDEM DETERMINÍSTICA DA AÇÃO PRINCIPAL (documentada):
-//   1. QFA pendente        → Atualizar perfil alimentar (pendência crítica)
-//   2. Check-in pendente   → Fazer Check-in semanal (quando acessível)
-//   3. Plano pronto        → Ver plano alimentar liberado
-//   4. Plano em elaboração → Acompanhar plano (acessível)
-//   5. Plano bloqueado     → Conhecer o plano (mostra caminho de acesso)
-//   6. Fallback            → Agendamentos (próxima consulta)
-// -------------------------------------------------------------------------
-type BestActionKey = 'perfil' | 'checkin' | 'plano_pronto' | 'plano_elaboracao' | 'plano_bloqueado' | 'agenda';
+export type BestActionKey =
+  | 'perfil'
+  | 'perfilAlimentar'
+  | 'raioX'
+  | 'checkin'
+  | 'plano_pronto'
+  | 'plano_elaboracao'
+  | 'plano_bloqueado'
+  | 'agenda';
 
-function getNextBestAction(input: {
-  hasCompletedQFA: boolean;
+export interface NextBestActionInput {
+  journey: PatientJourneySnapshot;
   isCheckinDoneThisWeek: boolean;
   isLocked: boolean;
   canAccessMealPlan: boolean;
   isMealPlanReady: boolean;
-}): BestActionKey {
-  if (!input.hasCompletedQFA) return 'perfil';
-  if (!input.isCheckinDoneThisWeek && !input.isLocked) return 'checkin';
+}
+
+// -------------------------------------------------------------------------
+// ORDEM DETERMINÍSTICA DA AÇÃO PRINCIPAL:
+//   1. Perfil pendente            → Completar Perfil (básico)
+//   2. Perfil alimentar pendente  → Completar Perfil Alimentar
+//   3. Raio-X pendente            → Fazer Raio-X Alimentar (QFA)
+//   4. Check-in inicial pendente  → Primeiro check-in (independe de premium)
+//   5. Check-in semanal pendente  → Fazer Check-in semanal (quando acessível)
+//   6. Plano pronto               → Ver plano alimentar liberado
+//   7. Plano em elaboração        → Acompanhar plano
+//   8. Plano bloqueado            → Conhecer o plano
+//   9. Fallback                   → Agendamentos
+// Etapas "unavailable" nunca são tratadas como pendentes nem concluídas.
+// -------------------------------------------------------------------------
+export function getNextBestAction(input: NextBestActionInput): BestActionKey {
+  const next = input.journey.nextAction;
+
+  if (next === 'perfil') return 'perfil';
+  if (next === 'perfilAlimentar') return 'perfilAlimentar';
+  if (next === 'raioX') return 'raioX';
+  // O primeiro check-in é obrigatório para concluir o onboarding. A regra de
+  // premium não pode impedir essa etapa (check-in não é funcionalidade paga).
+  if (next === 'checkin') return 'checkin';
+
+  // Onboarding concluído (ou indisponível): segue a vida normal do paciente.
+  if (
+    !input.isCheckinDoneThisWeek &&
+    !input.isLocked &&
+    input.journey.checkin !== 'unavailable'
+  ) {
+    return 'checkin';
+  }
   if (input.canAccessMealPlan && input.isMealPlanReady) return 'plano_pronto';
   if (input.canAccessMealPlan) return 'plano_elaboracao';
-  if (!input.canAccessMealPlan) return 'plano_bloqueado';
-  return 'agenda';
+  return 'plano_bloqueado';
 }
 
 const ACTION_COPY: Record<BestActionKey, { icon: typeof ClipboardCheck; title: string; desc: string; cta: string }> = {
   perfil: {
+    icon: User,
+    title: 'Complete seu Perfil',
+    desc: 'Informe nome, WhatsApp, data de nascimento e sexo para personalizar seu atendimento.',
+    cta: 'Completar perfil',
+  },
+  perfilAlimentar: {
     icon: ShieldAlert,
-    title: 'Complete seu perfil alimentar',
-    desc: 'Preencha seu Raio-X para a Nutri criar um plano personalizado.',
-    cta: 'Atualizar perfil',
+    title: 'Complete seu Perfil Alimentar',
+    desc: 'Confirme restrições e informações alimentares para o Raio-X ser seguro.',
+    cta: 'Completar perfil alimentar',
+  },
+  raioX: {
+    icon: ClipboardList,
+    title: 'Complete seu Raio-X Alimentar',
+    desc: 'Responda o questionário para a Nutri criar um plano personalizado.',
+    cta: 'Fazer Raio-X',
   },
   checkin: {
     icon: ClipboardCheck,
@@ -94,25 +127,28 @@ const ACTION_COPY: Record<BestActionKey, { icon: typeof ClipboardCheck; title: s
   agenda: {
     icon: CalendarDays,
     title: 'Organize sua agenda',
-    desc: nextAppointmentHint(),
+    desc: 'Marque sua próxima consulta ou acompanhe seus retornos.',
     cta: 'Ver agendamentos',
   },
 };
 
-// helper (função pura usada apenas para o fallback)
-function nextAppointmentHint() {
-  return 'Marque sua próxima consulta ou acompanhe seus retornos.';
-}
+const ACTION_HREF: Partial<Record<BestActionKey, string>> = {
+  perfil: '/dashboard/perfil',
+  perfilAlimentar: '/dashboard/completar-perfil',
+  raioX: '/paciente/avaliacao',
+  agenda: '/dashboard/agendamentos',
+  plano_pronto: '/dashboard/meu-plano',
+  plano_elaboracao: '/dashboard/meu-plano',
+  plano_bloqueado: '/dashboard/meu-plano',
+};
 
 export default function NextBestAction({
+  journey,
   isPremium,
   trialActive,
   isCheckinDoneThisWeek,
   canAccessMealPlan,
   isMealPlanReady,
-  hasCompletedQFA,
-  foodStatusConfig,
-  nextAppointment,
   onOpenCheckin,
 }: NextBestActionProps) {
   const reduceMotion = useReducedMotion();
@@ -123,33 +159,96 @@ export default function NextBestAction({
 
   // Decisão determinística (função pura)
   const actionKey = getNextBestAction({
-    hasCompletedQFA,
+    journey,
     isCheckinDoneThisWeek,
     isLocked,
     canAccessMealPlan: hasPlanAccess,
     isMealPlanReady,
   });
 
-  const action = ACTION_COPY[actionKey];
+  const action =
+    actionKey === 'checkin' && journey.nextAction === 'checkin'
+      ? {
+          ...ACTION_COPY.checkin,
+          title: 'Registre seu primeiro check-in',
+          desc: 'Salve peso, adesão e humor para iniciar seu acompanhamento.',
+        }
+      : ACTION_COPY[actionKey];
   const ActionIcon = action.icon;
 
-  // Atalhos — sempre disponíveis (mesmas rotas/handlers de antes)
-  // Check-in tem 3 estados visuais derivados APENAS de isCheckinDoneThisWeek
-  // e da regra premium existente (sem nova lógica de negócio):
-  //   pendente  → microdestaque âmbar + pulso sutil
-  //   concluído → emerald, "Feito esta semana" (parece conquista, não botão quebrado)
-  //   bloqueado → discreto, "Disponível na próxima semana"
+  const perfilDone = journey.perfil === 'completed';
+  const perfilPending = journey.perfil === 'not_started';
+  const perfilUnavailable = journey.perfil === 'unavailable';
+
+  const perfilAlimentarDone = journey.perfilAlimentar === 'completed';
+  const perfilAlimentarPending = journey.perfilAlimentar === 'not_started';
+  const perfilAlimentarUnavailable = journey.perfilAlimentar === 'unavailable';
+
+  const raioXDone = journey.raioX === 'completed';
+  const raioXPending = journey.raioX === 'not_started';
+  const raioXUnavailable = journey.raioX === 'unavailable';
+
+  // O check-in desta faixa é o SEMANAL (acompanhamento). O primeiro check-in
+  // obrigatório é representado na ação principal pelo nextAction central.
   const checkinDone = isCheckinDoneThisWeek;
+  const checkinUnavailable = journey.checkin === 'unavailable';
+  const isOnboardingCheckin = journey.nextAction === 'checkin';
+
   const shortcuts = [
+    {
+      label: 'Perfil',
+      icon: User,
+      href: '/dashboard/perfil',
+      onClick: null as (() => void) | null,
+      locked: false,
+      done: perfilDone,
+      pending: perfilPending,
+      hint: perfilUnavailable ? 'Indisponível' : perfilDone ? 'Concluído' : 'Pendência',
+    },
+    {
+      label: 'Perfil Alimentar',
+      icon: ShieldAlert,
+      href: '/dashboard/completar-perfil',
+      onClick: null as (() => void) | null,
+      locked: false,
+      done: perfilAlimentarDone,
+      pending: perfilAlimentarPending,
+      hint: perfilAlimentarUnavailable
+        ? 'Indisponível'
+        : perfilAlimentarDone
+          ? 'Concluído'
+          : 'Pendência',
+    },
+    {
+      label: 'Raio-X Alimentar',
+      icon: ClipboardList,
+      href: '/paciente/avaliacao',
+      onClick: null as (() => void) | null,
+      locked: false,
+      done: raioXDone,
+      pending: raioXPending,
+      hint: raioXUnavailable ? 'Indisponível' : raioXDone ? 'Concluído' : 'Pendência',
+    },
     {
       label: 'Check-in',
       icon: ClipboardCheck,
       href: null as string | null,
       onClick: onOpenCheckin,
-      locked: isLocked,
-      done: checkinDone && !isLocked,
-      pending: !checkinDone && !isLocked,
-      hint: isLocked ? 'Disponível na próxima semana' : checkinDone ? 'Feito esta semana' : 'Semanal',
+      locked: isLocked && !isOnboardingCheckin,
+      done: checkinDone && (!isLocked || isOnboardingCheckin),
+      pending:
+        !checkinDone &&
+        !checkinUnavailable &&
+        (!isLocked || isOnboardingCheckin),
+      hint: isOnboardingCheckin && !checkinDone
+        ? 'Primeiro check-in'
+        : isLocked
+          ? 'Disponível na próxima semana'
+          : checkinUnavailable
+            ? 'Indisponível'
+            : checkinDone
+              ? 'Feito esta semana'
+              : 'Semanal',
     },
     {
       label: 'Meu plano',
@@ -160,28 +259,6 @@ export default function NextBestAction({
       done: false,
       pending: false,
       hint: hasPlanAccess ? (isMealPlanReady ? 'Liberado' : 'Em elaboração') : 'Bloqueado',
-    },
-    {
-      label: 'Alergias',
-      icon: ShieldAlert,
-      href: '/dashboard/completar-perfil',
-      onClick: null as (() => void) | null,
-      locked: false,
-      done: false,
-      pending: !hasCompletedQFA,
-      hint: !hasCompletedQFA ? 'Pendência' : foodStatusConfig.label,
-    },
-    {
-      label: 'Agenda',
-      icon: CalendarDays,
-      href: '/dashboard/agendamentos',
-      onClick: null as (() => void) | null,
-      locked: false,
-      done: false,
-      pending: false,
-      hint: nextAppointment
-        ? new Date(nextAppointment.appointment_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-        : 'Marcar',
     },
   ];
 
@@ -200,7 +277,7 @@ export default function NextBestAction({
           </div>
           <div>
             <h3 className="text-2xl font-black tracking-tight text-stone-900 leading-tight">Próximo Passo</h3>
-            <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mt-0.5">Sua jornada continua</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-stone-500 mt-0.5">Sua jornada continua</p>
           </div>
         </div>
 
@@ -230,7 +307,7 @@ export default function NextBestAction({
             </button>
           ) : (
             <Link
-              href={actionKey === 'perfil' ? '/dashboard/completar-perfil' : actionKey === 'agenda' ? '/dashboard/agendamentos' : '/dashboard/meu-plano'}
+              href={ACTION_HREF[actionKey] ?? '/dashboard'}
               className="group inline-flex shrink-0 items-center gap-1.5 self-start rounded-full bg-white px-6 py-3 text-sm font-black text-nutri-900 transition-all hover:bg-amber-50 hover:shadow-lg hover:shadow-amber-500/30 active:scale-[0.98] sm:self-center"
             >
               {action.cta}
@@ -241,7 +318,7 @@ export default function NextBestAction({
 
         {/* ============ NÍVEL 2 — ATALHOS HORIZONTAIS ============ */}
         <motion.div {...fadeUp} transition={{ delay: reduceMotion ? 0 : 0.1 }} className="mt-5">
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-100 bg-stone-100 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-100 bg-stone-100 md:grid-cols-5">
             {shortcuts.map((s) => {
               const Icon = s.icon;
               const inner = (
@@ -273,7 +350,9 @@ export default function NextBestAction({
                   </div>
                   <div>
                     <p className={`text-xs font-black transition-colors ${s.done ? 'text-emerald-700' : s.pending ? 'text-amber-700' : 'text-stone-700 group-hover:text-amber-700'}`}>{s.label}</p>
-                    <p className={`mt-0.5 text-[10px] font-semibold ${s.done ? 'text-emerald-600' : s.locked ? 'text-stone-400' : 'text-stone-400'}`}>
+                    {/* Fase 2.2 — contraste AA: stone-500 (4,80:1) e emerald-700 (5,36:1)
+                        no lugar de stone-400/emerald-600 (2,52:1/3,68:1) a 10 px. */}
+                    <p className={`mt-0.5 text-[10px] font-semibold ${s.done ? 'text-emerald-700' : 'text-stone-500'}`}>
                       {s.locked && !s.done && <Lock size={9} className="mr-0.5 inline" aria-hidden="true" />}
                       {s.hint}
                     </p>

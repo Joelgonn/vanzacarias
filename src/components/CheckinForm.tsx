@@ -143,6 +143,9 @@ export default function CheckinForm({ onSuccess, onFormChange }: CheckinFormProp
       if (error) throw error;
 
       toast.success("Check-in enviado com sucesso! Ótimo trabalho.", { id: toastId });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('patient:checkin-updated'));
+      }
       setSuccess(true);
       
       // Aguarda a animação de sucesso antes de fechar/limpar

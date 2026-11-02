@@ -65,7 +65,17 @@ export default function Cadastro() {
         }
       ]);
       
-      if (profileError) console.error("Erro ao criar perfil:", profileError);
+      if (profileError) {
+        // A conta de autenticação já foi criada, mas o perfil não. Não podemos
+        // exibir sucesso: o onboarding depende da linha em profiles. O paciente
+        // consegue recuperar depois entrando em /dashboard/perfil (upsert).
+        console.error("Erro ao criar perfil:", profileError.message);
+        setError(
+          'Sua conta foi criada, mas não foi possível salvar seu perfil. Entre na conta para completar os dados.'
+        );
+        setLoading(false);
+        return;
+      }
 
       // 4. Salva a Avaliação Oficial
       if (savedAnswers) {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import confetti from 'canvas-confetti';
 import { 
-  Loader2, X, AlertCircle, Star, Zap, ClipboardCheck, ShieldAlert, ShieldCheck,
+  Loader2, X, AlertCircle, Star, Zap, ClipboardCheck,
   Trophy, Target, HeartPulse,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -19,9 +19,16 @@ import RecoveryTodayCard from '@/components/dashboard/RecoveryTodayCard';
 import PremiumAccessCard from '@/components/dashboard/PremiumAccessCard';
 import ProgressChart from '@/components/dashboard/ProgressChart';
 import NextBestAction from '@/components/dashboard/NextBestAction';
+import OnboardingProgress from '@/components/onboarding/OnboardingProgress';
+import { useOnboardingRedirect } from '@/hooks/useOnboardingRedirect';
 import { getTotalActivityKcal } from '@/lib/activities';
 import type { Activity } from '@/lib/activities';
 import * as checkinLib from '@/lib/checkin';
+import type { CheckinStatus } from '@/lib/checkin';
+import {
+  getPatientJourneyState,
+  type PatientJourneySnapshot,
+} from '@/lib/patientJourney';
 import { getFocus } from '@/lib/vz015/focusEngine';
 import { getRecovery } from '@/lib/vz015/recoveryEngine';
 import type { FocusInput } from '@/lib/vz015/types';
@@ -113,11 +120,6 @@ interface BioRow {
   insulin?: string;
 }
 
-interface AppointmentRow {
-  appointment_date: string;
-  appointment_time: string;
-}
-
 export default function Dashboard() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [, setEvaluation] = useState<unknown>(null);
@@ -126,11 +128,13 @@ export default function Dashboard() {
   const [skinfoldsData, setSkinfoldsData] = useState<SkinfoldRow[]>([]);
   const [bioData, setBioData] = useState<BioRow[]>([]);
   const [bodyCompsData, setBodyCompsData] = useState<any[]>([]); // F3.6 oficial
-  const [nextAppointment] = useState<AppointmentRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   
-  const [hasCompletedQFA, setHasCompletedQFA] = useState<boolean>(true);
+  const [hasCompletedQFA, setHasCompletedQFA] = useState<boolean>(false);
+  const [journey, setJourney] = useState<PatientJourneySnapshot | null>(null);
+  const [qfaUnavailable, setQfaUnavailable] = useState<boolean>(false);
+  const [checkinUnavailable, setCheckinUnavailable] = useState<boolean>(false);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
@@ -152,6 +156,9 @@ export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
 
+  // Gate de entrada: só redireciona em /dashboard e nunca com consulta indisponível.
+  const { shouldRedirect } = useOnboardingRedirect({ snapshot: journey, loading });
+
   async function loadData() {
     setLoading(true);
     setLoadError(null);
@@ -165,9 +172,9 @@ export default function Dashboard() {
 
       const userId = session.user.id;
 
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo, role')
+        .select('full_name, status, meta_peso, account_type, trial_ends_at, created_at, has_meal_plan_access, meal_plan, food_restrictions, data_nascimento, sexo, role, phone')
         .eq('id', userId)
         .single();
 
@@ -183,13 +190,13 @@ export default function Dashboard() {
         .eq('user_id', userId)
         .single();
 
-      const { data: qfaData } = await supabase
+      const { data: qfaData, error: qfaError } = await supabase
         .from('qfa_responses')
-        .select('id')
+        .select('answers')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      const { data: checkinData } = await supabase
+      const { data: checkinData, error: checkinError } = await supabase
         .from('checkins')
         .select('*')
         .eq('user_id', userId)
@@ -249,7 +256,26 @@ export default function Dashboard() {
 
       setProfile(profileData);
       setEvaluation(evalData?.answers || null);
-      setHasCompletedQFA(!!qfaData); 
+
+      // PGRST116 = nenhuma linha em profiles.single(): o perfil realmente não
+      // existe (estado "não iniciado"), não uma falha de consulta.
+      const profileQueryFailed = !!profileError && profileError.code !== 'PGRST116';
+
+      const journeySnapshot = getPatientJourneyState({
+        perfilBasicoProfile: profileData,
+        perfilBasicoError: profileQueryFailed,
+        perfilAlimentarProfile: profileData,
+        perfilAlimentarError: profileQueryFailed,
+        qfaAnswers: qfaData?.answers ?? null,
+        qfaError: !!qfaError,
+        checkins: (checkinData as CheckinRow[] | null) ?? null,
+        checkinError: !!checkinError,
+      });
+
+      setJourney(journeySnapshot);
+      setHasCompletedQFA(journeySnapshot.raioX === 'completed');
+      setQfaUnavailable(journeySnapshot.raioX === 'unavailable');
+      setCheckinUnavailable(journeySnapshot.checkin === 'unavailable');
       setCheckins(checkinData || []);
       setAntroData(antro || []);
       setSkinfoldsData(skin || []);
@@ -473,6 +499,14 @@ export default function Dashboard() {
 
   const isCheckinDoneThisWeek = useMemo(() => checkinLib.isCheckinDoneThisWeek(checkins), [checkins]);
 
+  // Fase 2.2 — estado explícito para os motores de foco/recuperação:
+  // falha de consulta não é pendência, e carregamento não é conclusão.
+  const checkinStatus = useMemo<CheckinStatus>(() => {
+    if (checkinUnavailable) return 'unavailable';
+    if (loading) return 'loading';
+    return isCheckinDoneThisWeek ? 'done' : 'pending';
+  }, [checkinUnavailable, loading, isCheckinDoneThisWeek]);
+
   const currentStreak = useMemo(() => {
     if (checkins.length === 0) return 0;
     const sorted = [...checkins].reverse();
@@ -519,6 +553,7 @@ export default function Dashboard() {
       } : null,
       jornada: {
         isCheckinDoneThisWeek,
+        checkinStatus,
         hasMealPlan: isMealPlanReady,
         canAccessMealPlan: !!canAccessMealPlan,
       },
@@ -545,6 +580,7 @@ export default function Dashboard() {
     dailyLog.water_ml,
     hasActualWeightSource,
     isCheckinDoneThisWeek,
+    checkinStatus,
     isMealPlanReady,
     latestWeightForWater,
     profile?.meta_peso,
@@ -781,9 +817,6 @@ export default function Dashboard() {
 
   const foodRestrictions = profile?.food_restrictions || [];
   const hasFoodRestrictions = foodRestrictions.length > 0;
-  const foodStatusConfig = hasFoodRestrictions 
-    ? { icon: <ShieldAlert size={20} strokeWidth={2.5} />, bgClass: 'bg-amber-50 text-amber-600', textClass: 'text-amber-900', label: `${foodRestrictions.length} restrições cadastradas`, desc: 'Ativo e monitorado' }
-    : { icon: <ShieldCheck size={20} strokeWidth={2.5} />, bgClass: 'bg-emerald-50 text-emerald-600', textClass: 'text-stone-900', label: 'Sem restrições', desc: 'Perfil atualizado' };
 
   const validWeightsCount = timelineData.filter(d => d.peso !== null).length;
   const validWaistsCount = timelineData.filter(d => d.cintura !== null).length;
@@ -856,6 +889,15 @@ export default function Dashboard() {
     </div>
   );
 
+  if (shouldRedirect) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="animate-spin text-nutri-800" size={40} strokeWidth={2.5} />
+        <p className="text-stone-400 font-medium text-sm animate-pulse">Encaminhando para a próxima etapa...</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] flex font-sans text-stone-800 pt-[72px] md:pt-20 pb-24 md:pb-0 selection:bg-nutri-200 selection:text-nutri-900">
 
@@ -866,7 +908,8 @@ export default function Dashboard() {
         
         {/* ALERTAS DO SISTEMA */}
         <div className="space-y-4">
-          {!hasCompletedQFA && (
+          {/* Falha na consulta do QFA não pode ser exibida como pendência confirmada */}
+          {!hasCompletedQFA && !qfaUnavailable && (
             <div className="p-4 md:p-6 bg-gradient-to-r from-rose-600 to-rose-500 rounded-3xl text-white shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in-up border border-rose-400/30">
               <div className="flex items-center gap-3 w-full">
                 <div className="bg-white/20 backdrop-blur-md p-2.5 rounded-xl shadow-inner shrink-0">
@@ -901,6 +944,11 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* PROGRESSO DO ONBOARDING — quatro etapas obrigatórias */}
+        {journey && (
+          <OnboardingProgress snapshot={journey} onRetry={loadData} />
+        )}
 
         {/* 1-3. MOMENTO ATUAL (Hero + Super Cards + Insights) */}
         <DashboardHero
@@ -974,18 +1022,17 @@ export default function Dashboard() {
         />
 
         {/* 6. AÇÕES INFERIORES (PRÓXIMO PASSO) */}
-        <NextBestAction
-          isPremium={isPremium}
-          trialActive={trialData.isActive}
-          isCheckinDoneThisWeek={isCheckinDoneThisWeek}
-          canAccessMealPlan={canAccessMealPlan}
-          isMealPlanReady={isMealPlanReady}
-          hasCompletedQFA={hasCompletedQFA}
-          hasFoodRestrictions={hasFoodRestrictions}
-          foodStatusConfig={foodStatusConfig}
-          nextAppointment={nextAppointment}
-          onOpenCheckin={() => setIsCheckinModalOpen(true)}
-        />
+        {journey && (
+          <NextBestAction
+            journey={journey}
+            isPremium={isPremium}
+            trialActive={trialData.isActive}
+            isCheckinDoneThisWeek={isCheckinDoneThisWeek}
+            canAccessMealPlan={canAccessMealPlan}
+            isMealPlanReady={isMealPlanReady}
+            onOpenCheckin={() => setIsCheckinModalOpen(true)}
+          />
+        )}
 
 
       </section>

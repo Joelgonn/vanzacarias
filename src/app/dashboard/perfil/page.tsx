@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, Save, UserCircle, 
-  User, Phone, ChevronDown, Calendar, ShieldCheck, Volume2, VolumeX 
+  User, Phone, ChevronDown, Calendar, ShieldCheck, Volume2, VolumeX, AlertCircle
 } from 'lucide-react';
 import BackButton from '@/components/ui/BackButton';
 import { PatientPageShell, PageNavigation, PageContent } from '@/components/layout/PatientPageShell';
 import { toast } from 'sonner';
 import { setTtsUser, setTtsEnabled, subscribeTts, getTtsSnapshot } from '@/lib/tts/preference';
+import { isPerfilBasicoComplete } from '@/lib/patientJourney';
+import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
 
 interface ProfileRow {
   id?: string;
@@ -24,6 +26,8 @@ export default function PerfilPaciente() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   
   const supabase = createClient();
   const router = useRouter();
@@ -38,6 +42,9 @@ export default function PerfilPaciente() {
 
   useEffect(() => {
     async function loadProfile() {
+      setLoading(true);
+      setLoadError(null);
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
@@ -47,39 +54,87 @@ export default function PerfilPaciente() {
       // TTS-INTEGRATION-003 — isola a preferência por paciente (D06)
       setTtsUser(session.user.id);
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single();
-        
-      setProfile(data);
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao carregar perfil:', error.message);
+        setLoadError('Não foi possível carregar seu perfil. Tente novamente.');
+        setLoading(false);
+        return;
+      }
+
+      // Perfil ausente é um estado válido ("não iniciado"): o formulário abre
+      // vazio e o salvamento faz upsert pelo id da sessão.
+      setProfile(data ?? { id: session.user.id });
       setLoading(false);
     }
     loadProfile();
-  }, [supabase, router]);
+  }, [supabase, router, retryCount]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    
-    const { error } = await supabase
-      .from('profiles')
-      .update({ 
-        full_name: profile?.full_name,
-        phone: profile?.phone,
-        sexo: profile?.sexo, 
-        data_nascimento: profile?.data_nascimento 
-      })
-      .eq('id', profile?.id);
-    
-    if (error) {
-      toast.error("Erro ao atualizar o perfil. Tente novamente.");
-      console.error(error.message);
-    } else {
-      toast.success("Perfil atualizado com sucesso!");
+
+    const candidate = {
+      full_name: profile?.full_name ?? '',
+      phone: profile?.phone ?? '',
+      sexo: profile?.sexo ?? '',
+      data_nascimento: profile?.data_nascimento ?? '',
+    };
+
+    if (!isPerfilBasicoComplete(candidate)) {
+      toast.error('Preencha nome, WhatsApp, data de nascimento e sexo para continuar.');
+      setSaving(false);
+      return;
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast.error('Sessão expirada. Entre novamente para continuar.');
+      setSaving(false);
+      return;
+    }
+
+    // upsert cobre o caso de o cadastro inicial não ter criado a linha em
+    // profiles. O select confirma que a operação realmente afetou uma linha.
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(
+        {
+          id: session.user.id,
+          ...candidate,
+        },
+        { onConflict: 'id' }
+      )
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Erro ao atualizar perfil:', error?.message ?? 'nenhuma linha retornada');
+      toast.error('Não foi possível salvar seu perfil. Tente novamente.');
+      setSaving(false);
+      return;
+    }
+
+    setProfile((current) => ({ ...(current ?? {}), ...candidate, id: session.user.id }));
+    toast.success('Perfil atualizado com sucesso!');
     setSaving(false);
+
+    const next = await resolveNextOnboardingRoute(supabase, session.user.id);
+    if (next.unavailable) {
+      toast.error('Perfil salvo, mas não foi possível verificar a próxima etapa agora.');
+      router.push('/dashboard');
+      return;
+    }
+    if (next.route === '/dashboard/perfil') {
+      toast.error('Não foi possível confirmar a conclusão do perfil. Tente novamente.');
+      return;
+    }
+    router.push(next.route ?? '/dashboard');
   };
 
   if (loading) return (
@@ -89,6 +144,25 @@ export default function PerfilPaciente() {
           <Loader2 className="animate-spin text-nutri-700" size={32} strokeWidth={2.5} />
         </div>
         <p className="text-stone-400 font-bold tracking-widest uppercase text-xs">Carregando perfil</p>
+      </div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] p-6">
+      <div className="w-full max-w-md rounded-3xl border border-rose-100 bg-white p-8 text-center shadow-md">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <AlertCircle size={28} />
+        </div>
+        <h2 className="text-lg font-bold tracking-tight text-stone-900">Não foi possível carregar</h2>
+        <p className="mt-1 text-sm font-medium text-stone-500">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryCount((count) => count + 1)}
+          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-stone-800"
+        >
+          Tentar novamente
+        </button>
       </div>
     </div>
   );

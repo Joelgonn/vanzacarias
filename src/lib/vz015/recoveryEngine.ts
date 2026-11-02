@@ -7,7 +7,13 @@ function pushAction(actions: RecoveryAction[], action: RecoveryAction) {
 export function getRecovery(input: FocusInput): RecoveryResult {
   const actions: RecoveryAction[] = [];
 
-  if (input.jornada.isCheckinDoneThisWeek === false) {
+  // Estado explícito tem precedência; sem ele, mantém a compatibilidade com
+  // o booleano histórico. Apenas pendência CONFIRMADA gera recomendação.
+  const checkinStatus =
+    input.jornada.checkinStatus ??
+    (input.jornada.isCheckinDoneThisWeek ? 'done' : 'pending');
+
+  if (checkinStatus === 'pending') {
     pushAction(actions, {
       id: 'recovery-checkin',
       type: 'checkin',

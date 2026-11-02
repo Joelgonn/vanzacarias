@@ -10,6 +10,8 @@ import {
   Lock,
   Crown,
   Check,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -17,6 +19,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useReducedMotion } from 'framer-motion';
 import { PATIENT_NAV_GROUPS, isPatientPathActive } from '@/lib/navigation';
 import { useCheckinStatus } from '@/hooks/useCheckinStatus';
+import { getCheckinNavState } from '@/lib/checkin';
 
 // =========================================================================
 // NAVEGAÇÃO PÚBLICA (uso EXCLUSIVO deste componente — sem duplicação)
@@ -48,7 +51,11 @@ export default function Header() {
   const pathname = usePathname();
   const reducedMotion = useReducedMotion();
 
-  const { isDone: checkinDone } = useCheckinStatus(supabase, { enabled: isLoggedIn });
+  const {
+    isDone: checkinDone,
+    doneChecked: checkinChecked,
+    unavailable: checkinUnavailable,
+  } = useCheckinStatus(supabase, { enabled: isLoggedIn });
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -419,7 +426,18 @@ export default function Header() {
                           const isActive = isPatientPathActive(pathname ?? '', item.href);
                           const Icon = item.icon;
                           const locked = !!item.premium && !canAccessMealPlan;
-                          const isCheckinDone = item.id === 'checkin' && checkinDone && isLoggedIn;
+                          // Estado explícito: carregamento/falha não podem
+                          // parecer conclusão nem pendência confirmada.
+                          const checkinNavState = item.id === 'checkin'
+                            ? getCheckinNavState({
+                                isDone: checkinDone && isLoggedIn,
+                                doneChecked: checkinChecked,
+                                unavailable: checkinUnavailable,
+                              })
+                            : null;
+                          const isCheckinDone = checkinNavState === 'done';
+                          const isCheckinLoading = checkinNavState === 'loading';
+                          const isCheckinUnavailable = checkinNavState === 'unavailable';
                           const label = item.mobileLabel || item.label;
 
                           const inner = (
@@ -436,14 +454,24 @@ export default function Header() {
                                           : 'bg-white text-stone-400 shadow-sm group-hover:bg-nutri-50 group-hover:text-nutri-600'
                                   }`}
                                 >
-                                  {isCheckinDone ? <Check size={17} strokeWidth={3} /> : <Icon size={17} strokeWidth={2.5} />}
+                                  {isCheckinDone ? (
+                                    <Check size={17} strokeWidth={3} />
+                                  ) : isCheckinLoading ? (
+                                    <Loader2 size={17} strokeWidth={2.5} className="animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Icon size={17} strokeWidth={2.5} />
+                                  )}
                                 </span>
                                 <span className="truncate">{label}</span>
                               </span>
                               <span className="flex items-center gap-1.5 shrink-0">
-                                {isCheckinDone ? null : (
-                                  locked && <Lock size={13} className="text-amber-500" />
-                                )}
+                                {isCheckinDone ? null : isCheckinUnavailable ? (
+                                  <span title="Não foi possível verificar o check-in agora">
+                                    <AlertCircle size={13} className="text-stone-400" aria-hidden="true" />
+                                  </span>
+                                ) : locked ? (
+                                  <Lock size={13} className="text-amber-500" />
+                                ) : null}
                                 <ChevronRight size={16} className={`transition-all duration-200 ${isActive ? 'text-nutri-600 opacity-100' : 'text-stone-300 opacity-0 group-hover:opacity-100'}`} />
                               </span>
                             </>
@@ -468,7 +496,14 @@ export default function Header() {
                                   href={item.href}
                                   onClick={closeMenu}
                                   aria-current={isActive ? 'page' : undefined}
-                                  aria-label={locked ? `${label} (bloqueado)` : label}
+                                  aria-label={
+                                    isCheckinUnavailable
+                                      ? `${label} (estado indisponível)`
+                                      : locked
+                                        ? `${label} (bloqueado)`
+                                        : label
+                                  }
+                                  aria-busy={isCheckinLoading || undefined}
                                   className={`flex items-center justify-between w-full p-3 rounded-2xl font-bold text-sm transition-all duration-200 active:scale-[0.98] group ${
                                     isActive
                                       ? 'bg-white text-nutri-900 shadow-[0_1px_2px_rgba(28,25,23,0.04),0_16px_48px_-24px_rgba(28,25,23,0.18)] border border-stone-100'

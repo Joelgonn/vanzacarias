@@ -11,7 +11,13 @@ function pushAction(actions: FocusAction[], action: FocusAction) {
 export function getFocus(input: FocusInput): FocusResult {
   const actions: FocusAction[] = [];
 
-  if (input.jornada.isCheckinDoneThisWeek === false) {
+  // Estado explícito tem precedência; sem ele, mantém a compatibilidade com
+  // o booleano histórico. Apenas pendência CONFIRMADA gera recomendação.
+  const checkinStatus =
+    input.jornada.checkinStatus ??
+    (input.jornada.isCheckinDoneThisWeek ? 'done' : 'pending');
+
+  if (checkinStatus === 'pending') {
     pushAction(actions, {
       id: 'focus-checkin',
       type: 'checkin',

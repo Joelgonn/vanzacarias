@@ -7,11 +7,14 @@ import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, Sparkles, Phone, 
   ChevronRight, ChevronLeft, CheckCircle2, Shield, 
-  Target, Heart, Gift, ArrowRight, ChevronDown, X, Plus, Search, Info
+  Target, Heart, Gift, ArrowRight, ChevronDown, X, Plus, Search, Info, AlertCircle
 } from 'lucide-react';
 import { type FoodRestriction, type FoodTag } from '@/types/patient';
 import { FOOD_REGISTRY } from '@/lib/foodRegistry';
 import type { FoodEntity } from '@/lib/foodRegistry';
+import { toast } from 'sonner';
+import { isValidBirthDate } from '@/lib/patientJourney';
+import { resolveNextOnboardingRoute } from '@/lib/onboarding/loadOnboardingState';
 
 // =========================================================================
 // CUSTOM SELECT PREMIUM
@@ -540,12 +543,12 @@ function StepConfirm({ phone, birthDate, foodRestrictions, onConfirm, onBack, lo
   );
 }
 
-function StepSuccess({ onDashboard }: { onDashboard: () => void }) {
+function StepSuccess({ onContinue, ctaLabel }: { onContinue: () => void; ctaLabel: string }) {
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4, type: "spring" }} className="text-center space-y-6">
       <motion.div className="w-24 h-24 bg-gradient-to-br from-nutri-400 to-nutri-600 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-nutri-500/20" animate={{ scale: [1, 1.05, 1], rotate: [0, 5, -5, 0] }} transition={{ duration: 0.6, delay: 0.2 }}><Gift size={40} className="text-white" strokeWidth={1.5} /></motion.div>
       <div><h2 className="text-3xl md:text-4xl font-black text-stone-900 mb-3">Perfil salvo! 🎉</h2><p className="text-stone-500 text-sm md:text-base leading-relaxed max-w-xs mx-auto">Estamos muito felizes em ter você aqui. A partir de agora, tudo será pensado para você.</p></div>
-      <motion.button onClick={onDashboard} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-xl transition-all mt-8">Ir para o meu Plano <ArrowRight size={18} /></motion.button>
+      <motion.button onClick={onContinue} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-xl transition-all mt-8">{ctaLabel} <ArrowRight size={18} /></motion.button>
     </motion.div>
   );
 }
@@ -559,6 +562,9 @@ export default function CompletarPerfil() {
   const [foodRestrictions, setFoodRestrictions] = useState<FoodRestriction[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [nextRoute, setNextRoute] = useState('/dashboard');
   const [step, setStep] = useState(1);
   
   const supabase = createClient();
@@ -568,40 +574,133 @@ export default function CompletarPerfil() {
 
   useEffect(() => {
     async function fetchProfile() {
+      setFetching(true);
+      setLoadError(null);
+
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data } = await supabase.from('profiles').select('phone, data_nascimento, food_restrictions').eq('id', session.user.id).single();
-        if (data) {
-          if (data.phone) setPhone(data.phone);
-          if (data.data_nascimento) setBirthDate(data.data_nascimento);
-          if (data.food_restrictions) setFoodRestrictions(data.food_restrictions);
+      if (!session?.user) {
+        router.push('/login');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('phone, data_nascimento, food_restrictions')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao carregar perfil alimentar:', error.message);
+        setLoadError('Não foi possível carregar seu perfil alimentar. Tente novamente.');
+        setFetching(false);
+        return;
+      }
+
+      if (data) {
+        if (data.phone) setPhone(data.phone);
+        if (data.data_nascimento) setBirthDate(data.data_nascimento);
+        if (Array.isArray(data.food_restrictions)) {
+          setFoodRestrictions(data.food_restrictions as FoodRestriction[]);
         }
       }
       setFetching(false);
     }
     fetchProfile();
-  }, [supabase]);
+  }, [supabase, router, retryCount]);
+
+  // Depois do salvamento confirmado, conduz automaticamente à próxima etapa
+  // pendente (ou ao painel quando todas estiverem concluídas).
+  useEffect(() => {
+    if (step !== 5) return;
+    const timer = setTimeout(() => router.push(nextRoute), 1800);
+    return () => clearTimeout(timer);
+  }, [step, nextRoute, router]);
 
   const handleSubmit = async () => {
     setLoading(true);
+
     const { data: { session } } = await supabase.auth.getSession();
-    const { error } = await supabase.from('profiles').update({ phone, data_nascimento: birthDate, food_restrictions: foodRestrictions }).eq('id', session?.user.id);
-    if (error) { 
-      console.error("Erro no update:", error.message); 
-      alert(`Erro ao salvar dados: ${error.message || 'Tente novamente.'}`); 
-      setLoading(false); 
-    } else { 
-      setStep(5); 
-      setLoading(false); 
+    if (!session?.user) {
+      toast.error('Sessão expirada. Entre novamente para continuar.');
+      setLoading(false);
+      return;
     }
+
+    if (!phone.trim()) {
+      toast.error('Informe seu WhatsApp para continuar.');
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidBirthDate(birthDate)) {
+      toast.error('Informe uma data de nascimento válida.');
+      setLoading(false);
+      return;
+    }
+
+    // O select confirma que o update realmente afetou uma linha. Sem isso, um
+    // update bloqueado por RLS ou com id errado parecia sucesso.
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        phone,
+        data_nascimento: birthDate,
+        food_restrictions: foodRestrictions,
+      })
+      .eq('id', session.user.id)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Erro no update do perfil alimentar:', error?.message ?? 'nenhuma linha retornada');
+      toast.error('Não foi possível salvar seu perfil alimentar. Tente novamente.');
+      setLoading(false);
+      return;
+    }
+
+    const next = await resolveNextOnboardingRoute(supabase, session.user.id);
+    if (next.unavailable) {
+      toast.error('Perfil salvo, mas não foi possível verificar a próxima etapa agora.');
+      setNextRoute('/dashboard');
+    } else if (next.route === '/dashboard/completar-perfil') {
+      // Salvou, mas a regra central ainda não reconhece a etapa como concluída.
+      toast.error('Não foi possível confirmar a conclusão do perfil alimentar. Tente novamente.');
+      setLoading(false);
+      return;
+    } else {
+      setNextRoute(next.route ?? '/dashboard');
+    }
+
+    setStep(5);
+    setLoading(false);
   };
 
   const nextStep = () => setStep(prev => Math.min(prev + 1, 4));
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
-  const goToDashboard = () => router.push('/dashboard');
+  const goToNext = () => router.push(nextRoute);
 
   if (fetching) return <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><Loader2 className="animate-spin text-nutri-800" size={48} /></div>;
-  if (step === 5) return <div className="min-h-screen bg-[#FAFAFA] pt-24 pb-12 px-4"><div className="w-full max-w-md mx-auto"><StepSuccess onDashboard={goToDashboard} /></div></div>;
+
+  if (loadError) return (
+    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-[2rem] border border-rose-100 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <AlertCircle size={28} />
+        </div>
+        <h2 className="text-lg font-black text-stone-900">Não foi possível carregar</h2>
+        <p className="mt-2 text-sm font-medium text-stone-500">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryCount((count) => count + 1)}
+          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-stone-800"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  );
+
+  if (step === 5) return <div className="min-h-screen bg-[#FAFAFA] pt-24 pb-12 px-4"><div className="w-full max-w-md mx-auto"><StepSuccess onContinue={goToNext} ctaLabel={nextRoute === '/dashboard' ? 'Ir para o painel' : 'Continuar'} /></div></div>;
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] pt-16 md:pt-24 pb-12 px-4">

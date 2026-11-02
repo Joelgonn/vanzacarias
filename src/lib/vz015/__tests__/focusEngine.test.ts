@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getFocus } from '@/lib/vz015/focusEngine';
+import type { FocusInput } from '@/lib/vz015/types';
+import type { CheckinStatus } from '@/lib/checkin';
 
 describe('getFocus', () => {
   it('T01 sem dados → NO_DATA / 0 ações', () => {
@@ -271,5 +273,71 @@ describe('getFocus', () => {
 
     expect(result.state).toBe('NO_DATA');
     expect(result.actions).toHaveLength(0);
+  });
+});
+
+describe('Fase 2.2 — getFocus com estado explícito do Check-in', () => {
+  function inputWith(
+    checkinStatus?: CheckinStatus,
+    isCheckinDoneThisWeek = false
+  ): FocusInput {
+    return {
+      jornada: {
+        isCheckinDoneThisWeek,
+        ...(checkinStatus ? { checkinStatus } : {}),
+        hasMealPlan: true,
+        canAccessMealPlan: true,
+      },
+      dailyLog: {
+        date: '2026-08-30',
+        water_ml: 800,
+        meals_checked: ['Café da manhã'],
+        mood: 'neutro',
+        activities: [],
+        activity_kcal: 0,
+      },
+      totalMeals: 4,
+      waterGoal: 2000,
+      latestWeightForWater: 57,
+      access: { canAccessMealPlan: true },
+    };
+  }
+
+  const hasCheckin = (actions: { type: string }[]) =>
+    actions.some((action) => action.type === 'checkin');
+
+  it('pendência confirmada → recomenda check-in', () => {
+    const result = getFocus(inputWith('pending'));
+    expect(result.actions[0]?.type).toBe('checkin');
+  });
+
+  it('concluído → não recomenda check-in, mas mantém outras ações', () => {
+    const result = getFocus(inputWith('done', true));
+    expect(hasCheckin(result.actions)).toBe(false);
+    expect(result.actions.some((action) => action.type === 'meals')).toBe(true);
+  });
+
+  it('carregando → não recomenda check-in (não é pendência confirmada)', () => {
+    const result = getFocus(inputWith('loading'));
+    expect(hasCheckin(result.actions)).toBe(false);
+    expect(result.actions.some((action) => action.type === 'meals')).toBe(true);
+  });
+
+  it('indisponível → não recomenda check-in nem o descreve como pendente', () => {
+    const result = getFocus(inputWith('unavailable'));
+    expect(hasCheckin(result.actions)).toBe(false);
+    expect(result.actions.some((action) => action.type === 'meals')).toBe(true);
+    expect(
+      result.actions.some((action) =>
+        `${action.title} ${action.description} ${action.reason}`
+          .toLowerCase()
+          .includes('check-in')
+      )
+    ).toBe(false);
+  });
+
+  it('sem o campo novo, preserva o comportamento legado (booleano false → check-in)', () => {
+    expect(hasCheckin(getFocus(inputWith(undefined, false)).actions)).toBe(true);
+    expect(hasCheckin(getFocus(inputWith(undefined, true)).actions)).toBe(false);
   });
 });

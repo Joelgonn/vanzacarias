@@ -17,6 +17,30 @@ export interface CheckinLike {
 }
 
 /**
+ * Estado de apresentação do Check-in nas superfícies de navegação/UI.
+ * - loading: consulta inicial ainda não respondeu (nem conclusão nem pendência)
+ * - done: consulta OK e check-in dentro da janela semanal
+ * - pending: consulta OK e check-in fora da janela
+ * - unavailable: a consulta falhou; não classificar como pendente nem concluído
+ */
+export type CheckinStatus = 'loading' | 'done' | 'pending' | 'unavailable';
+
+/**
+ * Deriva o estado visual do Check-in a partir do hook de status.
+ * Fonte única para Sidebar desktop e Drawer mobile — evita que cada
+ * superfície interprete `doneChecked`/erro de forma diferente.
+ */
+export function getCheckinNavState(input: {
+  isDone: boolean;
+  doneChecked: boolean;
+  unavailable?: boolean;
+}): CheckinStatus {
+  if (!input.doneChecked) return 'loading';
+  if (input.unavailable) return 'unavailable';
+  return input.isDone ? 'done' : 'pending';
+}
+
+/**
  * Retorna true se o usuário já fez check-in nos últimos 7 dias.
  * Lança zero queries — é apenas um cálculo puro sobre os dados fornecidos.
  */

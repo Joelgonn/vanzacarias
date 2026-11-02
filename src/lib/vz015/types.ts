@@ -1,3 +1,5 @@
+import type { CheckinStatus } from '@/lib/checkin';
+
 export type FocusActionType =
   | 'checkin'
   | 'meals'
@@ -39,6 +41,12 @@ export type FocusInput = {
 
   jornada: {
     isCheckinDoneThisWeek: boolean;
+    /**
+     * Estado explícito do Check-in. Quando ausente, os motores mantêm a
+     * compatibilidade usando `isCheckinDoneThisWeek` (done/pending).
+     * `loading` e `unavailable` nunca geram recomendação de check-in.
+     */
+    checkinStatus?: CheckinStatus;
     hasMealPlan: boolean;
     canAccessMealPlan: boolean;
   };

@@ -4,10 +4,11 @@ import { useMemo, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Lock, Crown, Check, ChevronRight } from 'lucide-react';
+import { LogOut, Lock, Crown, Check, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { PATIENT_NAV_GROUPS, isPatientPathActive } from '@/lib/navigation';
 import { useCheckinStatus } from '@/hooks/useCheckinStatus';
+import { getCheckinNavState } from '@/lib/checkin';
 
 interface PatientSidebarProps {
   /**
@@ -49,7 +50,11 @@ export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProp
   // do dashboard: account_type === 'premium' || has_meal_plan_access).
   const hasPlanAccess = canAccessMealPlan != null ? canAccessMealPlan === true : mealPlanAccess === true;
 
-  const { isDone: checkinDone } = useCheckinStatus(supabase);
+  const {
+    isDone: checkinDone,
+    doneChecked: checkinChecked,
+    unavailable: checkinUnavailable,
+  } = useCheckinStatus(supabase);
 
   useEffect(() => {
     let active = true;
@@ -125,8 +130,19 @@ export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProp
                 const isActive = isPatientPathActive(pathname, item.href);
                 const Icon = item.icon;
                 const locked = !!item.premium && !hasPlanAccess;
-                // Sincroniza com a regra única do check-in semanal
-                const isCheckinDone = item.id === 'checkin' && checkinDone;
+                // Sincroniza com a regra única do check-in semanal. O estado
+                // explícito impede que carregamento/falha virem conclusão ou
+                // pendência confirmada antes da resposta da consulta.
+                const checkinNavState = item.id === 'checkin'
+                  ? getCheckinNavState({
+                      isDone: checkinDone,
+                      doneChecked: checkinChecked,
+                      unavailable: checkinUnavailable,
+                    })
+                  : null;
+                const isCheckinDone = checkinNavState === 'done';
+                const isCheckinLoading = checkinNavState === 'loading';
+                const isCheckinUnavailable = checkinNavState === 'unavailable';
 
                 const iconTile = (
                   <span
@@ -142,6 +158,8 @@ export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProp
                   >
                     {isCheckinDone ? (
                       <Check size={18} strokeWidth={3} />
+                    ) : isCheckinLoading ? (
+                      <Loader2 size={18} strokeWidth={2.5} className="animate-spin" aria-hidden="true" />
                     ) : (
                       <Icon size={18} strokeWidth={2.5} />
                     )}
@@ -159,7 +177,11 @@ export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProp
                   </span>
                 );
 
-                const statusBlock = isCheckinDone ? null : locked ? (
+                const statusBlock = isCheckinDone ? null : isCheckinUnavailable ? (
+                  <span className="shrink-0" title="Não foi possível verificar o check-in agora">
+                    <AlertCircle size={14} className="text-stone-400" aria-hidden="true" />
+                  </span>
+                ) : locked ? (
                   <span className="shrink-0">
                     <Lock size={13} className="text-amber-500" />
                   </span>
@@ -215,7 +237,14 @@ export default function PatientSidebar({ canAccessMealPlan }: PatientSidebarProp
                       <Link
                         href={item.href}
                         aria-current={isActive ? 'page' : undefined}
-                        aria-label={locked ? `${item.label} (bloqueado)` : item.label}
+                        aria-label={
+                          isCheckinUnavailable
+                            ? `${item.label} (estado indisponível)`
+                            : locked
+                              ? `${item.label} (bloqueado)`
+                              : item.label
+                        }
+                        aria-busy={isCheckinLoading || undefined}
                         className={rowClass}
                       >
                         {itemContent}
