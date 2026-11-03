@@ -206,9 +206,13 @@ export default function OnboardingStepIntro({
                 <Image
                   src={content.illustrationSrc}
                   alt={content.illustrationAlt ?? ''}
-                  width={661}
-                  height={377}
-                  className="h-32 w-auto max-w-full object-contain sm:h-40"
+                  width={content.illustrationWidth ?? 661}
+                  height={content.illustrationHeight ?? 377}
+                  className={
+                    content.illustrationSize === 'portrait'
+                      ? 'h-40 w-auto max-w-full object-contain sm:h-52'
+                      : 'h-32 w-auto max-w-full object-contain sm:h-40'
+                  }
                 />
               </div>
             )}

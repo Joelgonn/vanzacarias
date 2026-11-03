@@ -27,7 +27,7 @@ describe('Introdução — conteúdo das quatro etapas', () => {
       'Começar agora',
       'Informar minhas restrições',
       'Começar meu Raio-X Alimentar',
-      'Fazer meu check-in',
+      'Fazer meu primeiro check-in',
     ]) {
       expect(content).toContain(cta);
     }
@@ -55,7 +55,15 @@ describe('Introdução — conteúdo das quatro etapas', () => {
     expect(content).toContain(
       "footerIndicators: ['Personalizado', 'Sem julgamentos', 'No seu ritmo']"
     );
-    expect(content).toContain('check-in inicial');
+    expect(content).toContain("badge: 'SEU ACOMPANHAMENTO COMEÇA AQUI'");
+    expect(content).toContain("illustrationSrc: '/avatars/nutri-checkin.png'");
+    expect(content).toContain('Vamos acompanhar sua evolução?');
+    expect(content).toContain(
+      'Seu primeiro check-in é o ponto de partida para acompanhar sua jornada. Registre seu peso, sua adesão ao plano e como você está se sentindo. A cada semana, você poderá atualizar essas informações e acompanhar sua evolução junto à nutricionista Vanusa.'
+    );
+    expect(content).toContain(
+      "footerIndicators: ['Um passo de cada vez', 'Seu ritmo', 'Seu acompanhamento']"
+    );
   });
 });
 
@@ -74,6 +82,8 @@ describe('Introdução — componente apresentacional', () => {
     expect(component).toContain('focusTargetSelector');
     expect(component).toContain('isIllustrated');
     expect(component).toContain('content.illustrationSrc');
+    expect(component).toContain('content.illustrationWidth');
+    expect(component).toContain("content.illustrationSize === 'portrait'");
     expect(component).toContain('content.footerIndicators');
     expect(component).toContain('data-onboarding-illustration');
   });

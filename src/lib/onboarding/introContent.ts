@@ -15,6 +15,9 @@ export interface OnboardingIntroContent {
   variant?: 'illustrated';
   illustrationSrc?: string;
   illustrationAlt?: string;
+  illustrationWidth?: number;
+  illustrationHeight?: number;
+  illustrationSize?: 'portrait';
   footerIndicators?: readonly string[];
 }
 
@@ -52,9 +55,16 @@ export const ONBOARDING_INTRO_CONTENT: Record<JourneyStepKey, OnboardingIntroCon
     footerIndicators: ['Personalizado', 'Sem julgamentos', 'No seu ritmo'],
   },
   checkin: {
-    title: 'Seu primeiro check-in',
+    badge: 'SEU ACOMPANHAMENTO COMEÇA AQUI',
+    variant: 'illustrated',
+    illustrationSrc: '/avatars/nutri-checkin.png',
+    illustrationWidth: 1312,
+    illustrationHeight: 1199,
+    illustrationSize: 'portrait',
+    title: 'Vamos acompanhar sua evolução?',
     description:
-      'Registrar o check-in inicial permite estabelecer a referência para o acompanhamento. Informe peso, adesão e humor; se ainda não houver uma altura registrada, também pediremos sua altura.',
-    cta: 'Fazer meu check-in',
+      'Seu primeiro check-in é o ponto de partida para acompanhar sua jornada. Registre seu peso, sua adesão ao plano e como você está se sentindo. A cada semana, você poderá atualizar essas informações e acompanhar sua evolução junto à nutricionista Vanusa.',
+    cta: 'Fazer meu primeiro check-in',
+    footerIndicators: ['Um passo de cada vez', 'Seu ritmo', 'Seu acompanhamento'],
   },
 };

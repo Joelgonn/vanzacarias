@@ -127,25 +127,18 @@ describe('OnboardingStepIntro — diálogo acessível', () => {
     expect(dismiss?.className).toContain('min-h-[44px]');
   });
 
-  it('mantém as etapas 2 e 4 no layout genérico, sem a personagem', async () => {
-    const steps = [
-      ['perfilAlimentar', 'Informar minhas restrições'],
-      ['checkin', 'Fazer meu check-in'],
-    ] as const;
-
-    for (const [stepKey, cta] of steps) {
-      await renderIntro(true, vi.fn(), vi.fn(), stepKey);
-      const dialog = document.querySelector('[role="dialog"]');
-      expect(dialog?.querySelector('[data-onboarding-intro-primary]')?.textContent).toContain(
-        cta
-      );
-      expect(dialog?.querySelector('img')).toBeNull();
-      expect(dialog?.textContent).not.toContain('Olá, eu sou a Nutri Van');
-      expect(dialog?.textContent).not.toContain('BOAS-VINDAS');
-      expect(dialog?.textContent).not.toContain('JORNADA PERSONALIZADA');
-      expect(dialog?.querySelector('h2')?.className).not.toContain('text-center');
-      expect(dialog?.querySelectorAll('h2 span.block')).toHaveLength(0);
-    }
+  it('mantém a etapa 2 no layout genérico, sem a personagem', async () => {
+    await renderIntro(true, vi.fn(), vi.fn(), 'perfilAlimentar');
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.querySelector('[data-onboarding-intro-primary]')?.textContent).toContain(
+      'Informar minhas restrições'
+    );
+    expect(dialog?.querySelector('img')).toBeNull();
+    expect(dialog?.textContent).not.toContain('Olá, eu sou a Nutri Van');
+    expect(dialog?.textContent).not.toContain('BOAS-VINDAS');
+    expect(dialog?.textContent).not.toContain('JORNADA PERSONALIZADA');
+    expect(dialog?.querySelector('h2')?.className).not.toContain('text-center');
+    expect(dialog?.querySelectorAll('h2 span.block')).toHaveLength(0);
   });
 
   it('renderiza a introdução ilustrada do Raio-X com progresso dinâmico', async () => {
@@ -168,6 +161,31 @@ describe('OnboardingStepIntro — diálogo acessível', () => {
     );
     expect(dialog?.querySelector('[data-onboarding-footer]')?.textContent?.trim()).toBe(
       'Personalizado · Sem julgamentos · No seu ritmo'
+    );
+    expect(dialog?.querySelector('h2')?.className).toContain('text-center');
+    expect(dialog?.textContent).not.toContain('Olá, eu sou a Nutri Van');
+  });
+
+  it('renderiza a introdução ilustrada do primeiro check-in', async () => {
+    await renderIntro(true, vi.fn(), vi.fn(), 'checkin', 3);
+    const dialog = document.querySelector('[role="dialog"]');
+
+    const image = dialog?.querySelector('img');
+    expect(decodeURIComponent(image?.getAttribute('src') ?? '')).toContain(
+      '/avatars/nutri-checkin.png'
+    );
+    expect(image?.getAttribute('alt')).toBe('');
+    expect(dialog?.textContent).toContain('SEU ACOMPANHAMENTO COMEÇA AQUI');
+    expect(dialog?.textContent).toContain('Vamos acompanhar sua evolução?');
+    expect(dialog?.textContent).toContain(
+      'Seu primeiro check-in é o ponto de partida para acompanhar sua jornada. Registre seu peso, sua adesão ao plano e como você está se sentindo. A cada semana, você poderá atualizar essas informações e acompanhar sua evolução junto à nutricionista Vanusa.'
+    );
+    expect(dialog?.textContent).toContain('3 de 4 etapas concluídas');
+    expect(dialog?.querySelector('[data-onboarding-intro-primary]')?.textContent).toContain(
+      'Fazer meu primeiro check-in'
+    );
+    expect(dialog?.querySelector('[data-onboarding-footer]')?.textContent?.trim()).toBe(
+      'Um passo de cada vez · Seu ritmo · Seu acompanhamento'
     );
     expect(dialog?.querySelector('h2')?.className).toContain('text-center');
     expect(dialog?.textContent).not.toContain('Olá, eu sou a Nutri Van');
