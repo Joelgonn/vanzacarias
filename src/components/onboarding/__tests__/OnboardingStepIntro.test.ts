@@ -20,14 +20,15 @@ async function renderIntro(
   open: boolean,
   onStart = vi.fn(),
   onDismiss = vi.fn(),
-  stepKey: JourneyStepKey = 'perfil'
+  stepKey: JourneyStepKey = 'perfil',
+  completedCount = 0
 ) {
   await act(async () => {
     root.render(
       createElement(OnboardingStepIntro, {
         stepKey,
         open,
-        completedCount: 0,
+        completedCount,
         totalSteps: 4,
         onStart,
         onDismiss,
@@ -126,10 +127,9 @@ describe('OnboardingStepIntro — diálogo acessível', () => {
     expect(dismiss?.className).toContain('min-h-[44px]');
   });
 
-  it('mantém as etapas 2, 3 e 4 no layout genérico, sem a personagem', async () => {
+  it('mantém as etapas 2 e 4 no layout genérico, sem a personagem', async () => {
     const steps = [
       ['perfilAlimentar', 'Informar minhas restrições'],
-      ['raioX', 'Iniciar meu Raio-X Alimentar'],
       ['checkin', 'Fazer meu check-in'],
     ] as const;
 
@@ -146,6 +146,31 @@ describe('OnboardingStepIntro — diálogo acessível', () => {
       expect(dialog?.querySelector('h2')?.className).not.toContain('text-center');
       expect(dialog?.querySelectorAll('h2 span.block')).toHaveLength(0);
     }
+  });
+
+  it('renderiza a introdução ilustrada do Raio-X com progresso dinâmico', async () => {
+    await renderIntro(true, vi.fn(), vi.fn(), 'raioX', 2);
+    const dialog = document.querySelector('[role="dialog"]');
+
+    const image = dialog?.querySelector('img');
+    expect(decodeURIComponent(image?.getAttribute('src') ?? '')).toContain(
+      '/avatars/nutri-feliz.png'
+    );
+    expect(image?.getAttribute('alt')).toBe('');
+    expect(dialog?.textContent).toContain('SEU PERFIL ALIMENTAR');
+    expect(dialog?.textContent).toContain('Vamos descobrir como você se alimenta?');
+    expect(dialog?.textContent).toContain(
+      'O que você come no dia a dia conta uma história sobre seus hábitos. Responda às perguntas sobre sua alimentação para ajudar a nutricionista Vanusa a preparar orientações personalizadas para você.'
+    );
+    expect(dialog?.textContent).toContain('2 de 4 etapas concluídas');
+    expect(dialog?.querySelector('[data-onboarding-intro-primary]')?.textContent).toContain(
+      'Começar meu Raio-X Alimentar'
+    );
+    expect(dialog?.querySelector('[data-onboarding-footer]')?.textContent?.trim()).toBe(
+      'Personalizado · Sem julgamentos · No seu ritmo'
+    );
+    expect(dialog?.querySelector('h2')?.className).toContain('text-center');
+    expect(dialog?.textContent).not.toContain('Olá, eu sou a Nutri Van');
   });
 
   it('inicia e dispensa pelos botões, e Escape também dispensa', async () => {

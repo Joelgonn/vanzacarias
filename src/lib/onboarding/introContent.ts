@@ -11,6 +11,11 @@ export interface OnboardingIntroContent {
   characterMessage?: string;
   journeyLabel?: string;
   highlights?: readonly string[];
+  /** Composição ilustrada usada pela etapa do Raio-X Alimentar. */
+  variant?: 'illustrated';
+  illustrationSrc?: string;
+  illustrationAlt?: string;
+  footerIndicators?: readonly string[];
 }
 
 /**
@@ -37,10 +42,14 @@ export const ONBOARDING_INTRO_CONTENT: Record<JourneyStepKey, OnboardingIntroCon
     cta: 'Informar minhas restrições',
   },
   raioX: {
-    title: 'Seu Raio-X Alimentar',
+    badge: 'SEU PERFIL ALIMENTAR',
+    variant: 'illustrated',
+    illustrationSrc: '/avatars/nutri-feliz.png',
+    title: 'Vamos descobrir como você se alimenta?',
     description:
-      'Responder ao questionário de frequência alimentar ajuda a compreender seus hábitos atuais e a orientar o acompanhamento. Se já tiver começado, você pode continuar de onde parou.',
-    cta: 'Iniciar meu Raio-X Alimentar',
+      'O que você come no dia a dia conta uma história sobre seus hábitos. Responda às perguntas sobre sua alimentação para ajudar a nutricionista Vanusa a preparar orientações personalizadas para você.',
+    cta: 'Começar meu Raio-X Alimentar',
+    footerIndicators: ['Personalizado', 'Sem julgamentos', 'No seu ritmo'],
   },
   checkin: {
     title: 'Seu primeiro check-in',

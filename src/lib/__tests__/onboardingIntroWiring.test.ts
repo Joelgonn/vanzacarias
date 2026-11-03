@@ -26,7 +26,7 @@ describe('Introdução — conteúdo das quatro etapas', () => {
     for (const cta of [
       'Começar agora',
       'Informar minhas restrições',
-      'Iniciar meu Raio-X Alimentar',
+      'Começar meu Raio-X Alimentar',
       'Fazer meu check-in',
     ]) {
       expect(content).toContain(cta);
@@ -45,7 +45,16 @@ describe('Introdução — conteúdo das quatro etapas', () => {
       'Cada pessoa tem necessidades diferentes. Alergias, intolerâncias e outras restrições são importantes para sua saúde. Conte-nos o que você precisa evitar para que a nutricionista Vanusa possa personalizar seu plano com segurança.'
     );
     expect(content).not.toContain('Informar alergias, intolerâncias ou restrições');
-    expect(content).toContain('questionário de frequência alimentar');
+    expect(content).toContain("badge: 'SEU PERFIL ALIMENTAR'");
+    expect(content).toContain("variant: 'illustrated'");
+    expect(content).toContain("illustrationSrc: '/avatars/nutri-feliz.png'");
+    expect(content).toContain('Vamos descobrir como você se alimenta?');
+    expect(content).toContain(
+      'O que você come no dia a dia conta uma história sobre seus hábitos. Responda às perguntas sobre sua alimentação para ajudar a nutricionista Vanusa a preparar orientações personalizadas para você.'
+    );
+    expect(content).toContain(
+      "footerIndicators: ['Personalizado', 'Sem julgamentos', 'No seu ritmo']"
+    );
     expect(content).toContain('check-in inicial');
   });
 });
@@ -63,6 +72,10 @@ describe('Introdução — componente apresentacional', () => {
     expect(component).toContain('motion-safe:');
     expect(component).toContain('min-h-[44px]');
     expect(component).toContain('focusTargetSelector');
+    expect(component).toContain('isIllustrated');
+    expect(component).toContain('content.illustrationSrc');
+    expect(component).toContain('content.footerIndicators');
+    expect(component).toContain('data-onboarding-illustration');
   });
 
   it('reutiliza o corpo de boas-vindas compartilhado', () => {

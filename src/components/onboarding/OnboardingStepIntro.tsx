@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import { ArrowRight, X } from 'lucide-react';
 import { ONBOARDING_INTRO_CONTENT } from '@/lib/onboarding/introContent';
 import OnboardingWelcomeContent from '@/components/onboarding/OnboardingWelcomeContent';
@@ -56,6 +57,7 @@ export default function OnboardingStepIntro({
   const descriptionId = useId();
   const content = ONBOARDING_INTRO_CONTENT[stepKey];
   const isWelcome = Boolean(content.characterMessage);
+  const isIllustrated = content.variant === 'illustrated';
   const stepIndex = JOURNEY_STEP_ORDER.indexOf(stepKey);
   const currentStep = stepIndex >= 0 ? stepIndex + 1 : 1;
   const safeTotal = Math.max(1, totalSteps);
@@ -196,19 +198,44 @@ export default function OnboardingStepIntro({
           />
         ) : (
           <>
+            {isIllustrated && content.illustrationSrc && (
+              <div
+                data-onboarding-illustration="true"
+                className="mt-5 flex justify-center"
+              >
+                <Image
+                  src={content.illustrationSrc}
+                  alt={content.illustrationAlt ?? ''}
+                  width={661}
+                  height={377}
+                  className="h-32 w-auto max-w-full object-contain sm:h-40"
+                />
+              </div>
+            )}
+
             <h2
               id={titleId}
-              className="mt-6 text-2xl font-black tracking-tight text-stone-900 sm:text-3xl"
+              className={`font-black tracking-tight text-stone-900 ${
+                isIllustrated
+                  ? 'mx-auto mt-5 max-w-md text-balance text-center text-xl sm:text-2xl'
+                  : 'mt-6 text-2xl sm:text-3xl'
+              }`}
             >
               {content.title}
             </h2>
             <p
               id={descriptionId}
-              className="mt-3 text-sm font-medium leading-relaxed text-stone-600 sm:text-base"
+              className={`mt-3 text-sm font-medium leading-relaxed text-stone-600 sm:text-base ${
+                isIllustrated ? 'mx-auto max-w-md text-center' : ''
+              }`}
             >
               {content.description}
             </p>
-            <p className="mt-4 text-xs font-semibold text-stone-500">
+            <p
+              className={`mt-4 text-xs font-semibold text-stone-500 ${
+                isIllustrated ? 'text-center' : ''
+              }`}
+            >
               {safeCompleted} de {safeTotal} etapas concluídas
             </p>
 
@@ -222,6 +249,14 @@ export default function OnboardingStepIntro({
                 {content.cta}
                 <ArrowRight size={17} aria-hidden="true" />
               </button>
+              {isIllustrated && content.footerIndicators && (
+                <p
+                  data-onboarding-footer="true"
+                  className="text-balance text-center text-[11px] font-bold leading-relaxed text-stone-600"
+                >
+                  {content.footerIndicators.join(' · ')}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={onDismiss}
