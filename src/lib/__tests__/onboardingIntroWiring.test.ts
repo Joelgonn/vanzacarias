@@ -33,7 +33,10 @@ describe('Introdução — conteúdo das quatro etapas', () => {
     }
     expect(content).toContain('SUA SAÚDE É IMPORTANTE PARA NÓS');
     expect(content).toContain("titleLines: ['SUA SAÚDE É IMPORTANTE', 'PARA NÓS']");
-    expect(content).toContain('Para a nutricionista Vanusa montar um plano alimentar');
+    expect(content).toContain(
+      'Para a nutricionista Vanusa montar um plano alimentar seguro e adaptado às suas necessidades, responda às perguntas a seguir.'
+    );
+    expect(content).not.toContain('necessidades. Responda');
     expect(content).toContain('Olá, eu sou a Nutri Van, sua assistente virtual.');
     expect(content).toContain('JORNADA PERSONALIZADA');
     expect(content).toContain("badge: 'BOAS-VINDAS'");
@@ -66,10 +69,14 @@ describe('Introdução — componente apresentacional', () => {
     expect(welcomeContent).toContain('content.characterMessage');
     expect(welcomeContent).toContain('content.highlights');
     expect(welcomeContent).toContain('HIGHLIGHT_ICONS');
+    expect(welcomeContent).toContain('sm:flex-row');
+    expect(welcomeContent).toContain('sm:hidden');
+    expect(welcomeContent).toContain('sm:block');
   });
 
   it('a primeira etapa do assistente usa a composição personalizada, não a tela genérica', () => {
     expect(completar).toContain('<OnboardingWelcomeStep');
+    expect(completar).toContain("step === 1 ? 'max-w-xl' : 'max-w-lg'");
     expect(welcomeStep).toContain('<OnboardingWelcomeContent');
     expect(welcomeStep).toContain('content={ONBOARDING_INTRO_CONTENT.perfil}');
     expect(welcomeStep).toContain('onStart={onNext}');

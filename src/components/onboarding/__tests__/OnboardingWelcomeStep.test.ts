@@ -36,14 +36,26 @@ afterEach(async () => {
 });
 
 describe('OnboardingWelcomeStep — primeira etapa inline', () => {
-  it('mostra a Nutri Van, o título, o texto e os benefícios', async () => {
+  it('mostra a Nutri Van, o título, o texto exato e os benefícios', async () => {
     await renderStep();
 
-    expect(container.textContent).toContain('Olá, eu sou a Nutri Van, sua assistente virtual.');
+    const speech = container.querySelector<HTMLElement>('[data-welcome-speech]');
+    expect(speech?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Olá, eu sou a Nutri Van, sua assistente virtual.'
+    );
+    expect(speech?.querySelector('strong')?.textContent).toBe('Nutri Van');
+
+    const description = container.querySelector<HTMLElement>(
+      '[data-welcome-description]'
+    );
+    expect(description?.textContent?.trim()).toBe(
+      'Para a nutricionista Vanusa montar um plano alimentar seguro e adaptado às suas necessidades, responda às perguntas a seguir.'
+    );
+    expect(description?.textContent).not.toContain('necessidades.');
+
     expect(container.textContent).toContain('JORNADA PERSONALIZADA');
     expect(container.textContent).toContain('SUA SAÚDE É IMPORTANTE');
     expect(container.textContent).toContain('PARA NÓS');
-    expect(container.textContent).toContain('Para a nutricionista Vanusa montar um plano alimentar');
     expect(container.textContent).toContain('Seguro');
     expect(container.textContent).toContain('Personalizado');
     expect(container.textContent).toContain('Gratuito');
@@ -55,6 +67,25 @@ describe('OnboardingWelcomeStep — primeira etapa inline', () => {
       '/avatars/nutri-feliz.png'
     );
     expect(image?.getAttribute('alt')).toBe('');
+  });
+
+  it('organiza personagem e balão lado a lado no desktop e empilhados no mobile', async () => {
+    await renderStep();
+
+    const character = container.querySelector<HTMLElement>('[data-welcome-character]');
+    expect(character?.className).toContain('flex-col');
+    expect(character?.className).toContain('sm:flex-row');
+    expect(character?.className).toContain('sm:items-center');
+
+    const speech = container.querySelector<HTMLElement>('[data-welcome-speech]');
+    expect(speech?.className).toContain('sm:w-56');
+    expect(speech?.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
+    expect(speech?.querySelector('span.sm\\:hidden')).not.toBeNull();
+    expect(speech?.querySelector('span.sm\\:block')).not.toBeNull();
+
+    expect(container.querySelector('[data-welcome-description]')?.className).toContain(
+      'text-center'
+    );
   });
 
   it('inicia o preenchimento pelo CTA e não abre um diálogo', async () => {

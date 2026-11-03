@@ -745,7 +745,7 @@ export default function CompletarPerfil() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] pt-16 md:pt-24 pb-12 px-4">
-      <div className="w-full max-w-lg mx-auto bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-6 md:p-8 relative overflow-hidden">
+      <div className={`w-full ${step === 1 ? 'max-w-xl' : 'max-w-lg'} mx-auto bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-6 md:p-8 relative overflow-hidden`}>
         <ProgressTracker step={step} totalSteps={4} />
         <AnimatePresence mode="wait">
           {step === 1 && <OnboardingWelcomeStep key="step1" onNext={nextStep} />}

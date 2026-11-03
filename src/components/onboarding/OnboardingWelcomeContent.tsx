@@ -34,21 +34,32 @@ export default function OnboardingWelcomeContent({
   return (
     <>
       {content.characterMessage && (
-        <div className="mt-5 flex flex-col items-center">
+        <div
+          data-welcome-character="true"
+          className="mt-5 flex flex-col items-center gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3"
+        >
           <Image
             src="/avatars/nutri-feliz.png"
             alt=""
             width={661}
             height={377}
-            className="h-32 w-auto max-w-full object-contain sm:h-44"
+            className="h-32 w-auto max-w-full shrink-0 object-contain sm:h-36"
           />
-          <div className="relative mt-2 w-full max-w-sm rounded-2xl border border-nutri-100 bg-nutri-50 px-4 py-3 text-center shadow-sm">
+          <div
+            data-welcome-speech="true"
+            className="relative w-full max-w-sm rounded-2xl border border-nutri-200 bg-nutri-50 px-4 py-3 text-center shadow-sm sm:mt-0 sm:w-56 sm:shrink-0"
+          >
             <span
               aria-hidden="true"
-              className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-nutri-100 bg-nutri-50"
+              className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-nutri-200 bg-nutri-50 sm:hidden"
             />
-            <p className="relative text-sm font-semibold leading-relaxed text-nutri-900">
-              {content.characterMessage}
+            <span
+              aria-hidden="true"
+              className="absolute -left-1.5 top-1/2 hidden h-3 w-3 -translate-y-1/2 rotate-45 border-b border-l border-nutri-200 bg-nutri-50 sm:block"
+            />
+            <p className="relative text-sm font-semibold leading-relaxed text-stone-700">
+              Olá, eu sou a{' '}
+              <strong className="font-black text-nutri-900">Nutri Van</strong>, sua assistente virtual.
             </p>
           </div>
         </div>
@@ -75,7 +86,8 @@ export default function OnboardingWelcomeContent({
       </h2>
       <p
         id={descriptionId}
-        className="mt-3 text-sm font-medium leading-relaxed text-stone-600 sm:text-base"
+        data-welcome-description="true"
+        className="mx-auto mt-3 max-w-md text-pretty text-center text-sm font-medium leading-relaxed text-stone-600 sm:text-base"
       >
         {content.description}
       </p>
