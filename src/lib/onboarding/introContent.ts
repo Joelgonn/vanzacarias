@@ -33,7 +33,7 @@ export const ONBOARDING_INTRO_CONTENT: Record<JourneyStepKey, OnboardingIntroCon
   perfilAlimentar: {
     title: 'Agora, suas restrições alimentares',
     description:
-      'Informar alergias, intolerâncias ou restrições — ou confirmar que não possui nenhuma — ajuda a adequar as orientações alimentares ao seu caso.',
+      'Cada pessoa tem necessidades diferentes. Alergias, intolerâncias e outras restrições são importantes para sua saúde. Conte-nos o que você precisa evitar para que a nutricionista Vanusa possa personalizar seu plano com segurança.',
     cta: 'Informar minhas restrições',
   },
   raioX: {

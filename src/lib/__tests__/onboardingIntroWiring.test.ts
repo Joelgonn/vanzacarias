@@ -41,7 +41,10 @@ describe('Introdução — conteúdo das quatro etapas', () => {
     expect(content).toContain('JORNADA PERSONALIZADA');
     expect(content).toContain("badge: 'BOAS-VINDAS'");
     expect(content).toContain("highlights: ['Seguro', 'Personalizado', 'Gratuito']");
-    expect(content).toContain('alergias, intolerâncias ou restrições');
+    expect(content).toContain(
+      'Cada pessoa tem necessidades diferentes. Alergias, intolerâncias e outras restrições são importantes para sua saúde. Conte-nos o que você precisa evitar para que a nutricionista Vanusa possa personalizar seu plano com segurança.'
+    );
+    expect(content).not.toContain('Informar alergias, intolerâncias ou restrições');
     expect(content).toContain('questionário de frequência alimentar');
     expect(content).toContain('check-in inicial');
   });
